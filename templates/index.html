@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>QR RSVP Tracker - Invite Form</title>
+</head>
+<body>
+    <h1>Invite Guests</h1>
+    <form action="/generate" method="POST">
+        <label>Name:</label>
+        <input type="text" name="name" required><br><br>
+
+        <label>Email:</label>
+        <input type="email" name="email" required><br><br>
+
+        <input type="submit" value="Generate QR">
+    </form>
+</body>
+</html>

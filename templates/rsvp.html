@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>RSVP</title>
+</head>
+<body>
+    <h1>RSVP for {{ . }}</h1>
+    <form action="/submit" method="POST">
+        <input type="hidden" name="email" value="{{ . }}">
+        <button type="submit" name="response" value="Yes">Yes</button>
+        <button type="submit" name="response" value="No">No</button>
+    </form>
+</body>
+</html>
