@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <title>Thank You!</title>
-    <!-- Example styling: same fonts/gradients as the other pages -->
+    <!-- Google Fonts for an elegant look -->
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400&display=swap" rel="stylesheet">
     <style>
         body {
@@ -22,6 +22,20 @@
             margin-top: 20px;
             font-size: 1.2rem;
         }
+        .back-link {
+            display: inline-block;
+            margin-top: 30px;
+            padding: 10px 20px;
+            background-color: #ffb6c1;
+            border: 1px solid #ff8fab;
+            border-radius: 4px;
+            color: #333;
+            text-decoration: none;
+            transition: background-color 0.3s ease;
+        }
+        .back-link:hover {
+            background-color: #ff8fab;
+        }
     </style>
 </head>
 <body>
@@ -29,5 +43,7 @@
     <div class="thankyou-message">
         {{ .ThankYouMessage }}
     </div>
+    <!-- Backlink to allow user to update their RSVP -->
+    <a href="/rsvp?code={{ .Code }}" class="back-link">Change Your RSVP</a>
 </body>
 </html>

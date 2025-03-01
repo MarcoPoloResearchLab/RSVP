@@ -141,12 +141,17 @@ func rsvpHandler(w http.ResponseWriter, r *http.Request) {
 		displayName = "Friend"
 	}
 
+	// Directly build the current answer from the DB values.
+	currentAnswer := fmt.Sprintf("%s,%d", rsvp.Response, rsvp.ExtraGuests)
+
 	data := struct {
-		Name string
-		Code string
+		Name          string
+		Code          string
+		CurrentAnswer string
 	}{
-		Name: displayName,
-		Code: code,
+		Name:          displayName,
+		Code:          code,
+		CurrentAnswer: currentAnswer,
 	}
 
 	templates.ExecuteTemplate(w, "rsvp.html", data)
@@ -183,11 +188,13 @@ func thankyouHandler(w http.ResponseWriter, r *http.Request) {
 		Response        string
 		ExtraGuests     int
 		ThankYouMessage string
+		Code            string
 	}{
 		Name:            rsvp.Name,
 		Response:        rsvp.Response,
 		ExtraGuests:     rsvp.ExtraGuests,
 		ThankYouMessage: thankYouMessage,
+		Code:            code,
 	}
 
 	templates.ExecuteTemplate(w, "thankyou.html", data)

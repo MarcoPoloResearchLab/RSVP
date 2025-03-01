@@ -55,6 +55,13 @@
         .btn-no:hover {
             background-color: #7aa7e8;
         }
+        /* Active/Highlighted button style */
+        button.active {
+            background-color: #ff8fab !important; /* darker pink for Yes buttons */
+        }
+        .btn-no.active {
+            background-color: #7aa7e8 !important; /* darker blue for No button */
+        }
         input[type="hidden"] {
             display: none;
         }
@@ -89,11 +96,11 @@
         <input type="hidden" name="code" value="{{ .Code }}">
         <!-- Hidden input for the response -->
         <input type="hidden" name="response" id="responseHidden" value="">
-        <button type="submit" data-response="Yes,1" onclick="celebrate(event)">Yes, +1</button>
-        <button type="submit" data-response="Yes,2" onclick="celebrate(event)">Yes, +2</button>
-        <button type="submit" data-response="Yes,3" onclick="celebrate(event)">Yes, +3</button>
-        <button type="submit" data-response="Yes,4" onclick="celebrate(event)">Yes, +4</button>
-        <button type="submit" class="btn-no" data-response="No,0" onclick="celebrate(event)">No</button>
+        <button type="submit" data-response="Yes,1" onclick="celebrate(event)" class="{{if eq .CurrentAnswer "Yes,1"}}active{{end}}">Yes, +1</button>
+        <button type="submit" data-response="Yes,2" onclick="celebrate(event)" class="{{if eq .CurrentAnswer "Yes,2"}}active{{end}}">Yes, +2</button>
+        <button type="submit" data-response="Yes,3" onclick="celebrate(event)" class="{{if eq .CurrentAnswer "Yes,3"}}active{{end}}">Yes, +3</button>
+        <button type="submit" data-response="Yes,4" onclick="celebrate(event)" class="{{if eq .CurrentAnswer "Yes,4"}}active{{end}}">Yes, +4</button>
+        <button type="submit" data-response="No,0" onclick="celebrate(event)" class="btn-no{{if eq .CurrentAnswer "No,0"}} active{{end}}">No</button>
     </form>
 
     <!-- Canvas for confetti -->
