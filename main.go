@@ -1,44 +1,41 @@
 package main
 
 import (
+	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"html/template"
 	"log"
 	"math/rand"
 	"net/http"
+	"os"
+	"os/signal"
 	"strconv"
 	"strings"
+	"syscall"
+
+	"github.com/temirov/RSVP/models"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 
 	"github.com/skip2/go-qrcode"
+
+	"github.com/temirov/GAuss/pkg/gauss"
+	"github.com/temirov/GAuss/pkg/session"
 )
 
-// RSVP represents an invitation record with a base36 code, name, response, etc.
-type RSVP struct {
-	gorm.Model
-	Name        string `gorm:"column:name"`
-	Code        string `gorm:"column:code;uniqueIndex"`
-	Response    string `gorm:"column:response"`
-	ExtraGuests int    `gorm:"column:extra_guests;default:0"`
-}
-
-// FindByCode loads a single RSVP by its Code.
-func (rsvp *RSVP) FindByCode(db *gorm.DB, code string) error {
-	return db.Where("code = ?", code).First(rsvp).Error
-}
-
-// Create inserts a new RSVP into the database.
-func (rsvp *RSVP) Create(db *gorm.DB) error {
-	return db.Create(rsvp).Error
-}
-
-// Save updates an existing RSVP in the database.
-func (rsvp *RSVP) Save(db *gorm.DB) error {
-	return db.Save(rsvp).Error
-}
+const (
+	WebRoot      = "/"
+	WebGenerate  = "/generate"
+	WebRSVP      = "/rsvp"
+	WebSubmit    = "/submit"
+	WebResponses = "/responses"
+	WebThankYou  = "/thankyou"
+	HTTPPort     = 8083
+	HTTPIP       = "127.0.0.1"
+)
 
 var (
 	db        *gorm.DB
@@ -54,7 +51,7 @@ func initDatabase() {
 	}
 
 	// AutoMigrate will create or update the schema for our RSVP struct.
-	if err := db.AutoMigrate(&RSVP{}); err != nil {
+	if err := db.AutoMigrate(&models.RSVP{}); err != nil {
 		log.Fatal("Failed to migrate database:", err)
 	}
 }
@@ -86,13 +83,17 @@ func indexHandler(w http.ResponseWriter, r *http.Request) {
 	templates.ExecuteTemplate(w, "index.html", nil)
 }
 
+func HTTPHandlerWrapper(handler http.HandlerFunc) http.HandlerFunc {
+	return handler
+}
+
 // generateHandler creates a new RSVP record with a 6-digit base36 code, then displays a QR code.
 func generateHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodPost {
 		inviteeName := r.FormValue("name")
 
 		// Build a new RSVP with a random 6-digit code.
-		rsvp := RSVP{
+		rsvp := models.RSVP{
 			Name: inviteeName,
 			Code: base36Encode6(),
 		}
@@ -129,7 +130,7 @@ func rsvpHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var rsvp RSVP
+	var rsvp models.RSVP
 	if err := rsvp.FindByCode(db, code); err != nil {
 		log.Println("Could not find invite for code:", code, err)
 		http.Error(w, "Invite not found", http.StatusNotFound)
@@ -165,7 +166,7 @@ func thankyouHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var rsvp RSVP
+	var rsvp models.RSVP
 	if err := rsvp.FindByCode(db, code); err != nil {
 		log.Println("Could not find invite for code:", code, err)
 		http.Error(w, "Invite not found", http.StatusNotFound)
@@ -173,8 +174,6 @@ func thankyouHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Build a message based on whether they said Yes or No.
-	// If you’d rather do this logic in the template, just pass
-	// the raw data (Response, ExtraGuests) and do conditionals there.
 	thankYouMessage := ""
 	if rsvp.Response == "Yes" {
 		thankYouMessage = fmt.Sprintf("We are looking forward to seeing you +%d!", rsvp.ExtraGuests)
@@ -217,7 +216,7 @@ func submitHandler(w http.ResponseWriter, r *http.Request) {
 			extraGuests = 0
 		}
 
-		var rsvp RSVP
+		var rsvp models.RSVP
 		if err := rsvp.FindByCode(db, code); err != nil {
 			log.Println("Could not find invite to update for code:", code, err)
 			http.Error(w, "Invite not found", http.StatusNotFound)
@@ -236,12 +235,12 @@ func submitHandler(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/thankyou?code="+code, http.StatusSeeOther)
 		return
 	}
-	http.Redirect(w, r, "/", http.StatusSeeOther)
+	http.Redirect(w, r, WebRoot, http.StatusSeeOther)
 }
 
 // responsesHandler lists all RSVPs.
 func responsesHandler(w http.ResponseWriter, r *http.Request) {
-	var allRSVPs []RSVP
+	var allRSVPs []models.RSVP
 	if err := db.Find(&allRSVPs).Error; err != nil {
 		log.Println("Error fetching RSVPs:", err)
 		http.Error(w, "Could not retrieve RSVPs", http.StatusInternalServerError)
@@ -258,15 +257,89 @@ func responsesHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
+	sessionSecret := os.Getenv("SESSION_SECRET")
+	if sessionSecret == "" {
+		log.Fatal("SESSION_SECRET is not set")
+	}
+	googleClientID := os.Getenv("GOOGLE_CLIENT_ID")
+	if googleClientID == "" {
+		log.Fatal("GOOGLE_CLIENT_ID is not set")
+	}
+
+	googleClientSecret := os.Getenv("GOOGLE_CLIENT_SECRET")
+	if googleClientSecret == "" {
+		log.Fatal("GOOGLE_CLIENT_SECRET is not set")
+	}
+
+	session.NewSession([]byte(sessionSecret))
+	authService, err := gauss.NewService(googleClientID, googleClientSecret, WebRoot)
+	if err != nil {
+		log.Fatal("Failed to initialize auth service:", err)
+	}
+
+	authHandlers, err := gauss.NewHandlers(authService)
+	if err != nil {
+		log.Fatal("Failed to initialize handlers:", err)
+	}
+
 	initDatabase()
 
-	http.HandleFunc("/", indexHandler)
-	http.HandleFunc("/generate", generateHandler)
-	http.HandleFunc("/rsvp", rsvpHandler)
-	http.HandleFunc("/submit", submitHandler)
-	http.HandleFunc("/responses", responsesHandler)
-	http.HandleFunc("/thankyou", thankyouHandler) // NEW
+	// Set up HTTP handlers
+	handler := http.NewServeMux()
+	authHandlers.RegisterRoutes(handler)
 
-	log.Println("Server started on :8080")
-	http.ListenAndServe(":8080", nil)
+	protectedIndexHandler := gauss.AuthMiddleware(HTTPHandlerWrapper(indexHandler))
+	protectedResponsesHandler := gauss.AuthMiddleware(HTTPHandlerWrapper(responsesHandler))
+	protectedGenerateHandler := gauss.AuthMiddleware(HTTPHandlerWrapper(generateHandler))
+	// Register the protected handlers using Handle instead of HandleFunc
+	handler.Handle(WebRoot, protectedIndexHandler)
+	handler.Handle(WebGenerate, protectedGenerateHandler)
+	handler.Handle(WebResponses, protectedResponsesHandler)
+
+	handler.HandleFunc(WebRSVP, rsvpHandler)
+	handler.HandleFunc(WebSubmit, submitHandler)
+	handler.HandleFunc(WebThankYou, thankyouHandler)
+
+	httpSeverAddress := HTTPIP
+	if httpSeverAddress == "127.0.0.1" {
+		httpSeverAddress = "localhost"
+	}
+
+	// Start the HTTP server with graceful shutdown
+	addr := fmt.Sprintf("%s:%d", httpSeverAddress, HTTPPort)
+	httpServer := startHTTPServer(addr, handler)
+
+	// Listen for interrupt signals to gracefully shut down the server
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+
+	shutdownCtx, cancel := context.WithCancel(context.Background())
+
+	// Shutdown triggered when the stop signal is received
+	<-stop
+	log.Println("Received shutdown signal, initiating graceful shutdown...")
+	cancel()
+
+	if err := httpServer.Shutdown(shutdownCtx); err != nil {
+		log.Printf("HTTP server Shutdown: %v", err)
+	} else {
+		log.Println("HTTP server gracefully stopped")
+	}
+
+}
+
+func startHTTPServer(address string, handler http.Handler) *http.Server {
+	httpServer := &http.Server{
+		Addr:    address,
+		Handler: handler,
+	}
+
+	go func() {
+		log.Printf("Server starting on http://%s", address)
+		if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Printf("Error starting server: %v", err)
+		}
+	}()
+
+	return httpServer
 }
