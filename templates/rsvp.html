@@ -87,11 +87,13 @@
     <h1>RSVP for {{ .Name }}</h1>
     <form action="/submit" method="POST">
         <input type="hidden" name="code" value="{{ .Code }}">
-        <button type="submit" name="response" value="Yes,1" onclick="celebrate(event)">Yes, +1</button>
-        <button type="submit" name="response" value="Yes,2" onclick="celebrate(event)">Yes, +2</button>
-        <button type="submit" name="response" value="Yes,3" onclick="celebrate(event)">Yes, +3</button>
-        <button type="submit" name="response" value="Yes,4" onclick="celebrate(event)">Yes, +4</button>
-        <button type="submit" class="btn-no" name="response" value="No,0" onclick="celebrate(event)">No</button>
+        <!-- Hidden input for the response -->
+        <input type="hidden" name="response" id="responseHidden" value="">
+        <button type="submit" data-response="Yes,1" onclick="celebrate(event)">Yes, +1</button>
+        <button type="submit" data-response="Yes,2" onclick="celebrate(event)">Yes, +2</button>
+        <button type="submit" data-response="Yes,3" onclick="celebrate(event)">Yes, +3</button>
+        <button type="submit" data-response="Yes,4" onclick="celebrate(event)">Yes, +4</button>
+        <button type="submit" class="btn-no" data-response="No,0" onclick="celebrate(event)">No</button>
     </form>
 
     <!-- Canvas for confetti -->
@@ -107,10 +109,14 @@
             useWorker: true
         });
 
-        // On button click, trigger confetti and balloon animations
+        // On button click, trigger animations and set the hidden input value.
         function celebrate(event) {
-            // Prevent immediate form submission
             event.preventDefault();
+
+            // Read the response from the clicked button's data attribute
+            var clickedResponse = event.target.getAttribute("data-response");
+            // Set the hidden input's value
+            document.getElementById("responseHidden").value = clickedResponse;
 
             // Launch confetti
             confettiInstance({
@@ -119,7 +125,7 @@
                 origin: { y: 0.6 }
             });
 
-            // Launch additional balloon animations
+            // Launch balloon animations
             launchBalloons(10);
 
             // Delay form submission to allow animations to play out

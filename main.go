@@ -152,6 +152,47 @@ func rsvpHandler(w http.ResponseWriter, r *http.Request) {
 	templates.ExecuteTemplate(w, "rsvp.html", data)
 }
 
+// thankyouHandler fetches the RSVP by code and displays a thank-you message.
+func thankyouHandler(w http.ResponseWriter, r *http.Request) {
+	code := r.URL.Query().Get("code")
+	if code == "" {
+		http.Error(w, "Code is required", http.StatusBadRequest)
+		return
+	}
+
+	var rsvp RSVP
+	if err := rsvp.FindByCode(db, code); err != nil {
+		log.Println("Could not find invite for code:", code, err)
+		http.Error(w, "Invite not found", http.StatusNotFound)
+		return
+	}
+
+	// Build a message based on whether they said Yes or No.
+	// If you’d rather do this logic in the template, just pass
+	// the raw data (Response, ExtraGuests) and do conditionals there.
+	thankYouMessage := ""
+	if rsvp.Response == "Yes" {
+		thankYouMessage = fmt.Sprintf("We are looking forward to seeing you +%d!", rsvp.ExtraGuests)
+	} else {
+		thankYouMessage = "Sorry you couldn’t make it!"
+	}
+
+	// Provide the data to the template
+	data := struct {
+		Name            string
+		Response        string
+		ExtraGuests     int
+		ThankYouMessage string
+	}{
+		Name:            rsvp.Name,
+		Response:        rsvp.Response,
+		ExtraGuests:     rsvp.ExtraGuests,
+		ThankYouMessage: thankYouMessage,
+	}
+
+	templates.ExecuteTemplate(w, "thankyou.html", data)
+}
+
 // submitHandler updates an RSVP's response and extra guests.
 func submitHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodPost {
@@ -184,7 +225,8 @@ func submitHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		http.Redirect(w, r, "/responses", http.StatusSeeOther)
+		// Redirect to /thankyou, passing the same code
+		http.Redirect(w, r, "/thankyou?code="+code, http.StatusSeeOther)
 		return
 	}
 	http.Redirect(w, r, "/", http.StatusSeeOther)
@@ -216,6 +258,7 @@ func main() {
 	http.HandleFunc("/rsvp", rsvpHandler)
 	http.HandleFunc("/submit", submitHandler)
 	http.HandleFunc("/responses", responsesHandler)
+	http.HandleFunc("/thankyou", thankyouHandler) // NEW
 
 	log.Println("Server started on :8080")
 	http.ListenAndServe(":8080", nil)
