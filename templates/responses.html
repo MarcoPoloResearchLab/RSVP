@@ -11,12 +11,14 @@
             <th>Name</th>
             <th>Email</th>
             <th>Response</th>
+            <th>Extra Guests</th>
         </tr>
         {{range .}}
         <tr>
             <td>{{.Name}}</td>
             <td>{{.Email}}</td>
             <td>{{.Response}}</td>
+            <td>{{.ExtraGuests}}</td>
         </tr>
         {{end}}
     </table>
