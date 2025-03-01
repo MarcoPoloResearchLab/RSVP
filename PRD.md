@@ -1,85 +1,91 @@
-# QR RSVP Tracker
+# QR RSVP Tracker (Updated)
 
 ## 1. Overview
-
-The **QR RSVP Tracker** is a simple web application that allows event organizers to generate QR codes for invitees, track their RSVP responses, and view the confirmation status in a structured format.
+The **QR RSVP Tracker** is a simple web application that allows event organizers to generate QR codes for invitees, track their RSVP responses, and view confirmation status in a structured format. This revised version supports cases in which the organizer does not have invitees’ email addresses, using a **small Base36 ID** instead.
 
 ## 2. Objectives
-
-- Enable event organizers to create unique QR codes for each invitee.
-- Allow invitees to RSVP via a simple Yes/No interface.
+- Enable event organizers to create unique invites for guests.
+- Generate a short Base36 identifier for each invite if email is not known.
+- Allow invitees to RSVP (Yes/No) and indicate additional guests (+1, +2, etc.).
 - Store and track RSVP responses in a database.
-- Provide an intuitive UI for managing invitations and responses.
+- Provide an intuitive UI for creating invites and viewing responses.
 
 ## 3. Features
 
 ### 3.1 Invite Generation
-
-- Form for entering invitee name and email.
-- Generates a unique QR code linked to an RSVP URL.
-- Stores invitee details in a database.
-- Displays QR code and RSVP URL for sharing.
+- **Option A (Email known):** If an email is provided, the system will insert or update the invitee record using that email.
+- **Option B (No email):** If no email is provided, the system generates a **Base36 ID** and stores that as the unique identifier.
+- The system creates a unique QR code URL using either the email or the Base36 ID.
+- The invite can be distributed via link or QR code.
 
 ### 3.2 RSVP Handling
-
-- Invitees scan their QR code or click the link.
-- Page displays RSVP form with Yes/No buttons.
-- Submission updates the database with their response.
-- Redirects invitee to a confirmation message.
+- Each invite has an RSVP endpoint: `/rsvp?identifier=...`
+  - If the identifier is an email, the system uses email to look up the record.
+  - If the identifier is a Base36 ID, the system looks it up accordingly.
+- The RSVP page shows the invitee’s name (if known) or a placeholder.
+- Invitees can click buttons for **Yes** or **No**, and indicate how many additional guests they are bringing.
+- The system updates the database with their response.
 
 ### 3.3 RSVP Tracking
-
-- Admin page displays a list of invitees and their RSVP status.
-- Status options: **Pending**, **Yes**, **No**.
-- Responses update in real time.
+- An admin page displays a list of invitees and their RSVP status.
+- Fields include:
+  - **Name** (if provided)
+  - **Email** or **Base36 ID**
+  - **Response** (Yes, No, Pending)
+  - **Extra Guests** (+0, +1, …)
+- Sorting or search capabilities could be added later.
 
 ## 4. Technical Requirements
 
 ### 4.1 Backend
+- **Language:** Go
+- **Framework:** `net/http`
+- **Database:** SQLite
+- **QR Generation:** `github.com/skip2/go-qrcode`
 
-- Language: Go
-- Framework: `net/http`
-- Database: SQLite
+### 4.2 Unique Identifiers
+- The system can generate a short **Base36** string (e.g., `k28f`) for each invite when no email is supplied.
+  - This could be done with a function that converts an integer sequence to Base36.
+- The database table should store either an email **OR** a Base36 ID, with at least one guaranteed to be unique.
+- The application must handle either approach.
 
-### 4.2 Frontend
+### 4.3 Frontend
+- **Go’s built-in template system** for rendering HTML.
+- HTML templates in `templates/` folder:
+  - `index.html` – Invitation form, letting the organizer provide a name, optional email, and generate an invite.
+  - `generate.html` – Shows the resulting QR code and RSVP link.
+  - `rsvp.html` – Form for invitees to respond with Yes/No and additional guests.
+  - `responses.html` – List of all invitees and their RSVP statuses.
 
-- Uses Go’s built-in templating system.
-- HTML templates stored in `templates/` directory.
-- Pages:
-  - `index.html` – Invitation form
-  - `generate.html` – QR code display
-  - `rsvp.html` – RSVP submission page
-  - `responses.html` – RSVP status tracking
-
-### 4.3 QR Code Generation
-
-- Uses `github.com/skip2/go-qrcode`.
-- Encodes unique RSVP URLs.
-- Stores QR codes as base64 PNG images.
+### 4.4 QR Code and RSVP URLs
+- If email is provided: `http://example.com/rsvp?identifier=email@example.com`
+- If no email is provided, generate a Base36 ID (e.g., `abc123`): `http://example.com/rsvp?identifier=abc123`
 
 ## 5. User Roles
-
-- **Event Organizer:** Can generate QR codes, send invitations, and track responses.
-- **Invitee:** Can RSVP via QR scan or URL.
+- **Event Organizer:**
+  - Creates invites by optionally providing name/email.
+  - Shares QR codes or links.
+  - Views RSVPs.
+- **Invitee:**
+  - Visits RSVP link.
+  - Responds with Yes/No and extra guests.
 
 ## 6. Deployment & Hosting
-
-- Runs on a local server or cloud instance.
-- Exposed on port `8080`.
-- Can be containerized using Docker.
+- Runs on a local server or cloud instance, port `8080`.
+- Could be containerized.
 
 ## 7. Future Enhancements
-
-- Email integration for automated invites.
+- Email integration for automated invites if email is known.
 - Admin login for restricted access.
-- Event customization (multiple events support).
-- Export RSVP list as CSV.
+- Multiple concurrent events.
+- Export RSVPs to CSV.
+- Additional personalization and style.
 
 ## 8. Success Metrics
-
-- Number of QR codes generated.
+- Number of invites generated.
 - RSVP completion rate.
-- Response accuracy and reliability.
+- Timely updates to the RSVP list.
+
 
 ---
 
