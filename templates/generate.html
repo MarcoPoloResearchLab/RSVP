@@ -1,17 +1,61 @@
 <!DOCTYPE html>
 <html>
-
 <head>
     <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>QR Code Generated</title>
+    <!-- Google Fonts for an elegant look -->
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400&display=swap" rel="stylesheet">
+    <!-- Bootstrap CSS from CDN -->
+    <link href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            background: linear-gradient(135deg, #ffffff, #ffe6f2); /* pastel pink gradient */
+            font-family: 'Montserrat', sans-serif;
+            color: #333;
+        }
+        h1 {
+            font-weight: 300;
+            text-align: center;
+            margin-top: 40px;
+            margin-bottom: 20px;
+        }
+        .card {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            padding: 20px;
+        }
+        .qr-img {
+            max-width: 100%;
+            height: auto;
+        }
+        a {
+            color: #ff8fab;
+            text-decoration: none;
+        }
+        a:hover {
+            color: #ffb6c1;
+            text-decoration: underline;
+        }
+    </style>
 </head>
-
 <body>
-    <h1>QR Code for {{ .Name }}</h1>
-    <p>
-        <img src="data:image/png;base64,{{ .QRCode }}" alt="QR Code"><br>
-        RSVP Link: <a href="{{ .RsvpURL }}">{{ .RsvpURL }}</a>
-    </p>
+    <div class="container my-5">
+        <h1>QR Code for {{ .Name }}</h1>
+        <div class="row justify-content-center">
+            <div class="col-md-6">
+                <div class="card text-center">
+                    <img src="data:image/png;base64,{{ .QRCode }}" alt="QR Code" class="qr-img mb-3">
+                    <p>
+                        RSVP Link: <a href="{{ .RsvpURL }}">{{ .RsvpURL }}</a>
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Optional JavaScript -->
+    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.5.2/dist/js/bootstrap.bundle.min.js"></script>
 </body>
-
 </html>
