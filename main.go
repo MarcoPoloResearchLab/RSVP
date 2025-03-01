@@ -1,7 +1,6 @@
 package main
 
 import (
-	"database/sql"
 	"encoding/base64"
 	"fmt"
 	"html/template"
@@ -10,120 +9,101 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"time"
 
-	_ "github.com/mattn/go-sqlite3"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
+
 	"github.com/skip2/go-qrcode"
 )
 
-var databaseSQL *sql.DB
-var templates = template.Must(template.ParseGlob("templates/*.html"))
+// RSVP represents an invitation record with a base36 code, name, response, etc.
+type RSVP struct {
+	gorm.Model
+	Name        string `gorm:"column:name"`
+	Code        string `gorm:"column:code;uniqueIndex"`
+	Response    string `gorm:"column:response"`
+	ExtraGuests int    `gorm:"column:extra_guests;default:0"`
+}
 
+// FindByCode loads a single RSVP by its Code.
+func (rsvp *RSVP) FindByCode(db *gorm.DB, code string) error {
+	return db.Where("code = ?", code).First(rsvp).Error
+}
+
+// Create inserts a new RSVP into the database.
+func (rsvp *RSVP) Create(db *gorm.DB) error {
+	return db.Create(rsvp).Error
+}
+
+// Save updates an existing RSVP in the database.
+func (rsvp *RSVP) Save(db *gorm.DB) error {
+	return db.Save(rsvp).Error
+}
+
+var (
+	db        *gorm.DB
+	templates = template.Must(template.ParseGlob("templates/*.html"))
+)
+
+// initDatabase sets up the SQLite DB with GORM and migrates our RSVP model.
 func initDatabase() {
 	var err error
-	databaseSQL, err = sql.Open("sqlite3", "rsvps.db")
+	db, err = gorm.Open(sqlite.Open("rsvps.db"), &gorm.Config{})
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal("Failed to connect database:", err)
 	}
 
-	// Add a "base36" column to store unique IDs for those without emails.
-	// We'll also store name, email, response, and extra_guests.
-	createTableStatement := `
-        CREATE TABLE IF NOT EXISTS rsvps (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT,
-            email TEXT UNIQUE,
-            base36 TEXT UNIQUE,
-            response TEXT,
-            extra_guests INTEGER DEFAULT 0
-        );
-    `
-
-	_, err = databaseSQL.Exec(createTableStatement)
-	if err != nil {
-		log.Fatal(err)
+	// AutoMigrate will create or update the schema for our RSVP struct.
+	if err := db.AutoMigrate(&RSVP{}); err != nil {
+		log.Fatal("Failed to migrate database:", err)
 	}
 }
 
-// generateQRCode creates a base64-encoded QR image from the given text data.
+// generateQRCode creates a base64-encoded PNG QR image from the given string.
 func generateQRCode(data string) string {
-	qrBytes, generateError := qrcode.Encode(data, qrcode.Medium, 256)
-	if generateError != nil {
-		log.Fatal(generateError)
+	qrBytes, err := qrcode.Encode(data, qrcode.Medium, 256)
+	if err != nil {
+		log.Fatal(err)
 	}
 	return base64.StdEncoding.EncodeToString(qrBytes)
 }
 
-// base36Encode converts an integer to a base36 string.
-// If you want a shorter random approach, we can do a direct random-based ID.
-// But for a guaranteed unique, we often tie to a DB row.
-func base36Encode(num int) string {
-	const charset = "0123456789abcdefghijklmnopqrstuvwxyz"
-	if num == 0 {
-		return "0"
+// base36Encode6 returns a random 6-digit base36 string.
+// This does NOT rely on incremental IDs; it just generates 6 random base36 chars.
+func base36Encode6() string {
+	const length = 6
+	const chars = "0123456789abcdefghijklmnopqrstuvwxyz"
+
+	out := make([]byte, length)
+	for i := 0; i < length; i++ {
+		out[i] = chars[rand.Intn(len(chars))]
 	}
-	result := ""
-	for num > 0 {
-		remainder := num % 36
-		num = num / 36
-		result = string(charset[remainder]) + result
-	}
-	return result
+	return string(out)
 }
 
+// indexHandler displays a simple form to create a new invite.
 func indexHandler(w http.ResponseWriter, r *http.Request) {
 	templates.ExecuteTemplate(w, "index.html", nil)
 }
 
-// generateInvite inserts a row with name/email (if provided), then updates base36 if needed.
-func generateInvite(inviteeName, inviteeEmail string) (string, error) {
-	// If email is provided, use that as the unique key. If not, we will generate a base36.
-
-	// Insert row ignoring duplicates. We'll handle the case if no email is provided by inserting with placeholders.
-	insertStmt := `INSERT INTO rsvps (name, email) VALUES (?, ?)`
-	res, err := databaseSQL.Exec(insertStmt, inviteeName, inviteeEmail)
-	if err != nil {
-		// possibly a constraint error if email is duplicate, etc.
-		return "", err
-	}
-
-	// If email is empty, we need to set a base36 ID.
-	if inviteeEmail == "" {
-		// We'll get the last inserted row id.
-		rowID, err := res.LastInsertId()
-		if err != nil {
-			return "", err
-		}
-		base36ID := base36Encode(int(rowID))
-
-		// Update the row with the base36 ID
-		updateStmt := `UPDATE rsvps SET base36 = ? WHERE id = ?`
-		_, err = databaseSQL.Exec(updateStmt, base36ID, rowID)
-		if err != nil {
-			return "", err
-		}
-		return base36ID, nil
-	}
-
-	// If we had an email, we assume it was successful.
-	return inviteeEmail, nil
-}
-
+// generateHandler creates a new RSVP record with a 6-digit base36 code, then displays a QR code.
 func generateHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodPost {
 		inviteeName := r.FormValue("name")
-		inviteeEmail := r.FormValue("email")
 
-		identifier, err := generateInvite(inviteeName, inviteeEmail)
-		if err != nil {
+		// Build a new RSVP with a random 6-digit code.
+		rsvp := RSVP{
+			Name: inviteeName,
+			Code: base36Encode6(),
+		}
+		if err := rsvp.Create(db); err != nil {
 			log.Println("Error creating invite:", err)
 			http.Error(w, "Could not create invite", http.StatusInternalServerError)
 			return
 		}
 
-		// Construct a unique RSVP URL. We'll use 'identifier' for the query param.
-		// This might be an email or a base36.
-		rsvpURL := fmt.Sprintf("http://%s/rsvp?identifier=%s", r.Host, identifier)
+		// Construct an RSVP URL using the code.
+		rsvpURL := fmt.Sprintf("http://%s/rsvp?code=%s", r.Host, rsvp.Code)
 		qrBase64 := generateQRCode(rsvpURL)
 
 		data := struct {
@@ -131,65 +111,54 @@ func generateHandler(w http.ResponseWriter, r *http.Request) {
 			QRCode  string
 			RsvpURL string
 		}{
-			Name:    inviteeName,
+			Name:    rsvp.Name,
 			QRCode:  qrBase64,
 			RsvpURL: rsvpURL,
 		}
 		templates.ExecuteTemplate(w, "generate.html", data)
 		return
 	}
-
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
-// rsvpHandler fetches the invite record based on either email or base36.
+// rsvpHandler fetches the RSVP by code and displays the RSVP page.
 func rsvpHandler(w http.ResponseWriter, r *http.Request) {
-	identifier := r.URL.Query().Get("identifier")
-	if identifier == "" {
-		// If no identifier is provided, redirect to home.
+	code := r.URL.Query().Get("code")
+	if code == "" {
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
 	}
 
-	// Try to see if this is an email or a base36.
-	// We'll do a single SELECT that checks both columns.
-	row := databaseSQL.QueryRow(`
-        SELECT name, email, base36 FROM rsvps
-        WHERE email = ? OR base36 = ?
-    `, identifier, identifier)
-
-	var inviteeName, inviteeEmail, inviteeBase36 string
-	err := row.Scan(&inviteeName, &inviteeEmail, &inviteeBase36)
-	if err != nil {
-		log.Println("Could not find invite for:", identifier, err)
-		// Optionally show an error page.
+	var rsvp RSVP
+	if err := rsvp.FindByCode(db, code); err != nil {
+		log.Println("Could not find invite for code:", code, err)
 		http.Error(w, "Invite not found", http.StatusNotFound)
 		return
 	}
 
-	// We'll display the name if present, else fallback.
-	if inviteeName == "" {
-		inviteeName = "Friend" // or any placeholder
+	displayName := rsvp.Name
+	if displayName == "" {
+		displayName = "Friend"
 	}
 
-	// We'll pass these to the template.
 	data := struct {
-		Name       string
-		Identifier string
+		Name string
+		Code string
 	}{
-		Name:       inviteeName,
-		Identifier: identifier,
+		Name: displayName,
+		Code: code,
 	}
 
 	templates.ExecuteTemplate(w, "rsvp.html", data)
 }
 
+// submitHandler updates an RSVP's response and extra guests.
 func submitHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodPost {
-		identifier := r.FormValue("identifier")
-		formValue := r.FormValue("response")
+		code := r.FormValue("code")
+		responseValue := r.FormValue("response")
 
-		parts := strings.Split(formValue, ",")
+		parts := strings.Split(responseValue, ",")
 		if len(parts) != 2 {
 			parts = []string{"No", "0"}
 		}
@@ -200,72 +169,48 @@ func submitHandler(w http.ResponseWriter, r *http.Request) {
 			extraGuests = 0
 		}
 
-		// We'll update based on either email or base36.
-		updateStmt := `
-            UPDATE rsvps
-            SET response = ?, extra_guests = ?
-            WHERE email = ? OR base36 = ?
-        `
-		_, err = databaseSQL.Exec(updateStmt, rsvpResponse, extraGuests, identifier, identifier)
-		if err != nil {
-			log.Fatal(err)
+		var rsvp RSVP
+		if err := rsvp.FindByCode(db, code); err != nil {
+			log.Println("Could not find invite to update for code:", code, err)
+			http.Error(w, "Invite not found", http.StatusNotFound)
+			return
+		}
+
+		rsvp.Response = rsvpResponse
+		rsvp.ExtraGuests = extraGuests
+		if err := rsvp.Save(db); err != nil {
+			log.Println("Could not save RSVP:", err)
+			http.Error(w, "Could not update RSVP", http.StatusInternalServerError)
+			return
 		}
 
 		http.Redirect(w, r, "/responses", http.StatusSeeOther)
 		return
 	}
-
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
+// responsesHandler lists all RSVPs.
 func responsesHandler(w http.ResponseWriter, r *http.Request) {
-	rows, err := databaseSQL.Query(`
-        SELECT name, email, base36, response, extra_guests
-        FROM rsvps
-    `)
-	if err != nil {
-		log.Fatal(err)
+	var allRSVPs []RSVP
+	if err := db.Find(&allRSVPs).Error; err != nil {
+		log.Println("Error fetching RSVPs:", err)
+		http.Error(w, "Could not retrieve RSVPs", http.StatusInternalServerError)
+		return
 	}
 
-	defer rows.Close()
-
-	type rsvpRow struct {
-		Name        string
-		Email       string
-		Base36      string
-		Response    string
-		ExtraGuests int
-	}
-
-	var allRSVPs []rsvpRow
-	for rows.Next() {
-		var nameVal, emailVal, base36Val, respVal string
-		var extraVal int
-		err := rows.Scan(&nameVal, &emailVal, &base36Val, &respVal, &extraVal)
-		if err != nil {
-			log.Println(err)
-			continue
+	for i := range allRSVPs {
+		if allRSVPs[i].Response == "" {
+			allRSVPs[i].Response = "Pending"
 		}
-		if respVal == "" {
-			respVal = "Pending"
-		}
-		allRSVPs = append(allRSVPs, rsvpRow{
-			Name:        nameVal,
-			Email:       emailVal,
-			Base36:      base36Val,
-			Response:    respVal,
-			ExtraGuests: extraVal,
-		})
 	}
 
 	templates.ExecuteTemplate(w, "responses.html", allRSVPs)
 }
 
 func main() {
-	// Seed rand if needed for some random approach, else not used in this example.
-	rand.Seed(time.Now().UnixNano())
-
 	initDatabase()
+
 	http.HandleFunc("/", indexHandler)
 	http.HandleFunc("/generate", generateHandler)
 	http.HandleFunc("/rsvp", rsvpHandler)

@@ -9,7 +9,8 @@
 <body>
     <h1>RSVP for {{ .Name }}</h1>
     <form action="/submit" method="POST">
-        <input type="hidden" name="email" value="{{ . }}">
+        <input type="hidden" name="code" value="{{ .Code }}">
+
         <!-- If the user clicks one of the Yes buttons, we include the +X in the value -->
         <button type="submit" name="response" value="Yes,1">Yes, +1</button>
         <button type="submit" name="response" value="Yes,2">Yes, +2</button>
