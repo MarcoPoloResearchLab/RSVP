@@ -1,11 +1,13 @@
 <!DOCTYPE html>
 <html>
+
 <head>
     <meta charset="utf-8">
     <title>RSVP</title>
 </head>
+
 <body>
-    <h1>RSVP for {{ . }}</h1>
+    <h1>RSVP for {{ .Name }}</h1>
     <form action="/submit" method="POST">
         <input type="hidden" name="email" value="{{ . }}">
         <!-- If the user clicks one of the Yes buttons, we include the +X in the value -->
@@ -16,4 +18,5 @@
         <button type="submit" name="response" value="No,0">No</button>
     </form>
 </body>
+
 </html>
