@@ -5,9 +5,9 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"github.com/temirov/RSVP/utils"
 	"html/template"
 	"log"
-	"math/rand"
 	"net/http"
 	"os"
 	"os/signal"
@@ -65,41 +65,29 @@ func generateQRCode(data string) string {
 	return base64.StdEncoding.EncodeToString(qrBytes)
 }
 
-// base36Encode6 returns a random 6-digit base36 string.
-// This does NOT rely on incremental IDs; it just generates 6 random base36 chars.
-func base36Encode6() string {
-	const length = 6
-	const chars = "0123456789abcdefghijklmnopqrstuvwxyz"
-
-	out := make([]byte, length)
-	for i := 0; i < length; i++ {
-		out[i] = chars[rand.Intn(len(chars))]
-	}
-	return string(out)
-}
-
 // indexHandler displays a simple form to create a new invite.
-func indexHandler(w http.ResponseWriter, r *http.Request) {
-	templates.ExecuteTemplate(w, "index.html", nil)
-}
-
-func HTTPHandlerWrapper(handler http.HandlerFunc) http.HandlerFunc {
-	return handler
+func indexHandler(responseWriter http.ResponseWriter, request *http.Request) {
+	errorExecute := templates.ExecuteTemplate(responseWriter, "index.html", nil)
+	if errorExecute != nil {
+		http.Error(responseWriter, "Internal Server Error", http.StatusInternalServerError)
+		log.Printf("failed to render template index.html: %v", errorExecute)
+		return
+	}
 }
 
 // generateHandler creates a new RSVP record with a 6-digit base36 code, then displays a QR code.
-func generateHandler(w http.ResponseWriter, r *http.Request) {
+func generateHandler(responseWriter http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodPost {
 		inviteeName := r.FormValue("name")
 
 		// Build a new RSVP with a random 6-digit code.
 		rsvp := models.RSVP{
 			Name: inviteeName,
-			Code: base36Encode6(),
+			Code: utils.Base36Encode6(),
 		}
 		if err := rsvp.Create(db); err != nil {
 			log.Println("Error creating invite:", err)
-			http.Error(w, "Could not create invite", http.StatusInternalServerError)
+			http.Error(responseWriter, "Could not create invite", http.StatusInternalServerError)
 			return
 		}
 
@@ -116,24 +104,29 @@ func generateHandler(w http.ResponseWriter, r *http.Request) {
 			QRCode:  qrBase64,
 			RsvpURL: rsvpURL,
 		}
-		templates.ExecuteTemplate(w, "generate.html", data)
+		errorExecute := templates.ExecuteTemplate(responseWriter, "generate.html", data)
+		if errorExecute != nil {
+			http.Error(responseWriter, "Internal Server Error", http.StatusInternalServerError)
+			log.Printf("failed to render template index.html: %v", errorExecute)
+			return
+		}
 		return
 	}
-	http.Redirect(w, r, "/", http.StatusSeeOther)
+	http.Redirect(responseWriter, r, "/", http.StatusSeeOther)
 }
 
 // rsvpHandler fetches the RSVP by code and displays the RSVP page.
-func rsvpHandler(w http.ResponseWriter, r *http.Request) {
+func rsvpHandler(responseWriter http.ResponseWriter, r *http.Request) {
 	code := r.URL.Query().Get("code")
 	if code == "" {
-		http.Redirect(w, r, "/", http.StatusSeeOther)
+		http.Redirect(responseWriter, r, "/", http.StatusSeeOther)
 		return
 	}
 
 	var rsvp models.RSVP
 	if err := rsvp.FindByCode(db, code); err != nil {
 		log.Println("Could not find invite for code:", code, err)
-		http.Error(w, "Invite not found", http.StatusNotFound)
+		http.Error(responseWriter, "Invite not found", http.StatusNotFound)
 		return
 	}
 
@@ -155,21 +148,26 @@ func rsvpHandler(w http.ResponseWriter, r *http.Request) {
 		CurrentAnswer: currentAnswer,
 	}
 
-	templates.ExecuteTemplate(w, "rsvp.html", data)
+	errorExecute := templates.ExecuteTemplate(responseWriter, "rsvp.html", data)
+	if errorExecute != nil {
+		http.Error(responseWriter, "Internal Server Error", http.StatusInternalServerError)
+		log.Printf("failed to render template index.html: %v", errorExecute)
+		return
+	}
 }
 
 // thankyouHandler fetches the RSVP by code and displays a thank-you message.
-func thankyouHandler(w http.ResponseWriter, r *http.Request) {
+func thankyouHandler(responseWriter http.ResponseWriter, r *http.Request) {
 	code := r.URL.Query().Get("code")
 	if code == "" {
-		http.Error(w, "Code is required", http.StatusBadRequest)
+		http.Error(responseWriter, "Code is required", http.StatusBadRequest)
 		return
 	}
 
 	var rsvp models.RSVP
 	if err := rsvp.FindByCode(db, code); err != nil {
 		log.Println("Could not find invite for code:", code, err)
-		http.Error(w, "Invite not found", http.StatusNotFound)
+		http.Error(responseWriter, "Invite not found", http.StatusNotFound)
 		return
 	}
 
@@ -196,7 +194,12 @@ func thankyouHandler(w http.ResponseWriter, r *http.Request) {
 		Code:            code,
 	}
 
-	templates.ExecuteTemplate(w, "thankyou.html", data)
+	errorExecute := templates.ExecuteTemplate(responseWriter, "thankyou.html", data)
+	if errorExecute != nil {
+		http.Error(responseWriter, "Internal Server Error", http.StatusInternalServerError)
+		log.Printf("failed to render template index.html: %v", errorExecute)
+		return
+	}
 }
 
 // submitHandler updates an RSVP's response and extra guests.
@@ -239,11 +242,11 @@ func submitHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // responsesHandler lists all RSVPs.
-func responsesHandler(w http.ResponseWriter, r *http.Request) {
+func responsesHandler(responseWriter http.ResponseWriter, r *http.Request) {
 	var allRSVPs []models.RSVP
 	if err := db.Find(&allRSVPs).Error; err != nil {
 		log.Println("Error fetching RSVPs:", err)
-		http.Error(w, "Could not retrieve RSVPs", http.StatusInternalServerError)
+		http.Error(responseWriter, "Could not retrieve RSVPs", http.StatusInternalServerError)
 		return
 	}
 
@@ -253,7 +256,12 @@ func responsesHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	templates.ExecuteTemplate(w, "responses.html", allRSVPs)
+	errorExecute := templates.ExecuteTemplate(responseWriter, "responses.html", allRSVPs)
+	if errorExecute != nil {
+		http.Error(responseWriter, "Internal Server Error", http.StatusInternalServerError)
+		log.Printf("failed to render template index.html: %v", errorExecute)
+		return
+	}
 }
 
 func main() {
@@ -288,9 +296,9 @@ func main() {
 	handler := http.NewServeMux()
 	authHandlers.RegisterRoutes(handler)
 
-	protectedIndexHandler := gauss.AuthMiddleware(HTTPHandlerWrapper(indexHandler))
-	protectedResponsesHandler := gauss.AuthMiddleware(HTTPHandlerWrapper(responsesHandler))
-	protectedGenerateHandler := gauss.AuthMiddleware(HTTPHandlerWrapper(generateHandler))
+	protectedIndexHandler := gauss.AuthMiddleware(utils.HTTPHandlerWrapper(indexHandler))
+	protectedResponsesHandler := gauss.AuthMiddleware(utils.HTTPHandlerWrapper(responsesHandler))
+	protectedGenerateHandler := gauss.AuthMiddleware(utils.HTTPHandlerWrapper(generateHandler))
 	// Register the protected handlers using Handle instead of HandleFunc
 	handler.Handle(WebRoot, protectedIndexHandler)
 	handler.Handle(WebGenerate, protectedGenerateHandler)
