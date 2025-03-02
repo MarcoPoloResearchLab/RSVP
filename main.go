@@ -324,7 +324,7 @@ func main() {
 
 	// Start the HTTP server with graceful shutdown
 	addr := fmt.Sprintf("%s:%d", httpSeverAddress, HTTPPort)
-	var httpServer = &http.Server{}
+	var httpServer *http.Server
 	if certFilePath == "" || keyFilePath == "" {
 		log.Printf("No SSL certificates found, starting HTTP server")
 		httpServer = startHTTPServer(addr, handler)
