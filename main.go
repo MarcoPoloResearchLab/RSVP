@@ -34,7 +34,7 @@ const (
 	WebResponses = "/responses"
 	WebThankYou  = "/thankyou"
 	HTTPPort     = 8080
-	HTTPIP       = "127.0.0.1"
+	HTTPIP       = "0.0.0.0"
 )
 
 var (
