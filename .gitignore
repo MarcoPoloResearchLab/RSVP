@@ -1,4 +1,5 @@
 .idea/
+certs/
 *.db
 *.txt
 .env

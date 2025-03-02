@@ -284,6 +284,10 @@ func main() {
 		log.Fatal("GOOGLE_OAUTH2_BASE is not set")
 	}
 
+	certFilePath := os.Getenv("TLS_CERT_PATH")
+
+	keyFilePath := os.Getenv("TLS_KEY_PATH")
+
 	session.NewSession([]byte(sessionSecret))
 	authService, err := gauss.NewService(googleClientID, googleClientSecret, googleOauth2Base, WebRoot)
 	if err != nil {
@@ -320,7 +324,12 @@ func main() {
 
 	// Start the HTTP server with graceful shutdown
 	addr := fmt.Sprintf("%s:%d", httpSeverAddress, HTTPPort)
-	httpServer := startHTTPServer(addr, handler)
+	var httpServer = &http.Server{}
+	if certFilePath == "" || keyFilePath == "" {
+		log.Printf("No SSL certificates found, starting HTTP server")
+		httpServer = startHTTPServer(addr, handler)
+	}
+	httpServer = startHTTPSServer(addr, handler, certFilePath, keyFilePath)
 
 	// Listen for interrupt signals to gracefully shut down the server
 	stop := make(chan os.Signal, 1)
@@ -355,4 +364,20 @@ func startHTTPServer(address string, handler http.Handler) *http.Server {
 	}()
 
 	return httpServer
+}
+
+func startHTTPSServer(address string, handler http.Handler, certFile string, keyFile string) *http.Server {
+	httpsServer := &http.Server{
+		Addr:    address,
+		Handler: handler,
+	}
+
+	go func() {
+		log.Printf("HTTPS server starting on https://%s", address)
+		if err := httpsServer.ListenAndServeTLS(certFile, keyFile); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Printf("Error starting HTTPS server: %v", err)
+		}
+	}()
+
+	return httpsServer
 }
