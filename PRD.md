@@ -1,4 +1,4 @@
-# QR RSVP Tracker (Updated)
+# QR RSVP Tracker
 
 ## 1. Overview
 The **QR RSVP Tracker** is a simple web application that allows event organizers to generate QR codes for invitees, track their RSVP responses, and view confirmation status in a structured format. This revised version supports cases in which the organizer does not have invitees’ email addresses, using a **small Base36 ID** instead.
