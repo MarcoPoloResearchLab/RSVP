@@ -279,8 +279,13 @@ func main() {
 		log.Fatal("GOOGLE_CLIENT_SECRET is not set")
 	}
 
+	googleOauth2Base := os.Getenv("GOOGLE_OAUTH2_BASE")
+	if googleOauth2Base == "" {
+		log.Fatal("GOOGLE_OAUTH2_BASE is not set")
+	}
+
 	session.NewSession([]byte(sessionSecret))
-	authService, err := gauss.NewService(googleClientID, googleClientSecret, WebRoot)
+	authService, err := gauss.NewService(googleClientID, googleClientSecret, googleOauth2Base, WebRoot)
 	if err != nil {
 		log.Fatal("Failed to initialize auth service:", err)
 	}
