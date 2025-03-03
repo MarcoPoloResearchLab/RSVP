@@ -86,7 +86,6 @@ func main() {
 
 	// Register unprotected endpoints.
 	httpRouter.HandleFunc(config.WebRSVP, handlers.RsvpHandler(applicationContext))
-	httpRouter.HandleFunc(config.WebSubmit, handlers.SubmitHandler(applicationContext))
 	httpRouter.HandleFunc(config.WebThankYou, handlers.ThankYouHandler(applicationContext))
 
 	// Determine server address.
