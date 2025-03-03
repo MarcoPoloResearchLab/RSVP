@@ -29,6 +29,21 @@
     </style>
 </head>
 <body>
+    <!-- Fixed Pastel Navbar -->
+    <nav class="navbar navbar-expand-lg navbar-custom fixed-navbar">
+        <a class="navbar-brand" href="#">QR RSVP Tracker</a>
+        <div class="ml-auto">
+            <form action="/logout" method="POST" class="form-inline">
+                <button type="submit" class="btn btn-outline-secondary d-flex align-items-center">
+                    <!-- Ensure this src is populated in Go code: .UserPicture must not be empty -->
+                    <img src="{{.UserPicture}}" alt="{{.UserName}}" class="rounded-circle"
+                         style="width:30px; height:30px; margin-right:5px;">
+                    Sign out
+                </button>
+            </form>
+        </div>
+    </nav>
+
     <div class="container my-5">
         <h1 class="mb-4">RSVP Responses</h1>
         <div class="row justify-content-center">
@@ -44,7 +59,7 @@
                             </tr>
                         </thead>
                         <tbody>
-                            {{range .}}
+                            {{range .RSVPs}}
                             <tr>
                                 <td>{{.Name}}</td>
                                 <td>{{.Code}}</td>

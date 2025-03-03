@@ -41,6 +41,11 @@ var (
 	templates = template.Must(template.ParseGlob("templates/*.html"))
 )
 
+type LoggedUserData struct {
+	UserPicture string
+	UserName    string
+}
+
 // initDatabase sets up the SQLite DB with GORM and migrates our RSVP model.
 func initDatabase() {
 	var err error
@@ -64,21 +69,24 @@ func generateQRCode(data string) string {
 	return base64.StdEncoding.EncodeToString(qrBytes)
 }
 
-// indexHandler displays a simple form to create a new invite.
-func indexHandler(responseWriter http.ResponseWriter, request *http.Request) {
+func GetUserData(request *http.Request) *LoggedUserData {
 	webSession, _ := session.Store().Get(request, constants.SessionName)
 	userPicture, _ := webSession.Values["user_picture"].(string)
 	userName, _ := webSession.Values["user_name"].(string)
 
-	data := struct {
-		UserPicture string
-		UserName    string
-	}{
+	data := &LoggedUserData{
 		UserPicture: userPicture,
 		UserName:    userName,
 	}
 
-	err := templates.ExecuteTemplate(responseWriter, "index.html", data)
+	return data
+}
+
+// indexHandler displays a simple form to create a new invite.
+func indexHandler(responseWriter http.ResponseWriter, request *http.Request) {
+	loggedUserData := GetUserData(request)
+
+	err := templates.ExecuteTemplate(responseWriter, "index.html", loggedUserData)
 	if err != nil {
 		http.Error(responseWriter, "Internal Server Error", http.StatusInternalServerError)
 		log.Printf("failed to render template index.html: %v", err)
@@ -87,9 +95,9 @@ func indexHandler(responseWriter http.ResponseWriter, request *http.Request) {
 }
 
 // generateHandler creates a new RSVP record with a 6-digit base36 code, then displays a QR code.
-func generateHandler(responseWriter http.ResponseWriter, r *http.Request) {
-	if r.Method == http.MethodPost {
-		inviteeName := r.FormValue("name")
+func generateHandler(responseWriter http.ResponseWriter, request *http.Request) {
+	if request.Method == http.MethodPost {
+		inviteeName := request.FormValue("name")
 
 		// Build a new RSVP with a random 6-digit code.
 		rsvp := models.RSVP{
@@ -102,18 +110,27 @@ func generateHandler(responseWriter http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		protocolValue := "http"
+		if request.TLS != nil {
+			protocolValue = "https"
+		}
+
 		// Construct an RSVP URL using the code.
-		rsvpURL := fmt.Sprintf("http://%s/rsvp?code=%s", r.Host, rsvp.Code)
+		rsvpURL := fmt.Sprintf("%s://%s/rsvp?code=%s", protocolValue, request.Host, rsvp.Code)
 		qrBase64 := generateQRCode(rsvpURL)
+
+		loggedUserData := GetUserData(request)
 
 		data := struct {
 			Name    string
 			QRCode  string
 			RsvpURL string
+			LoggedUserData
 		}{
-			Name:    rsvp.Name,
-			QRCode:  qrBase64,
-			RsvpURL: rsvpURL,
+			Name:           rsvp.Name,
+			QRCode:         qrBase64,
+			RsvpURL:        rsvpURL,
+			LoggedUserData: *loggedUserData,
 		}
 		if err := templates.ExecuteTemplate(responseWriter, "generate.html", data); err != nil {
 			http.Error(responseWriter, "Internal Server Error", http.StatusInternalServerError)
@@ -122,7 +139,7 @@ func generateHandler(responseWriter http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	http.Redirect(responseWriter, r, WebRoot, http.StatusSeeOther)
+	http.Redirect(responseWriter, request, WebRoot, http.StatusSeeOther)
 }
 
 // rsvpHandler fetches the RSVP by code and displays the RSVP page.
@@ -247,7 +264,7 @@ func submitHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // responsesHandler lists all RSVPs.
-func responsesHandler(responseWriter http.ResponseWriter, r *http.Request) {
+func responsesHandler(responseWriter http.ResponseWriter, request *http.Request) {
 	var allRSVPs []models.RSVP
 	if err := db.Find(&allRSVPs).Error; err != nil {
 		log.Println("Error fetching RSVPs:", err)
@@ -259,7 +276,16 @@ func responsesHandler(responseWriter http.ResponseWriter, r *http.Request) {
 			allRSVPs[index].Response = "Pending"
 		}
 	}
-	if err := templates.ExecuteTemplate(responseWriter, "responses.html", allRSVPs); err != nil {
+	loggedUserData := GetUserData(request)
+	data := struct {
+		RSVPs []models.RSVP
+		LoggedUserData
+	}{
+		RSVPs:          allRSVPs,
+		LoggedUserData: *loggedUserData,
+	}
+
+	if err := templates.ExecuteTemplate(responseWriter, "responses.html", data); err != nil {
 		http.Error(responseWriter, "Internal Server Error", http.StatusInternalServerError)
 		log.Printf("failed to render template responses.html: %v", err)
 		return
