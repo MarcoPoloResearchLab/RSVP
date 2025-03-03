@@ -5,6 +5,11 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"github.com/skip2/go-qrcode"
+	"github.com/temirov/GAuss/pkg/constants"
+	"github.com/temirov/GAuss/pkg/gauss"
+	"github.com/temirov/GAuss/pkg/session"
+	"github.com/temirov/RSVP/models"
 	"github.com/temirov/RSVP/utils"
 	"html/template"
 	"log"
@@ -15,15 +20,8 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/temirov/RSVP/models"
-
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
-
-	"github.com/skip2/go-qrcode"
-
-	"github.com/temirov/GAuss/pkg/gauss"
-	"github.com/temirov/GAuss/pkg/session"
 )
 
 const (
@@ -35,6 +33,7 @@ const (
 	WebThankYou  = "/thankyou"
 	HTTPPort     = 8080
 	HTTPIP       = "0.0.0.0"
+	DBName       = "rsvps.db"
 )
 
 var (
@@ -45,7 +44,7 @@ var (
 // initDatabase sets up the SQLite DB with GORM and migrates our RSVP model.
 func initDatabase() {
 	var err error
-	db, err = gorm.Open(sqlite.Open("rsvps.db"), &gorm.Config{})
+	db, err = gorm.Open(sqlite.Open(DBName), &gorm.Config{})
 	if err != nil {
 		log.Fatal("Failed to connect database:", err)
 	}
@@ -67,10 +66,22 @@ func generateQRCode(data string) string {
 
 // indexHandler displays a simple form to create a new invite.
 func indexHandler(responseWriter http.ResponseWriter, request *http.Request) {
-	errorExecute := templates.ExecuteTemplate(responseWriter, "index.html", nil)
-	if errorExecute != nil {
+	webSession, _ := session.Store().Get(request, constants.SessionName)
+	userPicture, _ := webSession.Values["user_picture"].(string)
+	userName, _ := webSession.Values["user_name"].(string)
+
+	data := struct {
+		UserPicture string
+		UserName    string
+	}{
+		UserPicture: userPicture,
+		UserName:    userName,
+	}
+
+	err := templates.ExecuteTemplate(responseWriter, "index.html", data)
+	if err != nil {
 		http.Error(responseWriter, "Internal Server Error", http.StatusInternalServerError)
-		log.Printf("failed to render template index.html: %v", errorExecute)
+		log.Printf("failed to render template index.html: %v", err)
 		return
 	}
 }
@@ -104,22 +115,21 @@ func generateHandler(responseWriter http.ResponseWriter, r *http.Request) {
 			QRCode:  qrBase64,
 			RsvpURL: rsvpURL,
 		}
-		errorExecute := templates.ExecuteTemplate(responseWriter, "generate.html", data)
-		if errorExecute != nil {
+		if err := templates.ExecuteTemplate(responseWriter, "generate.html", data); err != nil {
 			http.Error(responseWriter, "Internal Server Error", http.StatusInternalServerError)
-			log.Printf("failed to render template index.html: %v", errorExecute)
+			log.Printf("failed to render template generate.html: %v", err)
 			return
 		}
 		return
 	}
-	http.Redirect(responseWriter, r, "/", http.StatusSeeOther)
+	http.Redirect(responseWriter, r, WebRoot, http.StatusSeeOther)
 }
 
 // rsvpHandler fetches the RSVP by code and displays the RSVP page.
 func rsvpHandler(responseWriter http.ResponseWriter, r *http.Request) {
 	code := r.URL.Query().Get("code")
 	if code == "" {
-		http.Redirect(responseWriter, r, "/", http.StatusSeeOther)
+		http.Redirect(responseWriter, r, WebRoot, http.StatusSeeOther)
 		return
 	}
 
@@ -148,10 +158,9 @@ func rsvpHandler(responseWriter http.ResponseWriter, r *http.Request) {
 		CurrentAnswer: currentAnswer,
 	}
 
-	errorExecute := templates.ExecuteTemplate(responseWriter, "rsvp.html", data)
-	if errorExecute != nil {
+	if err := templates.ExecuteTemplate(responseWriter, "rsvp.html", data); err != nil {
 		http.Error(responseWriter, "Internal Server Error", http.StatusInternalServerError)
-		log.Printf("failed to render template index.html: %v", errorExecute)
+		log.Printf("failed to render template rsvp.html: %v", err)
 		return
 	}
 }
@@ -171,8 +180,7 @@ func thankyouHandler(responseWriter http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Build a message based on whether they said Yes or No.
-	thankYouMessage := ""
+	var thankYouMessage string
 	if rsvp.Response == "Yes" {
 		thankYouMessage = fmt.Sprintf("We are looking forward to seeing you +%d!", rsvp.ExtraGuests)
 	} else {
@@ -194,10 +202,9 @@ func thankyouHandler(responseWriter http.ResponseWriter, r *http.Request) {
 		Code:            code,
 	}
 
-	errorExecute := templates.ExecuteTemplate(responseWriter, "thankyou.html", data)
-	if errorExecute != nil {
+	if err := templates.ExecuteTemplate(responseWriter, "thankyou.html", data); err != nil {
 		http.Error(responseWriter, "Internal Server Error", http.StatusInternalServerError)
-		log.Printf("failed to render template index.html: %v", errorExecute)
+		log.Printf("failed to render template thankyou.html: %v", err)
 		return
 	}
 }
@@ -213,8 +220,7 @@ func submitHandler(w http.ResponseWriter, r *http.Request) {
 			parts = []string{"No", "0"}
 		}
 		rsvpResponse := parts[0]
-		extraGuestsStr := parts[1]
-		extraGuests, err := strconv.Atoi(extraGuestsStr)
+		extraGuests, err := strconv.Atoi(parts[1])
 		if err != nil {
 			extraGuests = 0
 		}
@@ -234,8 +240,7 @@ func submitHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Redirect to /thankyou, passing the same code
-		http.Redirect(w, r, "/thankyou?code="+code, http.StatusSeeOther)
+		http.Redirect(w, r, WebThankYou+"?code="+code, http.StatusSeeOther)
 		return
 	}
 	http.Redirect(w, r, WebRoot, http.StatusSeeOther)
@@ -249,17 +254,14 @@ func responsesHandler(responseWriter http.ResponseWriter, r *http.Request) {
 		http.Error(responseWriter, "Could not retrieve RSVPs", http.StatusInternalServerError)
 		return
 	}
-
-	for i := range allRSVPs {
-		if allRSVPs[i].Response == "" {
-			allRSVPs[i].Response = "Pending"
+	for index := range allRSVPs {
+		if allRSVPs[index].Response == "" {
+			allRSVPs[index].Response = "Pending"
 		}
 	}
-
-	errorExecute := templates.ExecuteTemplate(responseWriter, "responses.html", allRSVPs)
-	if errorExecute != nil {
+	if err := templates.ExecuteTemplate(responseWriter, "responses.html", allRSVPs); err != nil {
 		http.Error(responseWriter, "Internal Server Error", http.StatusInternalServerError)
-		log.Printf("failed to render template index.html: %v", errorExecute)
+		log.Printf("failed to render template responses.html: %v", err)
 		return
 	}
 }
@@ -273,19 +275,15 @@ func main() {
 	if googleClientID == "" {
 		log.Fatal("GOOGLE_CLIENT_ID is not set")
 	}
-
 	googleClientSecret := os.Getenv("GOOGLE_CLIENT_SECRET")
 	if googleClientSecret == "" {
 		log.Fatal("GOOGLE_CLIENT_SECRET is not set")
 	}
-
 	googleOauth2Base := os.Getenv("GOOGLE_OAUTH2_BASE")
 	if googleOauth2Base == "" {
 		log.Fatal("GOOGLE_OAUTH2_BASE is not set")
 	}
-
 	certFilePath := os.Getenv("TLS_CERT_PATH")
-
 	keyFilePath := os.Getenv("TLS_KEY_PATH")
 
 	session.NewSession([]byte(sessionSecret))
@@ -293,7 +291,6 @@ func main() {
 	if err != nil {
 		log.Fatal("Failed to initialize auth service:", err)
 	}
-
 	authHandlers, err := gauss.NewHandlers(authService)
 	if err != nil {
 		log.Fatal("Failed to initialize handlers:", err)
@@ -328,8 +325,9 @@ func main() {
 	if certFilePath == "" || keyFilePath == "" {
 		log.Printf("No SSL certificates found, starting HTTP server")
 		httpServer = startHTTPServer(addr, handler)
+	} else {
+		httpServer = startHTTPSServer(addr, handler, certFilePath, keyFilePath)
 	}
-	httpServer = startHTTPSServer(addr, handler, certFilePath, keyFilePath)
 
 	// Listen for interrupt signals to gracefully shut down the server
 	stop := make(chan os.Signal, 1)
@@ -347,7 +345,6 @@ func main() {
 	} else {
 		log.Println("HTTP server gracefully stopped")
 	}
-
 }
 
 func startHTTPServer(address string, handler http.Handler) *http.Server {
