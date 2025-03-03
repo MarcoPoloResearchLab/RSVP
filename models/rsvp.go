@@ -11,6 +11,7 @@ type RSVP struct {
 	Code        string `gorm:"column:code;uniqueIndex"`
 	Response    string `gorm:"column:response"`
 	ExtraGuests int    `gorm:"column:extra_guests;default:0"`
+	EventID     uint   `gorm:"not null;index"`
 }
 
 // FindByCode loads a single RSVP by its Code.
