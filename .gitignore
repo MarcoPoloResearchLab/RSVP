@@ -2,4 +2,4 @@
 certs/
 *.db
 *.txt
-.env
+.env*
