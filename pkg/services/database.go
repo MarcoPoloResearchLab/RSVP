@@ -10,16 +10,16 @@ import (
 
 // InitDatabase opens the SQLite database and auto-migrates models.
 func InitDatabase(databaseName string, applicationLogger *log.Logger) *gorm.DB {
-	databaseConnection, errorValue := gorm.Open(sqlite.Open(databaseName), &gorm.Config{})
-	if errorValue != nil {
-		applicationLogger.Fatal("Failed to connect to database:", errorValue)
+	databaseConnection, connectionError := gorm.Open(sqlite.Open(databaseName), &gorm.Config{})
+	if connectionError != nil {
+		applicationLogger.Fatal("Failed to connect to database:", connectionError)
 	}
-	if errorValue = databaseConnection.AutoMigrate(
+	if migrationError := databaseConnection.AutoMigrate(
 		&models.User{},
 		&models.Event{},
 		&models.RSVP{},
-	); errorValue != nil {
-		applicationLogger.Fatal("Failed to migrate database:", errorValue)
+	); migrationError != nil {
+		applicationLogger.Fatal("Failed to migrate database:", migrationError)
 	}
 	return databaseConnection
 }

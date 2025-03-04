@@ -3,11 +3,10 @@
 <head>
     <meta charset="utf-8">
     <title>RSVP</title>
-    <!-- Google Fonts: using a light weight of Montserrat for an elegant look -->
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400&display=swap" rel="stylesheet">
     <style>
         body {
-            background: linear-gradient(135deg, #ffffff, #ffe6f2); /* pastel pink gradient */
+            background: linear-gradient(135deg, #ffffff, #ffe6f2);
             font-family: 'Montserrat', sans-serif;
             color: #333;
             margin: 0;
@@ -24,19 +23,17 @@
         form {
             display: inline-block;
             position: relative;
-            z-index: 10; /* ensure form is above balloons */
             background-color: rgba(255, 255, 255, 0.85);
             padding: 20px 40px;
             border: 1px solid #ddd;
             border-radius: 8px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
         }
         button {
             font-family: 'Montserrat', sans-serif;
             font-weight: 300;
             font-size: 1rem;
             color: #333;
-            background-color: #ffb6c1; /* pastel pink */
+            background-color: #ffb6c1;
             border: 1px solid #ff8fab;
             border-radius: 4px;
             padding: 10px 20px;
@@ -47,126 +44,75 @@
         button:hover {
             background-color: #ff8fab;
         }
-        /* Style for the No button */
         .btn-no {
-            background-color: #a2d2ff; /* pastel blue */
+            background-color: #a2d2ff;
             border-color: #7aa7e8;
         }
         .btn-no:hover {
             background-color: #7aa7e8;
         }
-        /* Active/Highlighted button style */
         button.active {
-            background-color: #ff8fab !important; /* darker pink for Yes buttons */
+            background-color: #ff8fab !important;
         }
         .btn-no.active {
-            background-color: #7aa7e8 !important; /* darker blue for No button */
+            background-color: #7aa7e8 !important;
         }
         input[type="hidden"] {
             display: none;
         }
-        /* Balloon animation */
-        @keyframes floatUp {
-            0% {
-                transform: translateY(0);
-                opacity: 1;
-            }
-            100% {
-                transform: translateY(-120vh);
-                opacity: 0;
-            }
-        }
-        .balloon {
-            position: fixed;
-            bottom: -50px;
-            background: radial-gradient(circle, #ffb6c1 0%, #ff8fab 100%);
-            width: 40px;
-            height: 50px;
-            border-radius: 50%;
-            opacity: 0.9;
-            animation: floatUp 4s ease-in forwards;
-            z-index: 0; /* behind the form */
-            pointer-events: none;
-        }
     </style>
 </head>
 <body>
-    <h1>RSVP for {{ .Name }}</h1>
-    <form action="/submit" method="POST">
-        <input type="hidden" name="code" value="{{ .Code }}">
-        <!-- Hidden input for the response -->
-        <input type="hidden" name="response" id="responseHidden" value="">
-        <button type="submit" data-response="Yes,1" onclick="celebrate(event)" class="{{if eq .CurrentAnswer "Yes,1"}}active{{end}}">Yes, +1</button>
-        <button type="submit" data-response="Yes,2" onclick="celebrate(event)" class="{{if eq .CurrentAnswer "Yes,2"}}active{{end}}">Yes, +2</button>
-        <button type="submit" data-response="Yes,3" onclick="celebrate(event)" class="{{if eq .CurrentAnswer "Yes,3"}}active{{end}}">Yes, +3</button>
-        <button type="submit" data-response="Yes,4" onclick="celebrate(event)" class="{{if eq .CurrentAnswer "Yes,4"}}active{{end}}">Yes, +4</button>
-        <button type="submit" data-response="No,0" onclick="celebrate(event)" class="btn-no{{if eq .CurrentAnswer "No,0"}} active{{end}}">No</button>
-    </form>
+<h1>RSVP for {{ .Name }}</h1>
+<!-- The form goes to /rsvps/{code} with method=POST to update the RSVP -->
+<form action="/rsvps/{{ .Code }}" method="POST">
+    <input type="hidden" name="response" id="responseHidden" value="{{.CurrentAnswer}}">
+    <button
+            type="submit"
+            data-response="Yes,1"
+            class="{{if eq .CurrentAnswer "Yes,1"}}active{{end}}"
+    >
+        Yes, +1
+    </button>
+    <button
+            type="submit"
+            data-response="Yes,2"
+            class="{{if eq .CurrentAnswer "Yes,2"}}active{{end}}"
+    >
+        Yes, +2
+    </button>
+    <button
+            type="submit"
+            data-response="Yes,3"
+            class="{{if eq .CurrentAnswer "Yes,3"}}active{{end}}"
+    >
+        Yes, +3
+    </button>
+    <button
+            type="submit"
+            data-response="Yes,4"
+            class="{{if eq .CurrentAnswer "Yes,4"}}active{{end}}"
+    >
+        Yes, +4
+    </button>
+    <button
+            type="submit"
+            data-response="No,0"
+            class="btn-no{{if eq .CurrentAnswer "No,0"}} active{{end}}"
+    >
+        No
+    </button>
+</form>
 
-    <!-- Canvas for confetti -->
-    <canvas id="confettiCanvas" style="position:fixed;pointer-events:none;top:0;left:0;width:100%;height:100%;z-index: 0;"></canvas>
-
-    <!-- Include Canvas Confetti library -->
-    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
-    <script>
-        // Initialize the confetti instance on our canvas
-        var confettiCanvas = document.getElementById('confettiCanvas');
-        var confettiInstance = confetti.create(confettiCanvas, {
-            resize: true,
-            useWorker: true
+<script>
+    // Attach click listeners to set hidden field
+    var buttonElements = document.querySelectorAll('button[data-response]');
+    buttonElements.forEach(function(buttonElement) {
+        buttonElement.addEventListener('click', function(clickEvent) {
+            var chosenResponse = buttonElement.getAttribute("data-response");
+            document.getElementById("responseHidden").value = chosenResponse;
         });
-
-        // On button click, trigger animations and set the hidden input value.
-        function celebrate(event) {
-            event.preventDefault();
-
-            // Read the response from the clicked button's data attribute
-            var clickedResponse = event.target.getAttribute("data-response");
-            // Set the hidden input's value
-            document.getElementById("responseHidden").value = clickedResponse;
-
-            // Launch confetti
-            confettiInstance({
-                particleCount: 100,
-                spread: 70,
-                origin: { y: 0.6 }
-            });
-
-            // Launch balloon animations
-            launchBalloons(10);
-
-            // Delay form submission to allow animations to play out
-            setTimeout(function() {
-                event.target.form.submit();
-            }, 1000);
-        }
-
-        // Create multiple balloons
-        function launchBalloons(numberOfBalloons) {
-            for (var count = 0; count < numberOfBalloons; count++) {
-                createBalloon();
-            }
-        }
-
-        // Create a single balloon element and animate it upward
-        function createBalloon() {
-            var balloonElement = document.createElement('div');
-            balloonElement.classList.add('balloon');
-            // Set a random horizontal position
-            balloonElement.style.left = Math.random() * 100 + "vw";
-            // Randomize animation start delay
-            balloonElement.style.animationDelay = Math.random() * 0.5 + "s";
-            document.body.appendChild(balloonElement);
-            // Remove the balloon after its animation completes
-            setTimeout(function() {
-                balloonElement.remove();
-            }, 4000);
-        }
-
-        // Continuously launch a few balloons on page load
-        setInterval(function() {
-            launchBalloons(2);
-        }, 2000);
-    </script>
+    });
+</script>
 </body>
 </html>

@@ -1,27 +1,35 @@
 package utils
 
 import (
-	"math/rand"
+	"crypto/rand"
+	"math/big"
 	"net/http"
 )
 
+// HTTPHandlerWrapper is a pass-through wrapper for http.HandlerFunc.
 func HTTPHandlerWrapper(handler http.HandlerFunc) http.HandlerFunc {
 	return handler
 }
 
-// Base36Encode6 returns a random 6-digit base36 string.
-// This does NOT rely on incremental IDs; it just generates 6 random base36 chars.
+// Base36Encode6 returns a random 6-character base36 string using crypto/rand.
 func Base36Encode6() string {
-	const length = 6
-	return Base36Encode(length)
+	const codeLength = 6
+	return Base36Encode(codeLength)
 }
 
+// Base36Encode returns a random string of the specified length from base36 characters.
 func Base36Encode(length int) string {
-	const chars = "0123456789abcdefghijklmnopqrstuvwxyz"
-
-	out := make([]byte, length)
-	for i := 0; i < length; i++ {
-		out[i] = chars[rand.Intn(len(chars))]
+	const allowedCharacters = "0123456789abcdefghijklmnopqrstuvwxyz"
+	outputBytes := make([]byte, length)
+	maxIndex := big.NewInt(int64(len(allowedCharacters)))
+	for index := 0; index < length; index++ {
+		randomNumber, randomError := rand.Int(rand.Reader, maxIndex)
+		if randomError != nil {
+			// Fallback to a default character on error
+			outputBytes[index] = allowedCharacters[0]
+		} else {
+			outputBytes[index] = allowedCharacters[randomNumber.Int64()]
+		}
 	}
-	return string(out)
+	return string(outputBytes)
 }

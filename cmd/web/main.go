@@ -15,22 +15,22 @@ import (
 	"github.com/temirov/GAuss/pkg/session"
 	"github.com/temirov/RSVP/pkg/config"
 	"github.com/temirov/RSVP/pkg/handlers"
+	rsvpHandler "github.com/temirov/RSVP/pkg/handlers/rsvp"
 	"github.com/temirov/RSVP/pkg/services"
 	"github.com/temirov/RSVP/pkg/utils"
 )
 
 const (
-	HTTPPort      = 8080
-	HTTPIP        = "0.0.0.0"
-	DBName        = "rsvps.db"
-	TemplatesPath = "./templates/*.html"
+	HttpPort        = 8080
+	HttpIP          = "0.0.0.0"
+	DatabaseName    = "rsvps.db"
+	TemplatesGlob   = "./templates/*.html"
+	ShutdownTimeout = 10 * time.Second
 )
 
 func main() {
-	// Initialize shared logger.
 	applicationLogger := utils.NewLogger()
 
-	// Load required environment variables.
 	sessionSecret := os.Getenv("SESSION_SECRET")
 	if sessionSecret == "" {
 		applicationLogger.Fatal("SESSION_SECRET is not set")
@@ -47,23 +47,22 @@ func main() {
 	if googleOauth2Base == "" {
 		applicationLogger.Fatal("GOOGLE_OAUTH2_BASE is not set")
 	}
-	certFilePath := os.Getenv("TLS_CERT_PATH")
+	certificateFilePath := os.Getenv("TLS_CERT_PATH")
 	keyFilePath := os.Getenv("TLS_KEY_PATH")
 
-	// Initialize session and auth service.
 	session.NewSession([]byte(sessionSecret))
-	authenticationService, errorValue := gauss.NewService(googleClientID, googleClientSecret, googleOauth2Base, config.WebRoot)
-	if errorValue != nil {
-		applicationLogger.Fatal("Failed to initialize auth service:", errorValue)
+	authenticationService, authServiceErr := gauss.NewService(
+		googleClientID,
+		googleClientSecret,
+		googleOauth2Base,
+		config.WebRoot,
+	)
+	if authServiceErr != nil {
+		applicationLogger.Fatal("Failed to initialize auth service:", authServiceErr)
 	}
 
-	// Initialize the database.
-	databaseConnection := services.InitDatabase(DBName, applicationLogger)
-
-	// Parse HTML templates.
-	parsedTemplates := template.Must(template.ParseGlob(TemplatesPath))
-
-	// Create the shared application context.
+	databaseConnection := services.InitDatabase(DatabaseName, applicationLogger)
+	parsedTemplates := template.Must(template.ParseGlob(TemplatesGlob))
 	applicationContext := &config.App{
 		Database:    databaseConnection,
 		Templates:   parsedTemplates,
@@ -71,61 +70,58 @@ func main() {
 		AuthService: authenticationService,
 	}
 
-	// Set up HTTP router.
 	httpRouter := http.NewServeMux()
-	authHandlers, errorValue := gauss.NewHandlers(authenticationService)
-	if errorValue != nil {
-		applicationLogger.Fatal("Failed to initialize auth handlers:", errorValue)
+
+	gaussHandlers, gaussHandlersErr := gauss.NewHandlers(authenticationService)
+	if gaussHandlersErr != nil {
+		applicationLogger.Fatal("Failed to initialize auth handlers:", gaussHandlersErr)
 	}
-	authHandlers.RegisterRoutes(httpRouter)
+	gaussHandlers.RegisterRoutes(httpRouter)
 
-	// Register protected endpoints using your auth middleware.
-	httpRouter.Handle(config.WebRoot, gauss.AuthMiddleware(handlers.IndexHandler(applicationContext)))
-	httpRouter.Handle(config.WebGenerate, gauss.AuthMiddleware(handlers.GenerateHandler(applicationContext)))
-	httpRouter.Handle(config.WebResponses, gauss.AuthMiddleware(handlers.ResponsesHandler(applicationContext)))
+	httpRouter.Handle(config.WebRoot, gauss.AuthMiddleware(
+		handlers.IndexHandler(applicationContext),
+	))
+	httpRouter.Handle(config.WebRSVPs,
+		gauss.AuthMiddleware(rsvpHandler.ListCreateHandler(applicationContext)),
+	)
+	httpRouter.HandleFunc(config.WebUnderRSVPs, rsvpHandler.Subrouter(applicationContext))
 
-	// Register unprotected endpoints.
-	httpRouter.HandleFunc(config.WebRSVP, handlers.RsvpHandler(applicationContext))
-	httpRouter.HandleFunc(config.WebThankYou, handlers.ThankYouHandler(applicationContext))
+	serverAddress := fmt.Sprintf("%s:%d", HttpIP, HttpPort)
+	httpServer := &http.Server{
+		Addr:    serverAddress,
+		Handler: httpRouter,
+	}
 
-	// Determine server address.
-	serverAddress := fmt.Sprintf("%s:%d", HTTPIP, HTTPPort)
-	var httpServer *http.Server
-
-	if certFilePath == "" || keyFilePath == "" {
-		applicationLogger.Printf("No SSL certificates found, starting HTTP server on http://%s", serverAddress)
-		httpServer = &http.Server{
-			Addr:    serverAddress,
-			Handler: httpRouter,
-		}
+	if certificateFilePath == "" || keyFilePath == "" {
+		applicationLogger.Printf("Starting HTTP server on http://%s", serverAddress)
 		go func() {
-			if errorValue := httpServer.ListenAndServe(); errorValue != nil && !errors.Is(errorValue, http.ErrServerClosed) {
-				applicationLogger.Printf("HTTP server ListenAndServe error: %v", errorValue)
+			serverError := httpServer.ListenAndServe()
+			if serverError != nil && !errors.Is(serverError, http.ErrServerClosed) {
+				applicationLogger.Printf("ListenAndServe error: %v", serverError)
 			}
 		}()
 	} else {
 		applicationLogger.Printf("Starting HTTPS server on https://%s", serverAddress)
-		httpServer = &http.Server{
-			Addr:    serverAddress,
-			Handler: httpRouter,
-		}
 		go func() {
-			if errorValue := httpServer.ListenAndServeTLS(certFilePath, keyFilePath); errorValue != nil && !errors.Is(errorValue, http.ErrServerClosed) {
-				applicationLogger.Printf("HTTPS server ListenAndServeTLS error: %v", errorValue)
+			secureServerError := httpServer.ListenAndServeTLS(certificateFilePath, keyFilePath)
+			if secureServerError != nil && !errors.Is(secureServerError, http.ErrServerClosed) {
+				applicationLogger.Printf("ListenAndServeTLS error: %v", secureServerError)
 			}
 		}()
 	}
 
-	// Graceful shutdown handling.
-	shutdownSignal := make(chan os.Signal, 1)
-	signal.Notify(shutdownSignal, os.Interrupt, syscall.SIGTERM)
-	<-shutdownSignal
-	applicationLogger.Println("Shutdown signal received, shutting down gracefully...")
-	shutdownContext, cancelFunction := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancelFunction()
-	if errorValue := httpServer.Shutdown(shutdownContext); errorValue != nil {
-		applicationLogger.Printf("Server Shutdown error: %v", errorValue)
+	shutdownSignalChannel := make(chan os.Signal, 1)
+	signal.Notify(shutdownSignalChannel, os.Interrupt, syscall.SIGTERM)
+	<-shutdownSignalChannel
+	applicationLogger.Println("Shutdown signal received...")
+
+	shutdownContext, shutdownCancelFunction := context.WithTimeout(context.Background(), ShutdownTimeout)
+	defer shutdownCancelFunction()
+
+	shutdownError := httpServer.Shutdown(shutdownContext)
+	if shutdownError != nil {
+		applicationLogger.Printf("Server Shutdown error: %v", shutdownError)
 	} else {
-		applicationLogger.Println("Server shutdown completed")
+		applicationLogger.Println("Server shutdown completed successfully.")
 	}
 }

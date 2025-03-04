@@ -3,31 +3,19 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>QR RSVP Tracker - Invite Form</title>
-    <!-- Google Fonts for an elegant look -->
+    <title>QR RSVP Tracker - Landing</title>
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400&display=swap" rel="stylesheet">
-    <!-- Bootstrap CSS from CDN -->
     <link href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
     <style>
         body {
-            background: linear-gradient(135deg, #ffffff, #ffe6f2); /* pastel pink gradient */
+            background: linear-gradient(135deg, #ffffff, #ffe6f2);
             font-family: 'Montserrat', sans-serif;
             color: #333;
-            padding-top: 70px; /* Space for the fixed navbar */
+            padding-top: 70px;
         }
-        .card {
-            border: 1px solid #ddd;
-            border-radius: 8px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        }
-        h1 {
-            font-weight: 300;
-        }
-        /* Custom pastel navbar to match the site’s color palette */
         .navbar-custom {
             background: linear-gradient(135deg, #ffffff, #ffe6f2);
         }
-        /* Keep navbar on top */
         .fixed-navbar {
             position: fixed;
             top: 0;
@@ -37,13 +25,11 @@
     </style>
 </head>
 <body>
-<!-- Fixed Pastel Navbar -->
 <nav class="navbar navbar-expand-lg navbar-custom fixed-navbar">
     <a class="navbar-brand" href="#">QR RSVP Tracker</a>
     <div class="ml-auto">
         <form action="/logout" method="POST" class="form-inline">
             <button type="submit" class="btn btn-outline-secondary d-flex align-items-center">
-                <!-- Ensure this src is populated in Go code: .UserPicture must not be empty -->
                 <img src="{{.UserPicture}}" alt="{{.UserName}}" class="rounded-circle"
                      style="width:30px; height:30px; margin-right:5px;">
                 Sign out
@@ -52,25 +38,13 @@
     </div>
 </nav>
 
-<!-- Main Content -->
 <div class="container my-5">
-    <h1 class="mb-4 text-center">Invite Guests</h1>
-    <div class="row justify-content-center">
-        <div class="col-md-6">
-            <div class="card p-4">
-                <form action="/generate" method="POST">
-                    <div class="form-group">
-                        <label for="nameInput">Name:</label>
-                        <input type="text" class="form-control" id="nameInput" name="name" required>
-                    </div>
-                    <button type="submit" class="btn btn-primary btn-block">Generate QR</button>
-                </form>
-            </div>
-        </div>
-    </div>
+    <h1 class="mb-4 text-center">Welcome to the RSVP Manager</h1>
+    <p class="text-center">
+        <a href="/rsvps" class="btn btn-primary">View RSVPs</a>
+    </p>
 </div>
 
-<!-- Optional JavaScript -->
 <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.5.2/dist/js/bootstrap.bundle.min.js"></script>
 </body>
