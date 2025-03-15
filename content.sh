@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Define the excluded patterns
-EXCLUDE_PATTERN="./.git/|./vendor/|./uploads/|./downloads/|./output/|./reports/|./.idea/|./bin/|\.iml$|\.sum$|\.sh$|\.png$|.DS_Store|.gitignore|\.txt$|\.db$"
+EXCLUDE_PATTERN="./.git/|./vendor/|./uploads/|./downloads/|./output/|./reports/|./.idea/|./bin/|\.iml$|\.sum$|\.sh$|\.png$|.DS_Store|.gitignore|\.txt$|\.db$|\.pem$"
 
 # Function to extract directory patterns
 extract_folders() {
