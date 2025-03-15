@@ -4,37 +4,44 @@ import (
 	"net/http"
 	"regexp"
 
-	"github.com/temirov/GAuss/pkg/constants"
+	gconstants "github.com/temirov/GAuss/pkg/constants"
 	"github.com/temirov/GAuss/pkg/session"
 	"github.com/temirov/RSVP/pkg/config"
 )
 
-// LoggedUserData holds user session details for RSVP templates.
+// LoggedUserData holds user session details for RSVP and event templates.
 type LoggedUserData struct {
 	UserPicture string
 	UserName    string
+	UserEmail   string
 }
 
 // GetUserData extracts the current user data from the session.
-func GetUserData(httpRequest *http.Request, applicationContext *config.App) *LoggedUserData {
-	sessionInstance, sessionError := session.Store().Get(httpRequest, constants.SessionName)
+func GetUserData(httpRequest *http.Request, applicationContext *config.ApplicationContext) *LoggedUserData {
+	sessionInstance, sessionError := session.Store().Get(httpRequest, gconstants.SessionName)
 	if sessionError != nil {
 		applicationContext.Logger.Println("Error retrieving session:", sessionError)
 		return &LoggedUserData{}
 	}
-	sessionUserPicture, pictureOk := sessionInstance.Values["user_picture"].(string)
+	sessionUserPicture, pictureOk := sessionInstance.Values[gconstants.SessionKeyUserPicture].(string)
 	if !pictureOk {
 		applicationContext.Logger.Printf("Error retrieving session user Picture %s", sessionUserPicture)
 		sessionUserPicture = ""
 	}
-	sessionUserName, nameOk := sessionInstance.Values["user_name"].(string)
+	sessionUserName, nameOk := sessionInstance.Values[gconstants.SessionKeyUserName].(string)
 	if !nameOk {
 		applicationContext.Logger.Printf("Error retrieving session user name %s", sessionUserName)
 		sessionUserName = ""
 	}
+	sessionUserEmail, emailOk := sessionInstance.Values[gconstants.SessionKeyUserEmail].(string)
+	if !emailOk {
+		applicationContext.Logger.Printf("Error retrieving session user email %s", sessionUserEmail)
+		sessionUserEmail = ""
+	}
 	return &LoggedUserData{
 		UserPicture: sessionUserPicture,
 		UserName:    sessionUserName,
+		UserEmail:   sessionUserEmail,
 	}
 }
 

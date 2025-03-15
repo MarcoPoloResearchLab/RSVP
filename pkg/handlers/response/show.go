@@ -1,4 +1,4 @@
-package rsvp
+package response
 
 import (
 	"fmt"
@@ -9,8 +9,8 @@ import (
 	"github.com/temirov/RSVP/pkg/config"
 )
 
-// GetThankYouHandler handles GET /rsvps/{code}/thankyou and displays the final thank-you message.
-func GetThankYouHandler(applicationContext *config.App, rsvpCode string) http.Handler {
+// Show handles GET /rsvps/{code}/thankyou and displays the final thank-you message.
+func Show(applicationContext *config.ApplicationContext, rsvpCode string) http.Handler {
 	return http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
 		if rsvpCode == "" || !handlers.ValidateRSVPCode(rsvpCode) {
 			http.Error(responseWriter, "Invalid or missing RSVP code", http.StatusBadRequest)

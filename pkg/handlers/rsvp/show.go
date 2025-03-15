@@ -11,8 +11,8 @@ import (
 	"github.com/temirov/RSVP/pkg/config"
 )
 
-// GetQRHandler handles GET /rsvps/{code}/qr and displays the QR code for the RSVP link.
-func GetQRHandler(applicationContext *config.App, rsvpCode string) http.Handler {
+// Show handles GET /rsvps/{code}/qr and displays the QR code for the RSVP link.
+func Show(applicationContext *config.ApplicationContext, rsvpCode string) http.Handler {
 	return http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
 		if rsvpCode == "" || !handlers.ValidateRSVPCode(rsvpCode) {
 			http.Error(responseWriter, "Invalid or missing RSVP code", http.StatusBadRequest)

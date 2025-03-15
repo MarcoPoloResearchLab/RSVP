@@ -2,17 +2,17 @@ package rsvp
 
 import (
 	"fmt"
-	"github.com/temirov/RSVP/pkg/handlers"
 	"net/http"
 	"strings"
 
 	"github.com/temirov/RSVP/models"
 	"github.com/temirov/RSVP/pkg/config"
+	"github.com/temirov/RSVP/pkg/handlers"
 	"github.com/temirov/RSVP/pkg/utils"
 )
 
-// ListCreateHandler handles GET /rsvps (listing RSVPs) and POST /rsvps (creating a new RSVP).
-func ListCreateHandler(applicationContext *config.App) http.Handler {
+// List handles GET /rsvps (listing RSVPs) and POST /rsvps (creating a new RSVP).
+func List(applicationContext *config.ApplicationContext) http.Handler {
 	return http.HandlerFunc(func(httpResponseWriter http.ResponseWriter, httpRequest *http.Request) {
 		if httpRequest.Method == http.MethodGet {
 			var rsvpRecords []models.RSVP
@@ -21,7 +21,7 @@ func ListCreateHandler(applicationContext *config.App) http.Handler {
 				http.Error(httpResponseWriter, "Could not retrieve RSVPs", http.StatusInternalServerError)
 				return
 			}
-			// Mark empty responses as "Pending"
+			// Business logic: if Response is empty, let the backend set it to "Pending"
 			for index, record := range rsvpRecords {
 				if record.Response == "" {
 					rsvpRecords[index].Response = "Pending"
@@ -52,6 +52,14 @@ func ListCreateHandler(applicationContext *config.App) http.Handler {
 				Name: inviteeNameValue,
 				Code: utils.Base36Encode6(),
 			}
+			// Check if an event_id is provided in the form.
+			//eventIDStr := httpRequest.FormValue("event_id")
+			//if eventIDStr != "" {
+			//	parsedEventID, err := strconv.ParseUint(eventIDStr, 10, 32)
+			//	if err == nil {
+			//		newRSVPRecord.EventID = uint(parsedEventID)
+			//	}
+			//}
 			if creationError := newRSVPRecord.Create(applicationContext.Database); creationError != nil {
 				applicationContext.Logger.Println("Error creating RSVP:", creationError)
 				http.Error(httpResponseWriter, "Could not create RSVP", http.StatusInternalServerError)

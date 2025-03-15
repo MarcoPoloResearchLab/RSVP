@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/temirov/RSVP/pkg/routes"
 	"html/template"
 	"net/http"
 	"os"
@@ -14,8 +15,6 @@ import (
 	"github.com/temirov/GAuss/pkg/gauss"
 	"github.com/temirov/GAuss/pkg/session"
 	"github.com/temirov/RSVP/pkg/config"
-	"github.com/temirov/RSVP/pkg/handlers"
-	rsvpHandler "github.com/temirov/RSVP/pkg/handlers/rsvp"
 	"github.com/temirov/RSVP/pkg/services"
 	"github.com/temirov/RSVP/pkg/utils"
 )
@@ -24,38 +23,20 @@ const (
 	HttpPort        = 8080
 	HttpIP          = "0.0.0.0"
 	DatabaseName    = "rsvps.db"
-	TemplatesGlob   = "./templates/*.html"
+	TemplatesGlob   = "./templates/**/*.html"
 	ShutdownTimeout = 10 * time.Second
 )
 
 func main() {
 	applicationLogger := utils.NewLogger()
+	envConfig := config.NewEnvConfig(applicationLogger)
 
-	sessionSecret := os.Getenv("SESSION_SECRET")
-	if sessionSecret == "" {
-		applicationLogger.Fatal("SESSION_SECRET is not set")
-	}
-	googleClientID := os.Getenv("GOOGLE_CLIENT_ID")
-	if googleClientID == "" {
-		applicationLogger.Fatal("GOOGLE_CLIENT_ID is not set")
-	}
-	googleClientSecret := os.Getenv("GOOGLE_CLIENT_SECRET")
-	if googleClientSecret == "" {
-		applicationLogger.Fatal("GOOGLE_CLIENT_SECRET is not set")
-	}
-	googleOauth2Base := os.Getenv("GOOGLE_OAUTH2_BASE")
-	if googleOauth2Base == "" {
-		applicationLogger.Fatal("GOOGLE_OAUTH2_BASE is not set")
-	}
-	certificateFilePath := os.Getenv("TLS_CERT_PATH")
-	keyFilePath := os.Getenv("TLS_KEY_PATH")
-
-	session.NewSession([]byte(sessionSecret))
+	session.NewSession([]byte(envConfig.SessionSecret))
 	authenticationService, authServiceErr := gauss.NewService(
-		googleClientID,
-		googleClientSecret,
-		googleOauth2Base,
-		config.WebRoot,
+		envConfig.GoogleClientID,
+		envConfig.GoogleClientSecret,
+		envConfig.GoogleOauth2Base,
+		config.WebEvents,
 	)
 	if authServiceErr != nil {
 		applicationLogger.Fatal("Failed to initialize auth service:", authServiceErr)
@@ -63,7 +44,7 @@ func main() {
 
 	databaseConnection := services.InitDatabase(DatabaseName, applicationLogger)
 	parsedTemplates := template.Must(template.ParseGlob(TemplatesGlob))
-	applicationContext := &config.App{
+	applicationContext := &config.ApplicationContext{
 		Database:    databaseConnection,
 		Templates:   parsedTemplates,
 		Logger:      applicationLogger,
@@ -72,19 +53,9 @@ func main() {
 
 	httpRouter := http.NewServeMux()
 
-	gaussHandlers, gaussHandlersErr := gauss.NewHandlers(authenticationService)
-	if gaussHandlersErr != nil {
-		applicationLogger.Fatal("Failed to initialize auth handlers:", gaussHandlersErr)
-	}
-	gaussHandlers.RegisterRoutes(httpRouter)
-
-	httpRouter.Handle(config.WebRoot, gauss.AuthMiddleware(
-		handlers.IndexHandler(applicationContext),
-	))
-	httpRouter.Handle(config.WebRSVPs,
-		gauss.AuthMiddleware(rsvpHandler.ListCreateHandler(applicationContext)),
-	)
-	httpRouter.HandleFunc(config.WebUnderRSVPs, rsvpHandler.Subrouter(applicationContext))
+	route := routes.New(applicationContext, *envConfig)
+	route.RegisterMiddleware(httpRouter)
+	route.RegisterRoutes(httpRouter)
 
 	serverAddress := fmt.Sprintf("%s:%d", HttpIP, HttpPort)
 	httpServer := &http.Server{
@@ -92,7 +63,7 @@ func main() {
 		Handler: httpRouter,
 	}
 
-	if certificateFilePath == "" || keyFilePath == "" {
+	if envConfig.CertificateFilePath == "" || envConfig.KeyFilePath == "" {
 		applicationLogger.Printf("Starting HTTP server on http://%s", serverAddress)
 		go func() {
 			serverError := httpServer.ListenAndServe()
@@ -103,7 +74,7 @@ func main() {
 	} else {
 		applicationLogger.Printf("Starting HTTPS server on https://%s", serverAddress)
 		go func() {
-			secureServerError := httpServer.ListenAndServeTLS(certificateFilePath, keyFilePath)
+			secureServerError := httpServer.ListenAndServeTLS(envConfig.CertificateFilePath, envConfig.KeyFilePath)
 			if secureServerError != nil && !errors.Is(secureServerError, http.ErrServerClosed) {
 				applicationLogger.Printf("ListenAndServeTLS error: %v", secureServerError)
 			}

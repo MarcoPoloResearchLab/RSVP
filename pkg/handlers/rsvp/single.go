@@ -12,7 +12,7 @@ import (
 )
 
 // GetSingleRSVPHandler handles GET /rsvps/{code} to display the RSVP form.
-func GetSingleRSVPHandler(applicationContext *config.App, rsvpCode string) http.Handler {
+func GetSingleRSVPHandler(applicationContext *config.ApplicationContext, rsvpCode string) http.Handler {
 	return http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
 		if rsvpCode == "" || !handlers.ValidateRSVPCode(rsvpCode) {
 			http.Error(responseWriter, "Invalid or missing RSVP code", http.StatusBadRequest)
@@ -45,8 +45,8 @@ func GetSingleRSVPHandler(applicationContext *config.App, rsvpCode string) http.
 	})
 }
 
-// UpdateRSVPHandler handles POST /rsvps/{code} to update the RSVP with the user's response.
-func UpdateRSVPHandler(applicationContext *config.App, rsvpCode string) http.Handler {
+// Update handles POST /rsvps/{code} to update the RSVP with the user's response.
+func Update(applicationContext *config.ApplicationContext, rsvpCode string) http.Handler {
 	return http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
 		if rsvpCode == "" || !handlers.ValidateRSVPCode(rsvpCode) {
 			http.Error(responseWriter, "Invalid or missing RSVP code", http.StatusBadRequest)

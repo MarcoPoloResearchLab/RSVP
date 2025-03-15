@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Event Details</title>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400&display=swap" rel="stylesheet">
+    <link href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            background: linear-gradient(135deg, #ffffff, #ffe6f2);
+            font-family: 'Montserrat', sans-serif;
+            color: #333;
+            padding-top: 70px;
+        }
+        .navbar-custom {
+            background: linear-gradient(135deg, #ffffff, #ffe6f2);
+        }
+        .fixed-navbar {
+            position: fixed;
+            top: 0;
+            width: 100%;
+            z-index: 1030;
+        }
+    </style>
+</head>
+<body>
+<nav class="navbar navbar-expand-lg navbar-custom fixed-navbar">
+    <a class="navbar-brand" href="/">Event Manager</a>
+    <div class="ml-auto">
+        <form action="/logout" method="POST" class="form-inline">
+            <button type="submit" class="btn btn-outline-secondary">
+                <img src="{{.UserPicture}}" alt="{{.UserName}}" class="rounded-circle" style="width:30px; height:30px; margin-right:5px;">
+                Sign out
+            </button>
+        </form>
+    </div>
+</nav>
+
+<div class="container my-5">
+    <h1 class="mb-4">Event Details</h1>
+    <div class="card p-4 mb-4">
+        <h3>{{.Event.Title}}</h3>
+        <p>{{.Event.Description}}</p>
+        <p><strong>Start:</strong> {{.Event.StartTime}}</p>
+        <p><strong>End:</strong> {{.Event.EndTime}}</p>
+    </div>
+
+    <div class="card p-4 mb-4">
+        <h4>RSVPs</h4>
+        {{ if .Event.RSVPs }}
+        <table class="table table-bordered table-striped table-hover">
+            <thead class="thead-dark">
+            <tr>
+                <th>Name</th>
+                <th>Code</th>
+                <th>Response</th>
+                <th>Extra Guests</th>
+            </tr>
+            </thead>
+            <tbody>
+            {{ range .Event.RSVPs }}
+            <tr>
+                <td>{{.Name}}</td>
+                <td>{{.Code}}</td>
+                <td>{{.Response}}</td>
+                <td>{{.ExtraGuests}}</td>
+            </tr>
+            {{ end }}
+            </tbody>
+        </table>
+        {{ else }}
+        <p>No RSVPs yet.</p>
+        {{ end }}
+    </div>
+
+    <div class="card p-4">
+        <h4>Add RSVP</h4>
+        <!-- Form posts to the event's RSVP sub-resource -->
+        <form action="/events/{{.Event.ID}}/rsvps" method="POST">
+            <div class="form-group">
+                <label for="rsvpNameInput">Name:</label>
+                <input type="text" class="form-control" id="rsvpNameInput" name="name" required>
+            </div>
+            <button type="submit" class="btn btn-primary">Add RSVP</button>
+        </form>
+    </div>
+</div>
+
+<script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@4.5.2/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
