@@ -64,6 +64,8 @@ func (routes Routes) RegisterRoutes(mux *http.ServeMux) {
 	// Register event routes using the authentication middleware.
 	//mux.Handle(config.WebEvents, gauss.AuthMiddleware(event.List(routes.ApplicationContext)))
 	mux.Handle(config.WebEvents, gauss.AuthMiddleware(event.EventIndexHandler(routes.ApplicationContext)))
+	mux.Handle(config.WebEventsUpdate, gauss.AuthMiddleware(event.UpdateEventHandler(routes.ApplicationContext)))
+	mux.Handle(config.WebEventsDelete, gauss.AuthMiddleware(event.DeleteEventHandler(routes.ApplicationContext)))
 
 	//mux.HandleFunc("/events/new", handlers.EventNew)
 	//mux.HandleFunc("/events/create", handlers.EventCreate)

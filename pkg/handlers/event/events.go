@@ -12,8 +12,8 @@ import (
 	"github.com/temirov/RSVP/pkg/handlers"
 )
 
-// eventWithStats aggregates an event with computed RSVP statistics.
-type eventWithStats struct {
+// EventWithStats aggregates an event with computed RSVP statistics.
+type EventWithStats struct {
 	ID                uint
 	Title             string
 	StartTime         time.Time
@@ -22,9 +22,24 @@ type eventWithStats struct {
 	RSVPAnsweredCount int
 }
 
+// SelectedEventData represents the full details of a selected event.
+type SelectedEventData struct {
+	ID            uint
+	Title         string
+	Description   string
+	StartTime     time.Time
+	EndTime       time.Time
+	RSVPs         []models.RSVP
+	DurationHours int
+}
+
 // getCurrentUser retrieves the current user based on session data.
 // It upserts the user if not found.
-func getCurrentUser(httpRequest *http.Request, applicationContext *config.ApplicationContext) (models.User, error) {
+func getCurrentUser(
+	httpRequest *http.Request,
+	applicationContext *config.ApplicationContext,
+) (models.User, error) {
+
 	sessionData := handlers.GetUserData(httpRequest, applicationContext)
 	if sessionData.UserEmail == "" {
 		return models.User{}, errors.New("user not logged in")
@@ -47,28 +62,35 @@ func getCurrentUser(httpRequest *http.Request, applicationContext *config.Applic
 }
 
 // parseEventCreationForm extracts and validates form values for event creation.
-// Expected form fields are "title", "description", "start_time", and "duration".
-func parseEventCreationForm(httpRequest *http.Request) (title string, description string, startTime time.Time, durationHours int, err error) {
-	title = httpRequest.FormValue("title")
-	description = httpRequest.FormValue("description")
-	startTimeStr := httpRequest.FormValue("start_time")
-	durationStr := httpRequest.FormValue("duration")
+func parseEventCreationForm(
+	httpRequest *http.Request,
+) (
+	eventTitle string,
+	eventDescription string,
+	parsedStartTime time.Time,
+	parsedDurationHours int,
+	parsedError error,
+) {
+	eventTitle = httpRequest.FormValue("title")
+	eventDescription = httpRequest.FormValue("description")
+	startTimeString := httpRequest.FormValue("start_time")
+	durationString := httpRequest.FormValue("duration")
 
-	if title == "" || startTimeStr == "" || durationStr == "" {
-		err = errors.New("title, start time, and duration are required")
+	if eventTitle == "" || startTimeString == "" || durationString == "" {
+		parsedError = errors.New("title, start time, and duration are required")
 		return
 	}
 
 	const timeLayout = "2006-01-02T15:04"
-	startTime, err = time.Parse(timeLayout, startTimeStr)
-	if err != nil {
-		err = errors.New("invalid start time format")
+	parsedStartTime, parsedError = time.Parse(timeLayout, startTimeString)
+	if parsedError != nil {
+		parsedError = errors.New("invalid start time format")
 		return
 	}
 
-	durationHours, err = strconv.Atoi(durationStr)
-	if err != nil {
-		err = errors.New("invalid duration value")
+	parsedDurationHours, parsedError = strconv.Atoi(durationString)
+	if parsedError != nil {
+		parsedError = errors.New("invalid duration value")
 		return
 	}
 	return
@@ -76,13 +98,20 @@ func parseEventCreationForm(httpRequest *http.Request) (title string, descriptio
 
 // createNewEvent computes the event's end time (start time + duration)
 // and creates the event record in the database.
-func createNewEvent(currentUser models.User, title, description string, startTime time.Time, durationHours int, applicationContext *config.ApplicationContext) error {
-	endTime := startTime.Add(time.Duration(durationHours) * time.Hour)
+func createNewEvent(
+	currentUser models.User,
+	eventTitle string,
+	eventDescription string,
+	eventStartTime time.Time,
+	durationHours int,
+	applicationContext *config.ApplicationContext,
+) error {
+	eventEndTime := eventStartTime.Add(time.Duration(durationHours) * time.Hour)
 	newEvent := models.Event{
-		Title:       title,
-		Description: description,
-		StartTime:   startTime,
-		EndTime:     endTime,
+		Title:       eventTitle,
+		Description: eventDescription,
+		StartTime:   eventStartTime,
+		EndTime:     eventEndTime,
 		UserID:      currentUser.ID,
 	}
 	return newEvent.Create(applicationContext.Database)
@@ -90,27 +119,29 @@ func createNewEvent(currentUser models.User, title, description string, startTim
 
 // listEvents retrieves events for the current user (preloading RSVPs)
 // and computes RSVP statistics for each event.
-func listEvents(currentUser models.User, applicationContext *config.ApplicationContext) ([]eventWithStats, error) {
+func listEvents(
+	currentUser models.User,
+	applicationContext *config.ApplicationContext,
+) ([]EventWithStats, error) {
 	var userEvents []models.Event
-	err := applicationContext.Database.
+	queryError := applicationContext.Database.
 		Preload("RSVPs").
 		Where("user_id = ?", currentUser.ID).
 		Find(&userEvents).Error
-	if err != nil {
-		return nil, err
+	if queryError != nil {
+		return nil, queryError
 	}
 
-	var events []eventWithStats
+	var eventList []EventWithStats
 	for _, eventRecord := range userEvents {
 		rsvpCount := len(eventRecord.RSVPs)
 		rsvpAnsweredCount := 0
-		for _, rsvp := range eventRecord.RSVPs {
-			// Consider an RSVP "answered" if its response is neither empty nor "Pending".
-			if rsvp.Response != "" && rsvp.Response != "Pending" {
+		for _, rsvpRecord := range eventRecord.RSVPs {
+			if rsvpRecord.Response != "" && rsvpRecord.Response != "Pending" {
 				rsvpAnsweredCount++
 			}
 		}
-		events = append(events, eventWithStats{
+		eventList = append(eventList, EventWithStats{
 			ID:                eventRecord.ID,
 			Title:             eventRecord.Title,
 			StartTime:         eventRecord.StartTime,
@@ -119,60 +150,124 @@ func listEvents(currentUser models.User, applicationContext *config.ApplicationC
 			RSVPAnsweredCount: rsvpAnsweredCount,
 		})
 	}
-	return events, nil
+	return eventList, nil
 }
 
-// EventIndexHandler is the public handler that supports both GET and POST on "/events".
-// GET: Lists events with computed RSVP statistics.
-// POST: Creates a new event based on the submitted form (using a duration field instead of end time).
+// loadSelectedEvent attempts to load a selected event from the query parameter "event_id".
+// It returns a pointer to SelectedEventData if successful, or nil if not provided.
+func loadSelectedEvent(
+	httpRequest *http.Request,
+	currentUser models.User,
+	applicationContext *config.ApplicationContext,
+) (*SelectedEventData, error) {
+	eventIDParam := httpRequest.URL.Query().Get("event_id")
+	if eventIDParam == "" {
+		return nil, nil // No selected event provided
+	}
+	parsedEventID, parseError := strconv.ParseUint(eventIDParam, 10, 32)
+	if parseError != nil {
+		return nil, parseError
+	}
+	var eventRecord models.Event
+	loadError := eventRecord.LoadWithRSVPs(applicationContext.Database, uint(parsedEventID))
+	if loadError != nil {
+		return nil, loadError
+	}
+	// Ensure the event belongs to the current user.
+	if eventRecord.UserID != currentUser.ID {
+		return nil, errors.New("selected event does not belong to current user")
+	}
+	// Mark empty RSVP responses as "Pending"
+	for index, rsvpRecord := range eventRecord.RSVPs {
+		if rsvpRecord.Response == "" {
+			eventRecord.RSVPs[index].Response = "Pending"
+		}
+	}
+	selectedEvent := &SelectedEventData{
+		ID:            eventRecord.ID,
+		Title:         eventRecord.Title,
+		Description:   eventRecord.Description,
+		StartTime:     eventRecord.StartTime,
+		EndTime:       eventRecord.EndTime,
+		RSVPs:         eventRecord.RSVPs,
+		DurationHours: int(eventRecord.EndTime.Sub(eventRecord.StartTime).Hours()),
+	}
+	return selectedEvent, nil
+}
+
 // EventIndexHandler is the public handler for GET (list events) and POST (create event)
 // at the /events route.
-func EventIndexHandler(applicationContext *config.ApplicationContext) http.HandlerFunc {
+// GET: Lists events with computed RSVP statistics, and if an "event_id" query parameter is provided,
+// loads that event's details to be displayed above the events table.
+// POST: Creates a new event based on the submitted form (using a duration field instead of end time).
+func EventIndexHandler(
+	applicationContext *config.ApplicationContext,
+) http.HandlerFunc {
 	return func(httpResponseWriter http.ResponseWriter, httpRequest *http.Request) {
-		currentUser, err := getCurrentUser(httpRequest, applicationContext)
-		if err != nil {
+		currentUser, userError := getCurrentUser(httpRequest, applicationContext)
+		if userError != nil {
 			http.Redirect(httpResponseWriter, httpRequest, gconstants.LoginPath, http.StatusSeeOther)
 			return
 		}
 
 		switch httpRequest.Method {
 		case http.MethodPost:
-			// Process new event creation.
-			title, description, startTime, durationHours, err := parseEventCreationForm(httpRequest)
-			if err != nil {
-				http.Error(httpResponseWriter, err.Error(), http.StatusBadRequest)
+			eventTitle, eventDescription, parsedStartTime, parsedDurationHours, formParsingError :=
+				parseEventCreationForm(httpRequest)
+			if formParsingError != nil {
+				http.Error(httpResponseWriter, formParsingError.Error(), http.StatusBadRequest)
 				return
 			}
-			if err = createNewEvent(currentUser, title, description, startTime, durationHours, applicationContext); err != nil {
-				applicationContext.Logger.Println("Error creating event:", err)
+			creationError := createNewEvent(
+				currentUser,
+				eventTitle,
+				eventDescription,
+				parsedStartTime,
+				parsedDurationHours,
+				applicationContext,
+			)
+			if creationError != nil {
+				applicationContext.Logger.Println("Error creating event:", creationError)
 				http.Error(httpResponseWriter, "Internal Server Error", http.StatusInternalServerError)
 				return
 			}
 			http.Redirect(httpResponseWriter, httpRequest, config.WebEvents, http.StatusSeeOther)
+
 		case http.MethodGet:
-			// List events along with RSVP statistics.
-			events, err := listEvents(currentUser, applicationContext)
-			if err != nil {
-				applicationContext.Logger.Println("Error retrieving events:", err)
+			eventList, listError := listEvents(currentUser, applicationContext)
+			if listError != nil {
+				applicationContext.Logger.Println("Error retrieving events:", listError)
 				http.Error(httpResponseWriter, "Internal Server Error", http.StatusInternalServerError)
 				return
 			}
+
+			selectedEvent, selectedEventError := loadSelectedEvent(httpRequest, currentUser, applicationContext)
+			if selectedEventError != nil {
+				applicationContext.Logger.Println("Error loading selected event:", selectedEventError)
+				selectedEvent = nil // Ignore the error and do not display a selected event
+			}
+
 			sessionData := handlers.GetUserData(httpRequest, applicationContext)
 			templateData := struct {
 				UserPicture    string
 				UserName       string
-				Events         []eventWithStats
-				CreateEventURL string // New field for the event creation route.
+				Events         []EventWithStats
+				CreateEventURL string
+				SelectedEvent  *SelectedEventData
 			}{
 				UserPicture:    sessionData.UserPicture,
 				UserName:       sessionData.UserName,
-				Events:         events,
-				CreateEventURL: config.WebEvents, // Use your constant here.
+				Events:         eventList,
+				CreateEventURL: config.WebEvents,
+				SelectedEvent:  selectedEvent,
 			}
-			if renderError := applicationContext.Templates.ExecuteTemplate(httpResponseWriter, config.EventsList, templateData); renderError != nil {
+
+			renderError := applicationContext.Templates.ExecuteTemplate(httpResponseWriter, config.EventsList, templateData)
+			if renderError != nil {
 				applicationContext.Logger.Printf("Error rendering template: %v", renderError)
 				http.Error(httpResponseWriter, "Internal Server Error", http.StatusInternalServerError)
 			}
+
 		default:
 			http.Error(httpResponseWriter, "Method Not Allowed", http.StatusMethodNotAllowed)
 		}
