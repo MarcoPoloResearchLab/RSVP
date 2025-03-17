@@ -2,55 +2,31 @@ package event
 
 import (
 	"net/http"
-	"strconv"
-	"strings"
 
 	"github.com/temirov/RSVP/pkg/config"
+	"github.com/temirov/RSVP/pkg/handlers"
 )
 
 // EventRouter dispatches requests under the "/events/" base path.
 // It supports:
-//   - GET "/events/{event_id}" for event details,
-//   - POST "/events/{event_id}/rsvps" for adding an RSVP,
-//   - GET "/events/{event_id}/rsvps/{rsvp_code}" for viewing an RSVP detail.
+//   - GET "/events" for listing events
+//   - POST "/events" for creating a new event
+//   - GET "/events?id={id}" for viewing event details
+//   - PUT/POST "/events?id={id}" for updating an event
+//   - DELETE "/events?id={id}" for deleting an event
 func EventRouter(applicationContext *config.ApplicationContext) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		// Remove the base prefix "/events/"
-		path := strings.TrimPrefix(r.URL.Path, config.WebEvents)
-		segments := strings.Split(path, "/")
-		if len(segments) < 1 || segments[0] == "" {
-			http.NotFound(w, r)
-			return
-		}
-
-		eventID, err := strconv.ParseUint(segments[0], 10, 32)
-		if err != nil {
-			http.NotFound(w, r)
-			return
-		}
-		eventIdentifier := uint(eventID)
-
-		// If only the event id is provided, show event details.
-		if len(segments) == 1 {
-			EventDetailHandler(applicationContext, eventIdentifier).ServeHTTP(w, r)
-			return
-		}
-
-		// If the next segment is "rsvps"
-		if segments[1] == "rsvps" {
-			// If exactly two segments and method POST, create an RSVP.
-			if len(segments) == 2 && r.Method == http.MethodPost {
-				CreateRSVPForEventHandler(applicationContext, eventIdentifier).ServeHTTP(w, r)
-				return
-			}
-			// If three segments and method GET, show the RSVP detail.
-			if len(segments) == 3 && r.Method == http.MethodGet {
-				rsvpCode := segments[2] // RSVP code is a string
-				EventRSVPDetailHandler(applicationContext, eventIdentifier, rsvpCode).ServeHTTP(w, r)
-				return
-			}
-		}
-
-		http.NotFound(w, r)
+	// Define the handlers for event operations
+	eventHandlers := handlers.ResourceHandlers{
+		List:   ListHandler(applicationContext),
+		Create: CreateHandler(applicationContext),
+		Show:   ShowHandler(applicationContext),
+		Update: UpdateHandler(applicationContext),
+		Delete: DeleteHandler(applicationContext),
 	}
+
+	// Configure the router with event-specific parameters
+	routerConfig := handlers.DefaultResourceRouterConfig()
+
+	// Create and return the resource router
+	return handlers.ResourceRouter(applicationContext, eventHandlers, routerConfig)
 }

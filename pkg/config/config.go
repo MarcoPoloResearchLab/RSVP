@@ -9,21 +9,15 @@ import (
 	"gorm.io/gorm"
 )
 
+// DatabaseConfig holds database configuration
+type DatabaseConfig struct {
+	Name string // Database file name
+}
+
 const (
-	WebRoot         = "/"
-	WebEvents       = "/events/"
-	WebEventsNew    = "/events/new"
-	WebEventsCreate = "/events/create"
-	WebEventsUpdate = "/events/update"
-	WebEventsDelete = "/events/delete"
-	WebGenerate     = "/generate"
-	WebThankYou     = "/thankyou"
-	WebResponses    = "/responses"
-	WebRSVP         = "/rsvp"
-	WebSubmit       = "/submit"
-	WebRSVPs        = "/rsvps"
-	WebUnderRSVPs   = "/rsvps/"
-	WebQRSuffix     = "/qr"
+	WebRoot   = "/"
+	WebEvents = "/events/"
+	WebRSVPs  = "/rsvps/"
 )
 
 const (
@@ -51,10 +45,19 @@ type EnvConfig struct {
 	GoogleOauth2Base    string
 	CertificateFilePath string
 	KeyFilePath         string
+	Database            DatabaseConfig
 }
 
 // NewEnvConfig creates and validates a new EnvConfig instance
 func NewEnvConfig(logger *log.Logger) *EnvConfig { // Assuming applicationLogger is of type *Logger
+	// Default database name
+	dbName := "rsvps.db"
+	
+	// Override with environment variable if provided
+	if envDBName := os.Getenv("DB_NAME"); envDBName != "" {
+		dbName = envDBName
+	}
+	
 	config := &EnvConfig{
 		SessionSecret:       os.Getenv("SESSION_SECRET"),
 		GoogleClientID:      os.Getenv("GOOGLE_CLIENT_ID"),
@@ -62,6 +65,9 @@ func NewEnvConfig(logger *log.Logger) *EnvConfig { // Assuming applicationLogger
 		GoogleOauth2Base:    os.Getenv("GOOGLE_OAUTH2_BASE"),
 		CertificateFilePath: os.Getenv("TLS_CERT_PATH"),
 		KeyFilePath:         os.Getenv("TLS_KEY_PATH"),
+		Database: DatabaseConfig{
+			Name: dbName,
+		},
 	}
 
 	// Validate required fields

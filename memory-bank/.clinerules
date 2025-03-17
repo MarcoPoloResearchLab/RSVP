@@ -1,0 +1,167 @@
+# Project Intelligence for QR RSVP Tracker
+
+## Code Style Preferences
+
+1. **Go Formatting**
+   - Use `gofmt` standard formatting
+   - Prefer explicit error handling over helper functions
+   - Group imports: standard library, third-party, project packages
+
+2. **HTML Templates**
+   - Use 4-space indentation in templates
+   - Keep logic in templates minimal
+   - Use consistent naming for template variables
+
+3. **CSS/Styling**
+   - Bootstrap 4 is the primary styling framework
+   - Custom styles should be in `<style>` tags in templates for now
+   - Consistent color scheme: pink/blue gradients for backgrounds
+
+## Implementation Patterns
+
+1. **Database Operations**
+   - Use GORM methods consistently
+   - Implement model methods for common operations
+   - Preload relationships when needed
+
+2. **Route Handling**
+   - RESTful route naming when possible
+   - Group related functionality
+   - Use consistent parameter naming
+   - Use the generic resource router for standard CRUD operations
+   - Configure resource routers with appropriate parameters
+
+3. **Authentication**
+   - Google OAuth is the only authentication method
+   - Session management via custom implementation
+   - Protected routes MUST use authentication middleware
+   - NEVER duplicate authentication checks that are already handled by middleware
+   - Use the base handler's authentication methods for consistency
+   - The `RequireAuthentication` method should NOT perform redirects
+   - Always verify resource ownership before allowing modifications
+   - Example: ✅ `sessionData, _ := baseHandler.RequireAuthentication(w, r)` ❌ `if sessionData.UserEmail == "" { http.Redirect(w, r, "/login", http.StatusSeeOther) }`
+
+4. **Handler Implementation**
+   - Use the base handler framework for common operations
+   - Implement handlers that focus on business logic, not boilerplate
+   - Follow consistent patterns for parameter extraction and validation
+   - Use typed error handling with appropriate HTTP status codes
+   - Use consistent redirection patterns
+
+## Project-Specific Knowledge
+
+1. **ID Generation System**
+   - The application uses two different ID encoding schemes:
+     - Base62 (0-9, A-Z, a-z) for User and Event models
+     - Base36 (0-9, A-Z) for RSVP models (more user-friendly for sharing)
+   - All IDs are 8 characters long by default
+   - IDs are generated using `crypto/rand` for cryptographic security
+   - Uniqueness is verified within each table before assignment
+   - The system attempts to generate a unique ID up to 10 times before failing
+   - Each model implements a `BeforeCreate` hook that handles ID generation
+   - RSVP codes are not currently checked for uniqueness across events (only within the RSVP table)
+
+2. **QR Code Generation**
+   - QR codes are generated on-demand
+   - Base64 encoded for direct embedding in HTML
+   - No caching mechanism currently implemented
+
+3. **Database Management**
+   - The database file (`rsvps.db`) is currently reset on every application start
+   - The `InitDatabase` function in `pkg/services/database.go` drops and recreates all tables
+   - This approach is only suitable for early development
+   - **IMPORTANT**: Do not systematically delete the database file in code
+   - Database resets should be performed manually as needed
+   - Future implementation should use migrations for schema changes
+
+4. **Event Time Handling**
+   - Events have explicit start and end times
+   - Duration is selected from preset options
+   - Time zones are not currently handled
+
+## Known Challenges
+
+1. **Template Organization**
+   - Templates are organized by feature
+   - Some duplication exists in navigation elements
+   - Consider implementing a layout/partial system
+
+2. **Error Handling**
+   - Error handling is basic
+   - User-friendly error messages needed
+   - Logging should be enhanced
+
+3. **Session Management**
+   - Sessions are managed via custom implementation
+   - No explicit timeout handling
+   - Consider more robust session management
+
+## Code Quality Standards
+
+1. **Integration Testing**
+   - Integration tests MUST use real dependencies
+   - Mocks are NEVER allowed in integration tests
+   - Example: ✅ `db := database.New()` ❌ `db := mocks.NewMockDB()`
+
+2. **Variable Naming**
+   - Single or two-letter variable names are PROHIBITED
+   - All variables MUST have full, descriptive names
+   - Example: ✅ `userID := getUserID()` ❌ `id := getID()`
+
+3. **Error Handling**
+   - Errors MUST NEVER be swallowed, even in defer statements
+   - Use abstracted error handling in utils or separate packages
+   - Example: ✅ `defer utils.HandleClose(file)` ❌ `defer file.Close()`
+
+4. **String Constants**
+   - Strings MUST be defined as constants or environment variables
+   - No inline string literals in business logic
+   - Parameter names like "id" or "event_id" MUST be constants
+   - Example: ✅ `const EventIDParam = "event_id"` ❌ `r.URL.Query().Get("event_id")`
+
+5. **Code Duplication**
+   - Duplicate code MUST be abstracted into reusable components
+   - Use the base handler framework for common HTTP handler operations
+   - Use the resource router for standard CRUD routing
+   - Create utility functions for repeated operations
+   - Example: ✅ `baseHandler.GetParam(r, "id")` ❌ `r.URL.Query().Get("id")`
+
+## Development Workflow
+
+1. **Local Development**
+   - Run with `go run cmd/web/main.go`
+   - SQLite database is created automatically
+   - Environment variables needed for OAuth
+
+2. **Deployment**
+   - Docker container is the preferred deployment method
+   - Environment variables must be set in production
+   - Database persists in a volume
+
+3. **Testing**
+   - Integration testing is the primary testing strategy
+   - Tests must use real dependencies, not mocks
+   - Each test should be isolated through proper setup/teardown
+   - Integration tests are located in the `tests/` directory
+   - Tests are organized by functionality:
+     - `event_test.go` and `rsvp_test.go`: Basic CRUD operations
+     - `relationship_test.go`: Event-RSVP relationships and cascade operations
+     - `validation_test.go`: Input validation for events and RSVPs
+     - `authorization_test.go`: Access control and ownership verification
+     - `delegation_test.go`: Event ownership transfer between users
+     - `edge_cases_test.go`: Special cases and error handling
+   - Each test is individually runnable using `go test ./tests -run TestName`
+   - Test routes are defined in `tests/routes`
+   - Shared test utilities are in `tests/testutils`
+   - Test user data is centralized in `testutils.DefaultTestUser` to avoid duplication
+   - All tests must use the shared test user data for consistency
+   - No wrapper test functions should be used (e.g., TestEventOperations)
+   - Each test should be self-contained with its own setup and cleanup
+   - Tests should verify relationships between models (e.g., cascade deletions)
+   - Tests should cover edge cases and error conditions
+   - Tests should verify authorization and access control
+   - Tests should have descriptive names that clearly indicate what they're testing
+
+---
+
+This document will be updated as new patterns and preferences are discovered during development.

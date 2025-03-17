@@ -6,6 +6,7 @@ import (
 	"github.com/temirov/GAuss/pkg/session"
 	"github.com/temirov/RSVP/pkg/config"
 	"github.com/temirov/RSVP/pkg/handlers/event"
+	"github.com/temirov/RSVP/pkg/handlers/rsvp"
 	"net/http"
 )
 
@@ -63,9 +64,11 @@ func (routes Routes) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc(config.WebRoot, routes.RootRedirectHandler)
 	// Register event routes using the authentication middleware.
 	//mux.Handle(config.WebEvents, gauss.AuthMiddleware(event.List(routes.ApplicationContext)))
-	mux.Handle(config.WebEvents, gauss.AuthMiddleware(event.EventIndexHandler(routes.ApplicationContext)))
-	mux.Handle(config.WebEventsUpdate, gauss.AuthMiddleware(event.UpdateEventHandler(routes.ApplicationContext)))
-	mux.Handle(config.WebEventsDelete, gauss.AuthMiddleware(event.DeleteEventHandler(routes.ApplicationContext)))
+	// Register event routes using the event router
+	mux.Handle(config.WebEvents, gauss.AuthMiddleware(event.EventRouter(routes.ApplicationContext)))
+	
+	// Register RSVP routes using the RSVP router
+	mux.Handle(config.WebRSVPs, gauss.AuthMiddleware(rsvp.RSVPRouter(routes.ApplicationContext)))
 
 	//mux.HandleFunc("/events/new", handlers.EventNew)
 	//mux.HandleFunc("/events/create", handlers.EventCreate)

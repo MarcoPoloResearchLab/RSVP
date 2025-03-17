@@ -120,6 +120,11 @@
             <!-- Update Event button referencing the update form by ID -->
             <button form="editEventForm" type="submit" class="btn btn-primary">Update Event</button>
         </div>
+        
+        <!-- RSVPs link row -->
+        <div class="mt-3 text-right">
+            <a href="/rsvps?event_id={{.SelectedEvent.ID}}" class="btn btn-outline-primary">RSVPs &gt;</a>
+        </div>
     </div>
     {{ else }}
     <!-- New Event Form Card (creation mode) - hidden by default -->
@@ -171,10 +176,11 @@
             <table class="table table-bordered table-hover">
                 <thead class="thead-light">
                 <tr>
-                    <th>Event Name</th>
-                    <th>Event Date</th>
-                    <th>Total RSVPs</th>
+                    <th>Event</th>
+                    <th>Date</th>
+                    <th>RSVPs</th>
                     <th>RSVPs Answered</th>
+                    <th></th>
                 </tr>
                 </thead>
                 <tbody>
@@ -184,6 +190,7 @@
                     <td>{{.StartTime.Format "2006-01-02 15:04"}}</td>
                     <td>{{.RSVPCount}}</td>
                     <td>{{.RSVPAnsweredCount}}</td>
+                    <td class="text-center"><a href="/rsvps?event_id={{.ID}}" class="btn btn-sm btn-light">&gt;</a></td>
                 </tr>
                 {{ end }}
                 </tbody>

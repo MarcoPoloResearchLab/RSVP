@@ -4,13 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/temirov/RSVP/pkg/routes"
 	"html/template"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
+
+	"github.com/temirov/RSVP/pkg/routes"
 
 	"github.com/temirov/GAuss/pkg/gauss"
 	"github.com/temirov/GAuss/pkg/session"
@@ -22,7 +23,6 @@ import (
 const (
 	HttpPort        = 8080
 	HttpIP          = "0.0.0.0"
-	DatabaseName    = "rsvps.db"
 	TemplatesGlob   = "./templates/**/*.html"
 	ShutdownTimeout = 10 * time.Second
 )
@@ -42,8 +42,9 @@ func main() {
 		applicationLogger.Fatal("Failed to initialize auth service:", authServiceErr)
 	}
 
-	databaseConnection := services.InitDatabase(DatabaseName, applicationLogger)
+	databaseConnection := services.InitDatabase(envConfig.Database.Name, applicationLogger)
 	parsedTemplates := template.Must(template.ParseGlob(TemplatesGlob))
+
 	applicationContext := &config.ApplicationContext{
 		Database:    databaseConnection,
 		Templates:   parsedTemplates,

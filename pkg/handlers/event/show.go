@@ -9,14 +9,14 @@ import (
 	"github.com/temirov/RSVP/pkg/utils"
 )
 
-// DeleteHandler handles DELETE requests to delete an event.
-func DeleteHandler(applicationContext *config.ApplicationContext) http.HandlerFunc {
+// ShowHandler handles GET requests to view a specific event by ID.
+func ShowHandler(applicationContext *config.ApplicationContext) http.HandlerFunc {
 	// Create a base handler for events
 	baseHandler := handlers.NewBaseHandler(applicationContext, "Event", config.WebEvents)
 
 	return func(responseWriter http.ResponseWriter, request *http.Request) {
 		// Validate HTTP method
-		if !baseHandler.ValidateMethod(responseWriter, request, http.MethodDelete, http.MethodPost) {
+		if !baseHandler.ValidateMethod(responseWriter, request, http.MethodGet) {
 			return
 		}
 
@@ -51,26 +51,32 @@ func DeleteHandler(applicationContext *config.ApplicationContext) http.HandlerFu
 			return
 		}
 		
-		// Load the event from the database
+		// Load the event with its RSVPs
 		var eventRecord models.Event
-		if findError := eventRecord.FindByID(applicationContext.Database, eventID); findError != nil {
-			baseHandler.HandleError(responseWriter, findError, utils.NotFoundError, "Event not found")
+		if loadEventError := eventRecord.LoadWithRSVPs(applicationContext.Database, eventID); loadEventError != nil {
+			baseHandler.HandleError(responseWriter, loadEventError, utils.NotFoundError, "Event not found")
 			return
 		}
 
-		// First, delete all RSVPs associated with this event
-		if deleteRSVPsError := applicationContext.Database.Where("event_id = ?", eventID).Delete(&models.RSVP{}).Error; deleteRSVPsError != nil {
-			baseHandler.HandleError(responseWriter, deleteRSVPsError, utils.DatabaseError, "Failed to delete associated RSVPs")
-			return
-		}
-		
-		// Then delete the event
-		if deletionError := applicationContext.Database.Delete(&eventRecord).Error; deletionError != nil {
-			baseHandler.HandleError(responseWriter, deletionError, utils.DatabaseError, "Failed to delete event")
-			return
+		// Business logic: if an RSVP's Response is empty, set it to "Pending"
+		for index, currentRSVP := range eventRecord.RSVPs {
+			if currentRSVP.Response == "" {
+				eventRecord.RSVPs[index].Response = "Pending"
+			}
 		}
 
-		// Redirect back to the events list after deletion
-		baseHandler.RedirectToList(responseWriter, request)
+		// Prepare template data
+		templateData := struct {
+			UserPicture string
+			UserName    string
+			Event       models.Event
+		}{
+			UserPicture: sessionData.UserPicture,
+			UserName:    sessionData.UserName,
+			Event:       eventRecord,
+		}
+
+		// Render the template
+		baseHandler.RenderTemplate(responseWriter, "event_detail.html", templateData)
 	}
 }

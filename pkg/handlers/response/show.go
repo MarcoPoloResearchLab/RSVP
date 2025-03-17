@@ -39,7 +39,7 @@ func Show(applicationContext *config.ApplicationContext, rsvpCode string) http.H
 			Response:        rsvpRecord.Response,
 			ExtraGuests:     rsvpRecord.ExtraGuests,
 			ThankYouMessage: thankYouMessage,
-			Code:            rsvpRecord.Code,
+			Code:            rsvpRecord.ID,
 		}
 		if templateError := applicationContext.Templates.ExecuteTemplate(responseWriter, "thankyou.html", templateData); templateError != nil {
 			http.Error(responseWriter, "Internal Server Error", http.StatusInternalServerError)

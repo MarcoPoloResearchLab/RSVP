@@ -2,63 +2,98 @@ package models
 
 import (
 	"errors"
+	"log"
 	"gorm.io/gorm"
 )
 
 type User struct {
-	gorm.Model
+	BaseModel
 	Email   string  `gorm:"uniqueIndex;size:255;not null"`
 	Name    string  `gorm:"size:255"`
 	Picture string  `gorm:"size:512"`
 	Events  []Event `gorm:"foreignKey:UserID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
 }
 
+// BeforeCreate hook to generate a unique base62 ID
+func (user *User) BeforeCreate(databaseTransaction *gorm.DB) error {
+	if user.ID == "" {
+		generatedID, generateError := EnsureUniqueID(databaseTransaction, "users", GenerateBase62ID)
+		if generateError != nil {
+			return generateError
+		}
+		user.ID = generatedID
+	}
+	return nil
+}
+
 // FindByEmail searches for a user by their email.
-func (user *User) FindByEmail(db *gorm.DB, email string) error {
-	return db.Where("email = ?", email).First(user).Error
+func (user *User) FindByEmail(databaseConnection *gorm.DB, email string) error {
+	return databaseConnection.Where("email = ?", email).First(user).Error
+}
+
+// FindByID searches for a user by their ID.
+func (user *User) FindByID(databaseConnection *gorm.DB, userID string) error {
+	return databaseConnection.Where("id = ?", userID).First(user).Error
 }
 
 // Create inserts a new user into the database.
-func (user *User) Create(db *gorm.DB) error {
-	return db.Create(user).Error
+func (user *User) Create(databaseConnection *gorm.DB) error {
+	return databaseConnection.Create(user).Error
 }
 
 // Save updates an existing user in the database.
-func (user *User) Save(db *gorm.DB) error {
-	return db.Save(user).Error
+func (user *User) Save(databaseConnection *gorm.DB) error {
+	return databaseConnection.Save(user).Error
 }
 
 // LoadWithEvents preloads the user's events.
-func (user *User) LoadWithEvents(db *gorm.DB, userID uint) error {
-	return db.Preload("Events").First(user, userID).Error
+func (user *User) LoadWithEvents(databaseConnection *gorm.DB, userID string) error {
+	return databaseConnection.Preload("Events").Where("id = ?", userID).First(user).Error
 }
 
 // UpsertUser creates or updates a user record based on the email.
+// It logs detailed information about the process for debugging.
 func UpsertUser(
-	db *gorm.DB,
+	databaseConnection *gorm.DB,
 	email string,
 	name string,
 	picture string,
 ) (*User, error) {
 	var user User
 
-	result := db.First(&user, "email = ?", email)
+	// Try to find the user by email
+	result := databaseConnection.First(&user, "email = ?", email)
 	if result.Error != nil {
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
-			// New user, create
+			// User not found, create a new one
+			log.Printf("User with email %s not found, creating new user", email)
 			user = User{
 				Email:   email,
 				Name:    name,
 				Picture: picture,
 			}
-			if err := db.Create(&user).Error; err != nil {
-				return nil, err
+			
+			// Create the user
+			if createError := databaseConnection.Create(&user).Error; createError != nil {
+				log.Printf("Error creating user: %v", createError)
+				return nil, createError
+			}
+			
+			// Verify the user was created by fetching it again
+			var verifyUser User
+			if verifyError := databaseConnection.First(&verifyUser, "email = ?", email).Error; verifyError != nil {
+				log.Printf("Warning: User was created but could not be verified: %v", verifyError)
+			} else {
+				log.Printf("User created successfully with ID: %s", verifyUser.ID)
 			}
 		} else {
+			// Some other database error
+			log.Printf("Database error when finding user: %v", result.Error)
 			return nil, result.Error
 		}
 	} else {
 		// Existing user, update fields if changed
+		log.Printf("Found existing user with ID: %s", user.ID)
 		updated := false
 		if user.Name != name {
 			user.Name = name
@@ -69,8 +104,10 @@ func UpsertUser(
 			updated = true
 		}
 		if updated {
-			if err := db.Save(&user).Error; err != nil {
-				return nil, err
+			log.Printf("Updating user details for ID: %s", user.ID)
+			if saveError := databaseConnection.Save(&user).Error; saveError != nil {
+				log.Printf("Error updating user: %v", saveError)
+				return nil, saveError
 			}
 		}
 	}

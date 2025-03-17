@@ -4,19 +4,30 @@ import (
 	"gorm.io/gorm"
 )
 
-// RSVP represents an invitation record with a base36 code, name, response, etc.
+// RSVP represents an invitation record with a base36 ID, name, response, etc.
 type RSVP struct {
-	gorm.Model
+	BaseModel    // ID field will be used as the RSVP code
 	Name        string `gorm:"column:name"`
-	Code        string `gorm:"column:code;uniqueIndex"`
 	Response    string `gorm:"column:response"`
 	ExtraGuests int    `gorm:"column:extra_guests;default:0"`
-	EventID     uint   `gorm:"not null;index"`
+	EventID     string `gorm:"type:varchar(8);not null;index"`
 }
 
-// FindByCode loads a single RSVP by its Code.
+// BeforeCreate hook to generate a unique base36 ID
+func (rsvp *RSVP) BeforeCreate(tx *gorm.DB) error {
+	if rsvp.ID == "" {
+		id, err := EnsureUniqueID(tx, "rsvps", GenerateBase36ID)
+		if err != nil {
+			return err
+		}
+		rsvp.ID = id
+	}
+	return nil
+}
+
+// FindByCode loads a single RSVP by its ID (which is used as the code).
 func (rsvp *RSVP) FindByCode(db *gorm.DB, code string) error {
-	return db.Where("code = ?", code).First(rsvp).Error
+	return db.Where("id = ?", code).First(rsvp).Error
 }
 
 // Create inserts a new RSVP into the database.

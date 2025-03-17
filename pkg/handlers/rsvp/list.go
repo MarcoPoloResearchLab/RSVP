@@ -1,9 +1,7 @@
 package rsvp
 
 import (
-	"fmt"
 	"net/http"
-	"strings"
 
 	"github.com/temirov/RSVP/models"
 	"github.com/temirov/RSVP/pkg/config"
@@ -11,64 +9,109 @@ import (
 	"github.com/temirov/RSVP/pkg/utils"
 )
 
-// List handles GET /rsvps (listing RSVPs) and POST /rsvps (creating a new RSVP).
-func List(applicationContext *config.ApplicationContext) http.Handler {
-	return http.HandlerFunc(func(httpResponseWriter http.ResponseWriter, httpRequest *http.Request) {
-		if httpRequest.Method == http.MethodGet {
-			var rsvpRecords []models.RSVP
-			if databaseError := applicationContext.Database.Find(&rsvpRecords).Error; databaseError != nil {
-				applicationContext.Logger.Println("Error fetching RSVPs:", databaseError)
-				http.Error(httpResponseWriter, "Could not retrieve RSVPs", http.StatusInternalServerError)
-				return
+// ListHandler handles GET /rsvps?event_id={id} for listing RSVPs for a specific event.
+// It also supports GET /rsvps?event_id={event_id}&id={rsvp_id} for editing a specific RSVP.
+func ListHandler(applicationContext *config.ApplicationContext) http.HandlerFunc {
+	// Create a base handler for RSVPs
+	baseHandler := handlers.NewBaseHandler(applicationContext, "RSVP", config.WebRSVPs)
+	
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Validate HTTP method
+		if !baseHandler.ValidateMethod(w, r, http.MethodGet) {
+			return
+		}
+
+		// Get event ID from query parameter
+		eventID := baseHandler.GetParam(r, "event_id")
+		if eventID == "" {
+			http.Error(w, "Event ID is required", http.StatusBadRequest)
+			return
+		}
+		
+		// Get authenticated user data (authentication is guaranteed by middleware)
+		sessionData, _ := baseHandler.RequireAuthentication(w, r)
+
+		// Find the current user
+		var currentUser models.User
+		if findUserError := currentUser.FindByEmail(applicationContext.Database, sessionData.UserEmail); findUserError != nil {
+			baseHandler.HandleError(w, findUserError, utils.DatabaseError, "User not found in database")
+			return
+		}
+		
+		// Define a function to find the owner ID of an event
+		findEventOwnerID := func(eventID string) (string, error) {
+			var event models.Event
+			if err := event.FindByID(applicationContext.Database, eventID); err != nil {
+				return "", err
 			}
-			// Business logic: if Response is empty, let the backend set it to "Pending"
-			for index, record := range rsvpRecords {
-				if record.Response == "" {
-					rsvpRecords[index].Response = "Pending"
+			return event.UserID, nil
+		}
+		
+		// Verify that the current user owns the event
+		if !baseHandler.VerifyResourceOwnership(w, eventID, findEventOwnerID, currentUser.ID) {
+			return
+		}
+		
+		// Load the event from the database
+		var eventRecord models.Event
+		if findError := eventRecord.FindByID(applicationContext.Database, eventID); findError != nil {
+			baseHandler.HandleError(w, findError, utils.NotFoundError, "Event not found")
+			return
+		}
+
+		// Get RSVPs for this event
+		var rsvpRecords []models.RSVP
+		if databaseError := applicationContext.Database.Where("event_id = ?", eventID).Find(&rsvpRecords).Error; databaseError != nil {
+			baseHandler.HandleError(w, databaseError, utils.DatabaseError, "Could not retrieve RSVPs")
+			return
+		}
+
+		// Business logic: if Response is empty, set it to "Pending"
+		for index, record := range rsvpRecords {
+			if record.Response == "" {
+				rsvpRecords[index].Response = "Pending"
+			}
+		}
+
+		// Check if a specific RSVP is being edited
+		rsvpID := baseHandler.GetParam(r, "id")
+		var selectedRSVP *models.RSVP
+		
+		if rsvpID != "" {
+			// Find the selected RSVP
+			for _, record := range rsvpRecords {
+				if record.ID == rsvpID {
+					rsvpCopy := record // Create a copy to avoid modifying the slice element
+					selectedRSVP = &rsvpCopy
+					break
 				}
 			}
-			userSessionData := handlers.GetUserData(httpRequest, applicationContext)
-			templateData := struct {
-				RSVPRecords []models.RSVP
-				UserPicture string
-				UserName    string
-			}{
-				RSVPRecords: rsvpRecords,
-				UserPicture: userSessionData.UserPicture,
-				UserName:    userSessionData.UserName,
+			
+			// If not found in the already loaded records, try to load it directly
+			if selectedRSVP == nil {
+				var rsvp models.RSVP
+				if err := rsvp.FindByCode(applicationContext.Database, rsvpID); err == nil && rsvp.EventID == eventID {
+					selectedRSVP = &rsvp
+				}
 			}
-			if templateError := applicationContext.Templates.ExecuteTemplate(httpResponseWriter, "responses.html", templateData); templateError != nil {
-				http.Error(httpResponseWriter, "Internal Server Error", http.StatusInternalServerError)
-				applicationContext.Logger.Printf("Failed to render responses.html: %v", templateError)
-				return
-			}
-		} else if httpRequest.Method == http.MethodPost {
-			inviteeNameValue := strings.TrimSpace(httpRequest.FormValue("name"))
-			if inviteeNameValue == "" {
-				http.Error(httpResponseWriter, "Name is required", http.StatusBadRequest)
-				return
-			}
-			newRSVPRecord := models.RSVP{
-				Name: inviteeNameValue,
-				Code: utils.Base36Encode6(),
-			}
-			// Check if an event_id is provided in the form.
-			//eventIDStr := httpRequest.FormValue("event_id")
-			//if eventIDStr != "" {
-			//	parsedEventID, err := strconv.ParseUint(eventIDStr, 10, 32)
-			//	if err == nil {
-			//		newRSVPRecord.EventID = uint(parsedEventID)
-			//	}
-			//}
-			if creationError := newRSVPRecord.Create(applicationContext.Database); creationError != nil {
-				applicationContext.Logger.Println("Error creating RSVP:", creationError)
-				http.Error(httpResponseWriter, "Could not create RSVP", http.StatusInternalServerError)
-				return
-			}
-			redirectURL := fmt.Sprintf("/rsvps/%s/qr", newRSVPRecord.Code)
-			http.Redirect(httpResponseWriter, httpRequest, redirectURL, http.StatusSeeOther)
-		} else {
-			http.Error(httpResponseWriter, "Method Not Allowed", http.StatusMethodNotAllowed)
 		}
-	})
+
+		// Use the session data we already have
+		templateData := struct {
+			RSVPRecords  []models.RSVP
+			SelectedRSVP *models.RSVP
+			Event        models.Event
+			UserPicture  string
+			UserName     string
+		}{
+			RSVPRecords:  rsvpRecords,
+			SelectedRSVP: selectedRSVP,
+			Event:        eventRecord,
+			UserPicture:  sessionData.UserPicture,
+			UserName:     sessionData.UserName,
+		}
+
+		// Render the template
+		baseHandler.RenderTemplate(w, "responses.html", templateData)
+	}
 }
