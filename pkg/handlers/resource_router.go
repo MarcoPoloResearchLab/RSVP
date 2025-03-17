@@ -17,17 +17,49 @@ type ResourceHandlers struct {
 
 // ResourceRouterConfig holds configuration for a resource router
 type ResourceRouterConfig struct {
-	IDParam       string
-	ParentIDParam string
-	MethodParam   string
+	IDParam       string // The parameter name for resource ID
+	ParentIDParam string // Optional parameter name for parent resource ID
+	MethodParam   string // Parameter name for method override
+	ResourceType  string // Type of resource (Event, RSVP, User)
 }
 
 // DefaultResourceRouterConfig returns a default configuration for resource routers
 func DefaultResourceRouterConfig() ResourceRouterConfig {
 	return ResourceRouterConfig{
-		IDParam:       "id",
+		IDParam:       config.EventIDParam, // Default to event_id
 		ParentIDParam: "",
-		MethodParam:   "_method",
+		MethodParam:   config.MethodOverrideParam,
+		ResourceType:  "Event",
+	}
+}
+
+// NewEventRouterConfig returns a configuration for Event resource routers
+func NewEventRouterConfig() ResourceRouterConfig {
+	return ResourceRouterConfig{
+		IDParam:       config.EventIDParam,
+		ParentIDParam: "",
+		MethodParam:   config.MethodOverrideParam,
+		ResourceType:  "Event",
+	}
+}
+
+// NewRSVPRouterConfig returns a configuration for RSVP resource routers
+func NewRSVPRouterConfig() ResourceRouterConfig {
+	return ResourceRouterConfig{
+		IDParam:       config.RSVPIDParam,
+		ParentIDParam: config.EventIDParam, // RSVPs have events as parents
+		MethodParam:   config.MethodOverrideParam,
+		ResourceType:  "RSVP",
+	}
+}
+
+// NewUserRouterConfig returns a configuration for User resource routers
+func NewUserRouterConfig() ResourceRouterConfig {
+	return ResourceRouterConfig{
+		IDParam:       config.UserIDParam,
+		ParentIDParam: "",
+		MethodParam:   config.MethodOverrideParam,
+		ResourceType:  "User",
 	}
 }
 
@@ -50,12 +82,12 @@ func ResourceRouter(
 		if r.Method == http.MethodPost {
 			if err := r.ParseForm(); err == nil {
 				methodOverride = r.FormValue(config.MethodParam)
-				
+
 				// If ID is not in query params, check form values
 				if resourceID == "" {
 					resourceID = r.FormValue(config.IDParam)
 				}
-				
+
 				// If parent ID is not in query params, check form values
 				if config.ParentIDParam != "" && parentID == "" {
 					parentID = r.FormValue(config.ParentIDParam)
@@ -72,7 +104,7 @@ func ResourceRouter(
 			} else {
 				http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 			}
-			
+
 		// Handle GET requests
 		case r.Method == http.MethodGet:
 			if resourceID != "" {
@@ -90,7 +122,7 @@ func ResourceRouter(
 					http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 				}
 			}
-			
+
 		// Handle POST requests
 		case r.Method == http.MethodPost:
 			if resourceID != "" {
@@ -108,7 +140,7 @@ func ResourceRouter(
 					http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 				}
 			}
-			
+
 		// Handle PUT/PATCH requests
 		case r.Method == http.MethodPut || r.Method == http.MethodPatch:
 			if resourceID == "" {
@@ -121,7 +153,7 @@ func ResourceRouter(
 			} else {
 				http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 			}
-			
+
 		// Handle DELETE requests
 		case r.Method == http.MethodDelete:
 			if resourceID == "" {
@@ -134,7 +166,7 @@ func ResourceRouter(
 			} else {
 				http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 			}
-			
+
 		// Handle unsupported methods
 		default:
 			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)

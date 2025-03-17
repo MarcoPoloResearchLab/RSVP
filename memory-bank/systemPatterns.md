@@ -217,6 +217,118 @@ flowchart TD
     Render --> RenderTemplate[Render Template with Data]
 ```
 
+### 4.6 UI Design Patterns
+
+The application follows consistent UI design patterns to provide a unified experience across different resource types. The Events and RSVPs pages share identical behavioral patterns, creating a predictable and learnable interface.
+
+#### 4.6.1 In-Page Form Pattern
+
+Both Events and RSVPs management pages implement an in-page form pattern that keeps users in context while performing CRUD operations:
+
+```mermaid
+flowchart TD
+    Start[Page Load] --> CheckEmpty{Entities Exist?}
+    CheckEmpty -->|No| EmptyState[Show Empty State with Add/New Button]
+    CheckEmpty -->|Yes| ShowList[Display Entity List]
+    
+    EmptyState --> AddClick[User Clicks Add/New]
+    ShowList --> AddClick
+    ShowList --> EditClick[User Clicks Edit on Row]
+    
+    AddClick --> ShowForm[Show Form Above List]
+    EditClick --> ShowForm
+    
+    ShowForm --> FormAction{User Action?}
+    FormAction -->|Cancel| HideForm[Hide Form]
+    FormAction -->|Delete| DeleteEntity[Delete Entity]
+    FormAction -->|Update| SaveEntity[Save Entity]
+    
+    DeleteEntity --> RefreshList[Refresh Entity List]
+    SaveEntity --> RefreshList
+    HideForm --> RefreshList
+    
+    RefreshList --> CheckEmpty
+```
+
+#### 4.6.2 Consistent Entity Management
+
+The Events and RSVPs pages follow parallel structures with identical interaction patterns:
+
+```mermaid
+classDiagram
+    class EntityPage {
+        +EntityList
+        +EntityForm
+        +showForm()
+        +hideForm()
+        +saveEntity()
+        +deleteEntity()
+    }
+    
+    class EventsPage {
+        +EventsList
+        +EventForm
+        +AddButton
+        +showEventForm()
+        +hideEventForm()
+        +saveEvent()
+        +deleteEvent()
+    }
+    
+    class RSVPsPage {
+        +RSVPsList
+        +RSVPForm
+        +NewButton
+        +showRSVPForm()
+        +hideRSVPForm()
+        +saveRSVP()
+        +deleteRSVP()
+    }
+    
+    EntityPage <|-- EventsPage
+    EntityPage <|-- RSVPsPage
+```
+
+#### 4.6.3 Empty State Pattern
+
+The application handles empty states (when no entities exist) consistently:
+
+1. For Events page:
+   - When a user has no events, the page displays an "Add" button prominently
+   - Clicking this button reveals the event creation form above the (empty) events table
+
+2. For RSVPs page:
+   - When an event has no RSVPs, the page displays a "New" button prominently
+   - Clicking this button reveals the RSVP creation form above the (empty) RSVPs table
+
+This consistent approach ensures that users always have a clear path to creating their first entity of each type.
+
+#### 4.6.4 Form Controls Pattern
+
+All entity forms follow a consistent control pattern:
+
+```mermaid
+flowchart LR
+    Form[Entity Form] --> Fields[Input Fields]
+    Form --> Controls[Form Controls]
+    
+    Controls --> Cancel[Cancel Button]
+    Controls --> Delete[Delete Button]
+    Controls --> Update[Update Button]
+    
+    Cancel --> HideForm[Hide Form]
+    Delete --> Confirmation[Confirmation Dialog]
+    Update --> Validation[Validate Inputs]
+    
+    Confirmation -->|Yes| DeleteEntity[Delete Entity]
+    Confirmation -->|No| Return[Return to Form]
+    
+    Validation -->|Valid| SaveEntity[Save Entity]
+    Validation -->|Invalid| ShowErrors[Show Validation Errors]
+```
+
+This consistent approach to form controls ensures that users develop muscle memory for common operations across the application.
+
 The base handler:
 - Provides a consistent interface for common handler operations
 - Centralizes authentication and authorization checks

@@ -24,7 +24,7 @@ func UpdateHandler(applicationContext *config.ApplicationContext) http.HandlerFu
 		}
 
 		// Get RSVP ID parameter
-		rsvpID := baseHandler.GetParam(r, "id")
+		rsvpID := baseHandler.GetParam(r, config.RSVPIDParam)
 		if rsvpID == "" {
 			http.Error(w, "RSVP ID is required", http.StatusBadRequest)
 			return
@@ -36,7 +36,7 @@ func UpdateHandler(applicationContext *config.ApplicationContext) http.HandlerFu
 			baseHandler.HandleError(w, findError, utils.NotFoundError, "RSVP not found")
 			return
 		}
-		
+
 		// Get authenticated user data (authentication is guaranteed by middleware)
 		sessionData, _ := baseHandler.RequireAuthentication(w, r)
 
@@ -46,7 +46,7 @@ func UpdateHandler(applicationContext *config.ApplicationContext) http.HandlerFu
 			baseHandler.HandleError(w, findUserError, utils.DatabaseError, "User not found in database")
 			return
 		}
-		
+
 		// Define a function to find the owner ID of an event
 		findEventOwnerID := func(eventID string) (string, error) {
 			var event models.Event
@@ -55,7 +55,7 @@ func UpdateHandler(applicationContext *config.ApplicationContext) http.HandlerFu
 			}
 			return event.UserID, nil
 		}
-		
+
 		// Verify that the current user owns the event that this RSVP belongs to
 		if !baseHandler.VerifyResourceOwnership(w, rsvpRecord.EventID, findEventOwnerID, currentUser.ID) {
 			return
@@ -81,7 +81,7 @@ func UpdateHandler(applicationContext *config.ApplicationContext) http.HandlerFu
 				return
 			}
 			rsvpRecord.Response = params["response"]
-			
+
 			// If response is "Yes,N", update extra_guests accordingly
 			if params["response"] != "No" && len(params["response"]) > 4 {
 				parts := strings.Split(params["response"], ",")
@@ -102,14 +102,14 @@ func UpdateHandler(applicationContext *config.ApplicationContext) http.HandlerFu
 				baseHandler.HandleError(w, parseError, utils.ValidationError, "Invalid extra guests value")
 				return
 			}
-			
+
 			// Validate guest count
 			if newExtraGuests < 0 || newExtraGuests > utils.MaxGuestCount {
-				baseHandler.HandleError(w, errors.New("invalid guest count"), utils.ValidationError, 
+				baseHandler.HandleError(w, errors.New("invalid guest count"), utils.ValidationError,
 					"Guest count must be between 0 and "+strconv.Itoa(utils.MaxGuestCount))
 				return
 			}
-			
+
 			rsvpRecord.ExtraGuests = newExtraGuests
 		}
 
@@ -120,16 +120,16 @@ func UpdateHandler(applicationContext *config.ApplicationContext) http.HandlerFu
 		}
 
 		// Check if event_id was provided (for admin editing flow)
-		eventID := baseHandler.GetParam(r, "event_id")
+		eventID := baseHandler.GetParam(r, config.EventIDParam)
 		if eventID != "" {
 			// Redirect back to the RSVP list page for this event
 			baseHandler.RedirectWithParams(w, r, map[string]string{
-				"event_id": eventID,
+				config.EventIDParam: eventID,
 			})
 		} else {
 			// Redirect back to the RSVP detail page (for invitee flow)
 			baseHandler.RedirectWithParams(w, r, map[string]string{
-				"id": rsvpID,
+				config.RSVPIDParam: rsvpID,
 			})
 		}
 	}

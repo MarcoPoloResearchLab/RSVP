@@ -1,13 +1,14 @@
 package routes
 
 import (
+	"net/http"
+
 	gconstants "github.com/temirov/GAuss/pkg/constants"
 	"github.com/temirov/GAuss/pkg/gauss"
 	"github.com/temirov/GAuss/pkg/session"
 	"github.com/temirov/RSVP/pkg/config"
 	"github.com/temirov/RSVP/pkg/handlers/event"
 	"github.com/temirov/RSVP/pkg/handlers/rsvp"
-	"net/http"
 )
 
 type Routes struct {
@@ -62,26 +63,22 @@ func (routes Routes) RegisterMiddleware(mux *http.ServeMux) {
 func (routes Routes) RegisterRoutes(mux *http.ServeMux) {
 	// Register the root route with the dedicated handler.
 	mux.HandleFunc(config.WebRoot, routes.RootRedirectHandler)
-	// Register event routes using the authentication middleware.
-	//mux.Handle(config.WebEvents, gauss.AuthMiddleware(event.List(routes.ApplicationContext)))
+
 	// Register event routes using the event router
 	mux.Handle(config.WebEvents, gauss.AuthMiddleware(event.EventRouter(routes.ApplicationContext)))
-	
-	// Register RSVP routes using the RSVP router
-	mux.Handle(config.WebRSVPs, gauss.AuthMiddleware(rsvp.RSVPRouter(routes.ApplicationContext)))
 
-	//mux.HandleFunc("/events/new", handlers.EventNew)
-	//mux.HandleFunc("/events/create", handlers.EventCreate)
-	//mux.HandleFunc("/events/show", handlers.EventShow)
-	//mux.HandleFunc("/events/edit", handlers.EventEdit)
-	//mux.HandleFunc("/events/update", handlers.EventUpdate)
-	//mux.HandleFunc("/events/delete", handlers.EventDelete)
-	//
-	//// RSVP routes (nested under events by convention)
-	//mux.HandleFunc("/events/rsvps", handlers.RSVPList)
-	//mux.HandleFunc("/events/rsvps/new", handlers.RSVPNew)
-	//mux.HandleFunc("/events/rsvps/create", handlers.RSVPCreate)
-	//mux.HandleFunc("/events/rsvps/edit", handlers.RSVPEdit)
-	//mux.HandleFunc("/events/rsvps/update", handlers.RSVPUpdate)
-	//mux.HandleFunc("/events/rsvps/delete", handlers.RSVPDelete)
+	// Register RSVP routes with visualization support
+	mux.HandleFunc(config.WebRSVPs, func(w http.ResponseWriter, r *http.Request) {
+		// Check if the print parameter is present for visualization
+		if r.URL.Query().Get("print") == "true" {
+			// Use the visualization handler
+			gauss.AuthMiddleware(rsvp.VisualizationHandler(routes.ApplicationContext)).ServeHTTP(w, r)
+		} else {
+			// Use the regular RSVP router
+			gauss.AuthMiddleware(rsvp.RSVPRouter(routes.ApplicationContext)).ServeHTTP(w, r)
+		}
+	})
+
+	// Register unprotected RSVP response route
+	mux.HandleFunc("/rsvp", rsvp.ResponseHandler(routes.ApplicationContext))
 }

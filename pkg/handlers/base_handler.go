@@ -4,6 +4,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"strings"
 
 	"github.com/temirov/RSVP/pkg/config"
 	"github.com/temirov/RSVP/pkg/utils"
@@ -26,19 +27,19 @@ func NewBaseHandler(appContext *config.ApplicationContext, resourceName, resourc
 }
 
 // GetUserData retrieves user data from the session
-func (h *BaseHandler) GetUserData(r *http.Request) *LoggedUserData {
-	return GetUserData(r, h.ApplicationContext)
+func (handler *BaseHandler) GetUserData(request *http.Request) *LoggedUserData {
+	return GetUserData(request, handler.ApplicationContext)
 }
 
 // ValidateMethod checks if the request method is one of the allowed methods
-func (h *BaseHandler) ValidateMethod(w http.ResponseWriter, r *http.Request, allowedMethods ...string) bool {
-	for _, method := range allowedMethods {
-		if r.Method == method {
+func (handler *BaseHandler) ValidateMethod(responseWriter http.ResponseWriter, request *http.Request, allowedMethods ...string) bool {
+	for _, methodName := range allowedMethods {
+		if request.Method == methodName {
 			return true
 		}
 	}
 
-	http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+	http.Error(responseWriter, "Method Not Allowed", http.StatusMethodNotAllowed)
 	return false
 }
 
@@ -46,14 +47,14 @@ func (h *BaseHandler) ValidateMethod(w http.ResponseWriter, r *http.Request, all
 // This method assumes the request has already passed through the gauss.AuthMiddleware,
 // which guarantees that only authenticated users reach this point.
 // It returns the user data and a boolean indicating if the user is authenticated.
-func (h *BaseHandler) RequireAuthentication(w http.ResponseWriter, r *http.Request) (*LoggedUserData, bool) {
-	sessionData := h.GetUserData(r)
+func (handler *BaseHandler) RequireAuthentication(responseWriter http.ResponseWriter, request *http.Request) (*LoggedUserData, bool) {
+	sessionData := handler.GetUserData(request)
 	isAuthenticated := sessionData.UserEmail != ""
-	
+
 	if !isAuthenticated {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		http.Error(responseWriter, "Unauthorized", http.StatusUnauthorized)
 	}
-	
+
 	return sessionData, isAuthenticated
 }
 
@@ -61,87 +62,102 @@ func (h *BaseHandler) RequireAuthentication(w http.ResponseWriter, r *http.Reque
 // It takes a resource ID, a function to find the resource owner ID, and the current user ID.
 // It returns true if the user owns the resource, false otherwise.
 // If the resource is not found or the user is not the owner, it returns an appropriate HTTP error.
-func (h *BaseHandler) VerifyResourceOwnership(w http.ResponseWriter, resourceID string, 
+func (handler *BaseHandler) VerifyResourceOwnership(responseWriter http.ResponseWriter, resourceID string,
 	findOwnerIDFunc func(string) (string, error), currentUserID string) bool {
-	
+
 	// If no resource ID is provided, return true (creating a new resource)
 	if resourceID == "" {
 		return true
 	}
-	
+
 	// Find the resource owner ID
 	ownerID, findError := findOwnerIDFunc(resourceID)
 	if findError != nil {
-		h.HandleError(w, findError, utils.NotFoundError, "Resource not found")
+		handler.HandleError(responseWriter, findError, utils.NotFoundError, "Resource not found")
 		return false
 	}
-	
+
 	// Check if the current user is the owner
 	if ownerID != currentUserID {
-		http.Error(w, "Forbidden", http.StatusForbidden)
+		http.Error(responseWriter, "Forbidden", http.StatusForbidden)
 		return false
 	}
-	
+
 	return true
 }
 
 // GetParam extracts a parameter from the request
-func (h *BaseHandler) GetParam(r *http.Request, paramName string) string {
-	return utils.GetParam(r, paramName, utils.BothParams)
+func (handler *BaseHandler) GetParam(request *http.Request, paramName string) string {
+	return utils.GetParam(request, paramName, utils.BothParams)
 }
 
 // GetParams extracts multiple parameters from the request
-func (h *BaseHandler) GetParams(r *http.Request, paramNames ...string) map[string]string {
-	return utils.GetParams(r, paramNames, utils.BothParams)
+func (handler *BaseHandler) GetParams(request *http.Request, paramNames ...string) map[string]string {
+	return utils.GetParams(request, paramNames, utils.BothParams)
 }
 
 // RequireParams ensures all required parameters are present
-func (h *BaseHandler) RequireParams(w http.ResponseWriter, r *http.Request, paramNames ...string) (map[string]string, bool) {
-	params := h.GetParams(r, paramNames...)
-	
-	for _, name := range paramNames {
-		if params[name] == "" {
-			http.Error(w, name+" is required", http.StatusBadRequest)
+func (handler *BaseHandler) RequireParams(responseWriter http.ResponseWriter, request *http.Request, paramNames ...string) (map[string]string, bool) {
+	params := handler.GetParams(request, paramNames...)
+
+	for _, paramName := range paramNames {
+		if params[paramName] == "" {
+			http.Error(responseWriter, paramName+" is required", http.StatusBadRequest)
 			return params, false
 		}
 	}
-	
+
 	return params, true
 }
 
 // RedirectToList redirects to the list view for the resource
-func (h *BaseHandler) RedirectToList(w http.ResponseWriter, r *http.Request) {
-	http.Redirect(w, r, h.ResourcePath, http.StatusSeeOther)
+func (handler *BaseHandler) RedirectToList(responseWriter http.ResponseWriter, request *http.Request) {
+	http.Redirect(responseWriter, request, handler.ResourcePath, http.StatusSeeOther)
 }
 
 // RedirectToResource redirects to a specific resource
-func (h *BaseHandler) RedirectToResource(w http.ResponseWriter, r *http.Request, resourceID string) {
-	redirectURL, _ := url.Parse(h.ResourcePath)
+func (handler *BaseHandler) RedirectToResource(responseWriter http.ResponseWriter, request *http.Request, resourceID string) {
+	redirectURL, _ := url.Parse(handler.ResourcePath)
 	queryParams := redirectURL.Query()
-	queryParams.Set("id", resourceID)
+
+	// Use the appropriate ID parameter name based on resource type
+	var idParamName string
+	if handler.ResourceName == "Event" {
+		idParamName = config.EventIDParam
+	} else if handler.ResourceName == "RSVP" {
+		idParamName = config.RSVPIDParam
+	} else if handler.ResourceName == "User" {
+		idParamName = config.UserIDParam
+	} else {
+		// Fallback to a specific name derived from resource
+		// This should rarely happen since we define constants for core resources
+		idParamName = strings.ToLower(handler.ResourceName) + "_id"
+	}
+
+	queryParams.Set(idParamName, resourceID)
 	redirectURL.RawQuery = queryParams.Encode()
-	http.Redirect(w, r, redirectURL.String(), http.StatusSeeOther)
+	http.Redirect(responseWriter, request, redirectURL.String(), http.StatusSeeOther)
 }
 
 // RedirectWithParams redirects to a URL with the given parameters
-func (h *BaseHandler) RedirectWithParams(w http.ResponseWriter, r *http.Request, params map[string]string) {
-	utils.RedirectWithParams(w, r, h.ResourcePath, params, http.StatusSeeOther)
+func (handler *BaseHandler) RedirectWithParams(responseWriter http.ResponseWriter, request *http.Request, params map[string]string) {
+	utils.RedirectWithParams(responseWriter, request, handler.ResourcePath, params, http.StatusSeeOther)
 }
 
 // HandleError handles an error with appropriate logging and response
-func (h *BaseHandler) HandleError(w http.ResponseWriter, err error, errorType utils.ErrorType, message string) {
-	utils.HandleError(w, err, errorType, h.ApplicationContext.Logger, message)
+func (handler *BaseHandler) HandleError(responseWriter http.ResponseWriter, errorValue error, errorType utils.ErrorType, message string) {
+	utils.HandleError(responseWriter, errorValue, errorType, handler.ApplicationContext.Logger, message)
 }
 
 // RenderTemplate renders a template with the given data
-func (h *BaseHandler) RenderTemplate(w http.ResponseWriter, templateName string, data interface{}) {
-	if err := h.ApplicationContext.Templates.ExecuteTemplate(w, templateName, data); err != nil {
-		h.ApplicationContext.Logger.Printf("Error rendering template %s: %v", templateName, err)
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+func (handler *BaseHandler) RenderTemplate(responseWriter http.ResponseWriter, templateName string, data interface{}) {
+	if templateError := handler.ApplicationContext.Templates.ExecuteTemplate(responseWriter, templateName, data); templateError != nil {
+		handler.ApplicationContext.Logger.Printf("Error rendering template %s: %v", templateName, templateError)
+		http.Error(responseWriter, "Internal Server Error", http.StatusInternalServerError)
 	}
 }
 
 // Logger returns the application logger
-func (h *BaseHandler) Logger() *log.Logger {
-	return h.ApplicationContext.Logger
+func (handler *BaseHandler) Logger() *log.Logger {
+	return handler.ApplicationContext.Logger
 }

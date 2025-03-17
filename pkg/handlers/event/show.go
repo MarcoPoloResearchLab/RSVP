@@ -21,11 +21,11 @@ func ShowHandler(applicationContext *config.ApplicationContext) http.HandlerFunc
 		}
 
 		// Require event ID parameter
-		params, valid := baseHandler.RequireParams(responseWriter, request, "id")
+		params, valid := baseHandler.RequireParams(responseWriter, request, config.EventIDParam)
 		if !valid {
 			return
 		}
-		eventID := params["id"]
+		eventID := params[config.EventIDParam]
 
 		// Get authenticated user data (authentication is guaranteed by middleware)
 		sessionData, _ := baseHandler.RequireAuthentication(responseWriter, request)
@@ -45,12 +45,12 @@ func ShowHandler(applicationContext *config.ApplicationContext) http.HandlerFunc
 			}
 			return event.UserID, nil
 		}
-		
+
 		// Verify that the current user owns the event
 		if !baseHandler.VerifyResourceOwnership(responseWriter, eventID, findEventOwnerID, currentUser.ID) {
 			return
 		}
-		
+
 		// Load the event with its RSVPs
 		var eventRecord models.Event
 		if loadEventError := eventRecord.LoadWithRSVPs(applicationContext.Database, eventID); loadEventError != nil {
@@ -65,18 +65,25 @@ func ShowHandler(applicationContext *config.ApplicationContext) http.HandlerFunc
 			}
 		}
 
+		// Need to pass an empty Events array to make the template happy
+		var eventsWithStats []EventWithStats
+
 		// Prepare template data
 		templateData := struct {
-			UserPicture string
-			UserName    string
-			Event       models.Event
+			UserPicture    string
+			UserName       string
+			Events         []EventWithStats
+			SelectedEvent  models.Event
+			CreateEventURL string
 		}{
-			UserPicture: sessionData.UserPicture,
-			UserName:    sessionData.UserName,
-			Event:       eventRecord,
+			UserPicture:    sessionData.UserPicture,
+			UserName:       sessionData.UserName,
+			Events:         eventsWithStats,
+			SelectedEvent:  eventRecord,
+			CreateEventURL: config.WebEvents,
 		}
 
 		// Render the template
-		baseHandler.RenderTemplate(responseWriter, "event_detail.html", templateData)
+		baseHandler.RenderTemplate(responseWriter, config.TemplateEvents, templateData)
 	}
 }

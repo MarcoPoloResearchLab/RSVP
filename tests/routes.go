@@ -8,7 +8,6 @@ import (
 	"github.com/temirov/RSVP/pkg/config"
 	"github.com/temirov/RSVP/pkg/handlers/event"
 	"github.com/temirov/RSVP/pkg/handlers/rsvp"
-	// Use the constants from the tests package
 )
 
 // Routes holds the application context for integration routes
@@ -43,8 +42,18 @@ func (routes *Routes) RegisterRoutes(mux *http.ServeMux) {
 	// Register event routes with test auth middleware
 	mux.Handle(config.WebEvents, TestAuthMiddleware(event.EventRouter(routes.ApplicationContext)))
 
-	// Register RSVP routes with test auth middleware
-	mux.Handle(config.WebRSVPs, TestAuthMiddleware(rsvp.RSVPRouter(routes.ApplicationContext)))
+	// Register RSVP routes with visualization support
+	mux.HandleFunc(config.WebRSVPs, func(w http.ResponseWriter, r *http.Request) {
+		// Check if the print parameter is present for visualization
+		if r.URL.Query().Get("print") == "true" {
+			// Use the visualization handler with test auth middleware
+			TestAuthMiddleware(rsvp.VisualizationHandler(routes.ApplicationContext)).ServeHTTP(w, r)
+		} else {
+			// Use the regular RSVP router with test auth middleware
+			TestAuthMiddleware(rsvp.RSVPRouter(routes.ApplicationContext)).ServeHTTP(w, r)
+		}
+	})
 
-	// Add any other routes needed for testing
+	// Register unprotected RSVP response route
+	mux.HandleFunc("/rsvp", rsvp.ResponseHandler(routes.ApplicationContext))
 }

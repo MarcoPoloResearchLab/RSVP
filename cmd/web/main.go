@@ -23,7 +23,7 @@ import (
 const (
 	HttpPort        = 8080
 	HttpIP          = "0.0.0.0"
-	TemplatesGlob   = "./templates/**/*.html"
+	TemplatesGlob   = "./templates/*.html"
 	ShutdownTimeout = 10 * time.Second
 )
 

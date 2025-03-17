@@ -12,6 +12,15 @@ The current focus is on code refactoring and enhancing the QR RSVP Tracker appli
    - **Code Duplication**: Eliminating redundant code through abstraction and reuse
 
 2. **User Experience**: Enhancing the UI/UX for both event organizers and invitees
+   - **Single-Page Functionality**: Ensuring each page handles all related operations without navigation
+   - **In-Page Forms**: Implementing forms that appear within the same page rather than navigating to separate pages
+   - **Minimal JavaScript**: Using HTML links and forms with minimal JavaScript when possible
+   - **Consistent Entity Management Pattern**: Both Events and RSVPs pages follow identical UI/UX patterns:
+     - **List View Always Present**: The entity list (events or RSVPs) always remains visible on screen
+     - **Empty State Handling**: When no entities exist, an "Add" button (for events) or "New" button (for RSVPs) is prominently displayed
+     - **In-Page Form Display**: When the Add/New button is clicked, a form appears above the entity table
+     - **Comprehensive Form Controls**: All forms display complete entity details and provide consistent Cancel, Delete, and Update buttons
+     - **Persistent Context**: Users never lose sight of their entity list, maintaining context while performing actions
 
 3. **Code Organization**: Refining the structure and patterns for better maintainability
 
@@ -36,6 +45,14 @@ The current focus is on code refactoring and enhancing the QR RSVP Tracker appli
 - Ensured all tests follow the project's code quality standards
 - Updated documentation to reflect the comprehensive testing approach
 
+### Event Model Duration Calculation Fix
+- Added a proper `DurationHours` method to the Event model to calculate the duration in hours between start and end times
+- The method is essential for the UI templates which expect to access this information when displaying events
+- Fixed inconsistencies between how backend handlers (which calculate end time based on start time + duration from forms) and UI templates (which need to extract duration from stored start/end times) interact
+- Ensured `ShowHandler` correctly passes all required data fields to templates, including properly structured Events array
+- Fixed UI test cases to correctly match the actual application flow (e.g., RSVP forms exist on RSVP pages, not event detail pages)
+- Updated test variable naming conventions to be consistent and descriptive (avoiding single letter variables like `t`)
+
 ### Integration Test Improvements
 - Enhanced the `Cleanup` method in integration tests to properly remove temporary database files
 - Improved error handling in test cleanup to ensure resources are properly released
@@ -49,6 +66,25 @@ The current focus is on code refactoring and enhancing the QR RSVP Tracker appli
 - Centralized test user data in a single location for consistency
 - Removed redundant TestEventOperations and TestRSVPOperations wrapper functions
 - Eliminated unnecessary main_test.go file
+- Modified database path handling to store test databases in the system's temporary directory
+- Enhanced test cleanup to search in multiple directories for database files
+- Added more robust error handling and logging for test database cleanup operations
+
+### Test Files Overview
+The project includes a comprehensive suite of tests that verify different aspects of functionality:
+
+| Test File | Purpose |
+| --- | --- |
+| `authorization_test.go` | Tests for access control mechanisms, ownership verification, and security boundaries |
+| `delegation_test.go` | Tests for event ownership transfer functionality between users |
+| `edge_cases_test.go` | Tests for handling special cases, boundary conditions, and error scenarios |
+| `event_edit_form_test.go` | Tests for the event editing UI components and form functionality |
+| `event_test.go` | Tests for core event CRUD operations and related functionality |
+| `form_integration_test.go` | Tests for form submissions and the integration between UI forms and backend handlers |
+| `relationship_test.go` | Tests for event-RSVP relationships, cascading operations, and data integrity |
+| `rsvp_test.go` | Tests for core RSVP CRUD operations and related functionality |
+| `ui_interaction_test.go` | Tests for user interface interactions, navigation flows, and UI component behavior |
+| `validation_test.go` | Tests for input validation rules, error messages, and validation error handling |
 
 ### RESTful API Reorganization
 - Restructured handlers to follow RESTful naming conventions (list, create, show, update, delete)
@@ -74,6 +110,19 @@ The current focus is on code refactoring and enhancing the QR RSVP Tracker appli
 - Improved navigation between events and RSVPs with direct links
 - Redesigned RSVP list page to match the events page layout
 - Added RSVP editing functionality similar to event editing
+
+### UX Enhancement Implementation
+- Created four HTML files for improved user experience:
+  - `events.html`: Single-page interface for managing events (create, list, edit, update, delete)
+  - `rsvps.html`: Single-page interface for managing RSVPs (create, list, edit, update, delete)
+  - `rsvp/visualization.html`: Print-ready visualization with QR code for sharing
+  - `rsvp/response.html`: Unprotected form for invitees to respond to RSVPs
+- Implemented RESTful routing with query parameters:
+  - Protected routes for event and RSVP management (`/events`, `/rsvps`)
+  - Unprotected route for RSVP responses (`/rsvp?code={code}`)
+- Added QR code visualization capabilities with properly encoded URLs
+- Implemented Bootstrap-based responsive design across all pages
+- Maintained existing patterns for UI consistency and code quality
 
 ### Authentication Handling Improvements
 - Removed redundant authentication checks throughout the codebase
@@ -145,4 +194,4 @@ The application can be deployed as a standalone binary or containerized with Doc
 
 ---
 
-**Last Updated:** 03/16/2025 (Updated with comprehensive integration testing implementation)
+**Last Updated:** 03/17/2025 (Updated with Event model duration calculation fixes and test improvements)

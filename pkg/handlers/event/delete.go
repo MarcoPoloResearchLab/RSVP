@@ -21,11 +21,11 @@ func DeleteHandler(applicationContext *config.ApplicationContext) http.HandlerFu
 		}
 
 		// Require event ID parameter
-		params, valid := baseHandler.RequireParams(responseWriter, request, "id")
+		params, valid := baseHandler.RequireParams(responseWriter, request, config.EventIDParam)
 		if !valid {
 			return
 		}
-		eventID := params["id"]
+		eventID := params[config.EventIDParam]
 
 		// Get authenticated user data (authentication is guaranteed by middleware)
 		sessionData, _ := baseHandler.RequireAuthentication(responseWriter, request)
@@ -45,12 +45,12 @@ func DeleteHandler(applicationContext *config.ApplicationContext) http.HandlerFu
 			}
 			return event.UserID, nil
 		}
-		
+
 		// Verify that the current user owns the event
 		if !baseHandler.VerifyResourceOwnership(responseWriter, eventID, findEventOwnerID, currentUser.ID) {
 			return
 		}
-		
+
 		// Load the event from the database
 		var eventRecord models.Event
 		if findError := eventRecord.FindByID(applicationContext.Database, eventID); findError != nil {
@@ -63,7 +63,7 @@ func DeleteHandler(applicationContext *config.ApplicationContext) http.HandlerFu
 			baseHandler.HandleError(responseWriter, deleteRSVPsError, utils.DatabaseError, "Failed to delete associated RSVPs")
 			return
 		}
-		
+
 		// Then delete the event
 		if deletionError := applicationContext.Database.Delete(&eventRecord).Error; deletionError != nil {
 			baseHandler.HandleError(responseWriter, deletionError, utils.DatabaseError, "Failed to delete event")

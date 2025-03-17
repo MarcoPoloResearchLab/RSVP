@@ -34,26 +34,27 @@ func SetupTestContext(testingContext *testing.T) *TestContext {
 	// Initialize session store with a test secret
 	session.NewSession([]byte("test-secret-key-for-integration-tests"))
 
-	// Generate unique database name for this test
-	databaseName := fmt.Sprintf("test_%s.db", utils.Base36Encode(8))
+	// Generate unique database name for this test with a proper path
+	dbBaseName := fmt.Sprintf("test_%s.db", utils.Base36Encode(8))
+	// Store the database path in a temporary directory
+	tempDir := os.TempDir()
+	databasePath := fmt.Sprintf("%s/%s", tempDir, dbBaseName)
 
 	// Create logger for tests
 	testLogger := log.New(os.Stdout, "TEST: ", log.LstdFlags)
 
-	// Initialize database with the unique name
-	databaseConnection := services.InitDatabase(databaseName, testLogger)
+	// Initialize database with the unique name and path
+	databaseConnection := services.InitDatabase(databasePath, testLogger)
 
 	// Create a template set with mock templates for testing
 	templates := template.New("test")
 
 	// Define the templates with the names expected by the handlers
-	template.Must(templates.New("responses.html").Parse(`Mock responses template`))
-	template.Must(templates.New("event_index.html").Parse(`Mock event index template`))
-	template.Must(templates.New("event_detail.html").Parse(`Mock event detail template`))
-	template.Must(templates.New("generate.html").Parse(`Mock generate template`))
+	template.Must(templates.New("events.html").Parse(`Mock events template`))
+	template.Must(templates.New("rsvps.html").Parse(`Mock rsvps template`))
+	template.Must(templates.New("qr.html").Parse(`Mock QR template`))
+	template.Must(templates.New("response.html").Parse(`Mock response template`))
 	template.Must(templates.New("thankyou.html").Parse(`Mock thank you template`))
-	template.Must(templates.New("rsvp.html").Parse(`Mock RSVP template`))
-	template.Must(templates.New("index.html").Parse(`Mock index template`))
 
 	appContext := &config.ApplicationContext{
 		Database:  databaseConnection,
@@ -93,19 +94,20 @@ func SetupTestContext(testingContext *testing.T) *TestContext {
 func (testContext *TestContext) Cleanup() {
 	testContext.EventServer.Close()
 	testContext.RSVPServer.Close()
-	
-	// Get the database file path
-	var sequenceNumber int
-	var databaseName string
+
+	// Get the database file path directly from the SQLITE connection
 	var databaseFilePath string
-	
 	databaseInfoRow := testContext.DB.Raw("PRAGMA database_list").Row()
-	if scanError := databaseInfoRow.Scan(&sequenceNumber, &databaseName, &databaseFilePath); scanError != nil {
-		// Log the error but continue with cleanup
-		testContext.AppContext.Logger.Printf("Error getting database path: %v", scanError)
+	if databaseInfoRow != nil {
+		var sequenceNumber int
+		var databaseName string
+		if scanError := databaseInfoRow.Scan(&sequenceNumber, &databaseName, &databaseFilePath); scanError != nil {
+			// Log the error but continue with cleanup
+			testContext.AppContext.Logger.Printf("Error getting database path: %v", scanError)
+		}
 	}
-	
-	// Close the database connection
+
+	// Close the database connection first
 	sqlDatabase, databaseConnectionError := testContext.DB.DB()
 	if databaseConnectionError != nil {
 		testContext.AppContext.Logger.Printf("Error getting SQL DB: %v", databaseConnectionError)
@@ -114,16 +116,40 @@ func (testContext *TestContext) Cleanup() {
 			testContext.AppContext.Logger.Printf("Error closing database: %v", databaseCloseError)
 		}
 	}
-	
-	// Remove the database file if we have a path
+
+	// Find all test database files in the current directory pattern
+	testDbFiles, _ := os.ReadDir(".")
+	for _, file := range testDbFiles {
+		if !file.IsDir() && strings.HasPrefix(file.Name(), "test_") && strings.HasSuffix(file.Name(), ".db") {
+			// Found a test database file, attempt to remove it
+			if fileRemovalError := os.Remove(file.Name()); fileRemovalError != nil {
+				testContext.AppContext.Logger.Printf("Error removing database file %s: %v", file.Name(), fileRemovalError)
+			} else {
+				testContext.AppContext.Logger.Printf("Successfully removed temporary database: %s", file.Name())
+			}
+		}
+	}
+
+	// Also remove the database file if we have a path from PRAGMA
 	if databaseFilePath != "" {
 		if fileRemovalError := os.Remove(databaseFilePath); fileRemovalError != nil {
 			testContext.AppContext.Logger.Printf("Error removing database file %s: %v", databaseFilePath, fileRemovalError)
 		} else {
 			testContext.AppContext.Logger.Printf("Successfully removed temporary database: %s", databaseFilePath)
 		}
-	} else {
-		testContext.AppContext.Logger.Printf("No database path found to clean up")
+	}
+
+	// Finally check for any test database files in the tests directory
+	testsDbFiles, _ := os.ReadDir("tests")
+	for _, file := range testsDbFiles {
+		if !file.IsDir() && strings.HasPrefix(file.Name(), "test_") && strings.HasSuffix(file.Name(), ".db") {
+			filePath := fmt.Sprintf("tests/%s", file.Name())
+			if fileRemovalError := os.Remove(filePath); fileRemovalError != nil {
+				testContext.AppContext.Logger.Printf("Error removing database file %s: %v", filePath, fileRemovalError)
+			} else {
+				testContext.AppContext.Logger.Printf("Successfully removed temporary database: %s", filePath)
+			}
+		}
 	}
 }
 
@@ -154,7 +180,7 @@ func (testContext *TestContext) CreateTestRSVP(eventID string) *models.RSVP {
 func (testContext *TestContext) GetEvent(testingContext *testing.T, eventID string) *http.Response {
 	url := testContext.EventServer.URL + config.WebEvents
 	if eventID != "" {
-		url += "?id=" + eventID
+		url += "?" + config.EventIDParam + "=" + eventID
 	}
 	resp, requestError := http.Get(url)
 	if requestError != nil {
@@ -172,7 +198,7 @@ func (testContext *TestContext) CreateEvent(testingContext *testing.T, formValue
 }
 
 func (testContext *TestContext) UpdateEvent(testingContext *testing.T, eventID string, formValues map[string][]string) *http.Response {
-	url := testContext.EventServer.URL + config.WebEvents + "?id=" + eventID
+	url := testContext.EventServer.URL + config.WebEvents + "?" + config.EventIDParam + "=" + eventID
 	resp, requestError := http.PostForm(url, formValues)
 	if requestError != nil {
 		testingContext.Fatalf("Failed to make POST request: %v", requestError)
@@ -181,7 +207,7 @@ func (testContext *TestContext) UpdateEvent(testingContext *testing.T, eventID s
 }
 
 func (testContext *TestContext) DeleteEvent(testingContext *testing.T, eventID string) *http.Response {
-	req, createError := http.NewRequest(http.MethodDelete, testContext.EventServer.URL+config.WebEvents+"?id="+eventID, nil)
+	req, createError := http.NewRequest(http.MethodDelete, testContext.EventServer.URL+config.WebEvents+"?"+config.EventIDParam+"="+eventID, nil)
 	if createError != nil {
 		testingContext.Fatalf("Failed to create DELETE request: %v", createError)
 	}
@@ -197,36 +223,36 @@ func (testContext *TestContext) GetRSVP(testingContext *testing.T, rsvpID string
 	url := testContext.RSVPServer.URL + config.WebRSVPs
 	params := []string{}
 	if rsvpID != "" {
-		params = append(params, "id="+rsvpID)
+		params = append(params, config.RSVPIDParam+"="+rsvpID)
 	}
 	if eventID != "" {
-		params = append(params, "event_id="+eventID)
+		params = append(params, config.EventIDParam+"="+eventID)
 	}
 	if len(params) > 0 {
 		url += "?" + strings.Join(params, "&")
 	}
-	
+
 	// Create a request
 	req, createError := http.NewRequest(http.MethodGet, url, nil)
 	if createError != nil {
 		testingContext.Fatalf("Failed to create GET request: %v", createError)
 	}
-	
+
 	// Send the request
 	resp, requestError := http.DefaultClient.Do(req)
 	if requestError != nil {
 		testingContext.Fatalf("Failed to make GET request: %v", requestError)
 	}
-	
+
 	return resp
 }
 
 func (testContext *TestContext) CreateRSVP(testingContext *testing.T, eventID string, formValues map[string][]string, useQueryParam bool) *http.Response {
 	url := testContext.RSVPServer.URL + config.WebRSVPs
 	if useQueryParam && eventID != "" {
-		url += "?event_id=" + eventID
+		url += "?" + config.EventIDParam + "=" + eventID
 	} else if !useQueryParam && eventID != "" {
-		formValues["event_id"] = []string{eventID}
+		formValues[config.EventIDParam] = []string{eventID}
 	}
 	resp, requestError := http.PostForm(url, formValues)
 	if requestError != nil {
@@ -236,9 +262,9 @@ func (testContext *TestContext) CreateRSVP(testingContext *testing.T, eventID st
 }
 
 func (testContext *TestContext) UpdateRSVP(testingContext *testing.T, rsvpID string, eventID string, formValues map[string][]string) *http.Response {
-	url := testContext.RSVPServer.URL + config.WebRSVPs + "?id=" + rsvpID
+	url := testContext.RSVPServer.URL + config.WebRSVPs + "?" + config.RSVPIDParam + "=" + rsvpID
 	if eventID != "" {
-		url += "&event_id=" + eventID
+		url += "&" + config.EventIDParam + "=" + eventID
 	}
 	resp, requestError := http.PostForm(url, formValues)
 	if requestError != nil {
@@ -248,9 +274,9 @@ func (testContext *TestContext) UpdateRSVP(testingContext *testing.T, rsvpID str
 }
 
 func (testContext *TestContext) DeleteRSVP(testingContext *testing.T, rsvpID string, eventID string) *http.Response {
-	url := testContext.RSVPServer.URL + config.WebRSVPs + "?id=" + rsvpID
+	url := testContext.RSVPServer.URL + config.WebRSVPs + "?" + config.RSVPIDParam + "=" + rsvpID
 	if eventID != "" {
-		url += "&event_id=" + eventID
+		url += "&" + config.EventIDParam + "=" + eventID
 	}
 	req, createError := http.NewRequest(http.MethodDelete, url, nil)
 	if createError != nil {
@@ -265,12 +291,12 @@ func (testContext *TestContext) DeleteRSVP(testingContext *testing.T, rsvpID str
 
 // DeleteRSVPWithForm simulates a form submission with _method=DELETE
 func (testContext *TestContext) DeleteRSVPWithForm(testingContext *testing.T, rsvpID string, eventID string) *http.Response {
-	url := testContext.RSVPServer.URL + config.WebRSVPs + "?id=" + rsvpID
+	url := testContext.RSVPServer.URL + config.WebRSVPs + "?" + config.RSVPIDParam + "=" + rsvpID
 	if eventID != "" {
-		url += "&event_id=" + eventID
+		url += "&" + config.EventIDParam + "=" + eventID
 	}
 	formValues := make(map[string][]string)
-	formValues["_method"] = []string{"DELETE"}
+	formValues[config.MethodOverrideParam] = []string{"DELETE"}
 	resp, requestError := http.PostForm(url, formValues)
 	if requestError != nil {
 		testingContext.Fatalf("Failed to make POST request with _method=DELETE: %v", requestError)

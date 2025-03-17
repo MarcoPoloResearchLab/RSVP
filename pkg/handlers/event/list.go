@@ -31,14 +31,14 @@ func ListHandler(applicationContext *config.ApplicationContext) http.HandlerFunc
 	// Create a base handler for events
 	baseHandler := handlers.NewBaseHandler(applicationContext, "Event", config.WebEvents)
 
-	return func(w http.ResponseWriter, r *http.Request) {
+	return func(responseWriter http.ResponseWriter, request *http.Request) {
 		// Validate HTTP method
-		if !baseHandler.ValidateMethod(w, r, http.MethodGet) {
+		if !baseHandler.ValidateMethod(responseWriter, request, http.MethodGet) {
 			return
 		}
 
 		// Get authenticated user data (authentication is guaranteed by middleware)
-		sessionData, _ := baseHandler.RequireAuthentication(w, r)
+		sessionData, _ := baseHandler.RequireAuthentication(responseWriter, request)
 
 		// Find or upsert the user
 		var currentUser models.User
@@ -50,7 +50,7 @@ func ListHandler(applicationContext *config.ApplicationContext) http.HandlerFunc
 				sessionData.UserPicture,
 			)
 			if upsertError != nil {
-				baseHandler.HandleError(w, upsertError, utils.DatabaseError, "Failed to upsert user")
+				baseHandler.HandleError(responseWriter, upsertError, utils.DatabaseError, "Failed to upsert user")
 				return
 			}
 			currentUser = *newUser
@@ -58,11 +58,11 @@ func ListHandler(applicationContext *config.ApplicationContext) http.HandlerFunc
 
 		// Load events for this user, also preload RSVPs so we can count them
 		var userEvents []models.Event
-		if queryError := applicationContext.Database.
+		if eventsQueryError := applicationContext.Database.
 			Preload("RSVPs").
 			Where("user_id = ?", currentUser.ID).
-			Find(&userEvents).Error; queryError != nil {
-			baseHandler.HandleError(w, queryError, utils.DatabaseError, "Error retrieving events")
+			Find(&userEvents).Error; eventsQueryError != nil {
+			baseHandler.HandleError(responseWriter, eventsQueryError, utils.DatabaseError, "Error retrieving events")
 			return
 		}
 
@@ -89,20 +89,20 @@ func ListHandler(applicationContext *config.ApplicationContext) http.HandlerFunc
 		}
 
 		// Check if an event ID is provided in the query parameters
-		eventID := baseHandler.GetParam(r, "id")
+		eventID := baseHandler.GetParam(request, config.EventIDParam)
 		var selectedEvent *EnhancedEvent
-		
+
 		if eventID != "" {
 			// Load the selected event
-			var event models.Event
-			if findEventError := event.FindByID(applicationContext.Database, eventID); findEventError == nil {
+			var eventRecord models.Event
+			if findEventError := eventRecord.FindByID(applicationContext.Database, eventID); findEventError == nil {
 				// Calculate duration in hours
-				duration := event.EndTime.Sub(event.StartTime)
-				durationHours := int(duration.Hours())
-				
+				durationTime := eventRecord.EndTime.Sub(eventRecord.StartTime)
+				durationHours := int(durationTime.Hours())
+
 				// Create enhanced event with duration
 				selectedEvent = &EnhancedEvent{
-					Event:         event,
+					Event:         eventRecord,
 					DurationHours: durationHours,
 				}
 			} else {
@@ -126,6 +126,6 @@ func ListHandler(applicationContext *config.ApplicationContext) http.HandlerFunc
 		}
 
 		// Render template
-		baseHandler.RenderTemplate(w, config.EventsList, templateData)
+		baseHandler.RenderTemplate(responseWriter, config.TemplateEvents, templateData)
 	}
 }

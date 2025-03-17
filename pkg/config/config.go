@@ -21,12 +21,33 @@ const (
 )
 
 const (
-	TemplateIndex     = "index.html"
-	TemplateResponses = "responses.html"
-	TemplateGenerate  = "generate.html"
-	TemplateThankYou  = "thankyou.html"
-	TemplateRSVP      = "rsvp.html"
-	EventsList        = "event_index.html"
+	TemplateEvents   = "events.html"
+	TemplateRSVPs    = "rsvps.html"
+	TemplateQR       = "qr.html"
+	TemplateResponse = "response.html"
+	TemplateThankYou = "thankyou.html"
+)
+
+// Parameter name constants for consistent use throughout the application
+const (
+	// ID parameters
+	EventIDParam   = "event_id" // Always use event_id for event identifiers
+	RSVPIDParam    = "rsvp_id"  // Always use rsvp_id for RSVP identifiers
+	UserIDParam    = "user_id"  // Always use user_id for user identifiers
+	GenericIDParam = "id"       // Generic ID parameter (for test compatibility)
+
+	// Other common parameters
+	NameParam        = "name"
+	TitleParam       = "title"
+	DescriptionParam = "description"
+	StartTimeParam   = "start_time"
+	DurationParam    = "duration"
+	ResponseParam    = "response"
+	GuestsParam      = "guests"
+	CodeParam        = "code"
+
+	// Method override parameter
+	MethodOverrideParam = "_method"
 )
 
 // ApplicationContext holds shared resources for the application.
@@ -52,12 +73,12 @@ type EnvConfig struct {
 func NewEnvConfig(logger *log.Logger) *EnvConfig { // Assuming applicationLogger is of type *Logger
 	// Default database name
 	dbName := "rsvps.db"
-	
+
 	// Override with environment variable if provided
 	if envDBName := os.Getenv("DB_NAME"); envDBName != "" {
 		dbName = envDBName
 	}
-	
+
 	config := &EnvConfig{
 		SessionSecret:       os.Getenv("SESSION_SECRET"),
 		GoogleClientID:      os.Getenv("GOOGLE_CLIENT_ID"),

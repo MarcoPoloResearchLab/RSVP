@@ -1,8 +1,9 @@
 package models
 
 import (
-	"gorm.io/gorm"
 	"time"
+
+	"gorm.io/gorm"
 )
 
 // Event represents an event created by a user.
@@ -14,6 +15,12 @@ type Event struct {
 	EndTime     time.Time `gorm:"not null"`
 	UserID      string    `gorm:"type:varchar(8);not null;index"`
 	RSVPs       []RSVP    `gorm:"foreignKey:EventID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
+}
+
+// DurationHours provides the event duration in hours for the UI edit form
+func (event Event) DurationHours() int {
+	duration := event.EndTime.Sub(event.StartTime)
+	return int(duration.Hours())
 }
 
 // BeforeCreate hook to generate a unique base62 ID

@@ -23,11 +23,11 @@ func UpdateHandler(applicationContext *config.ApplicationContext) http.HandlerFu
 		}
 
 		// Require event ID parameter
-		params, valid := baseHandler.RequireParams(responseWriter, request, "id")
+		params, valid := baseHandler.RequireParams(responseWriter, request, config.EventIDParam)
 		if !valid {
 			return
 		}
-		eventID := params["id"]
+		eventID := params[config.EventIDParam]
 
 		// Get authenticated user data (authentication is guaranteed by middleware)
 		sessionData, _ := baseHandler.RequireAuthentication(responseWriter, request)
@@ -44,7 +44,7 @@ func UpdateHandler(applicationContext *config.ApplicationContext) http.HandlerFu
 		newDescription := request.FormValue("description")
 		newStartTimeStr := request.FormValue("start_time")
 		newDurationStr := request.FormValue("duration")
-		
+
 		// Validate title
 		if titleError := utils.ValidateEventTitle(newTitle); titleError != nil {
 			baseHandler.HandleError(responseWriter, titleError, utils.ValidationError, titleError.Error())
@@ -64,7 +64,7 @@ func UpdateHandler(applicationContext *config.ApplicationContext) http.HandlerFu
 			baseHandler.HandleError(responseWriter, parseError, utils.ValidationError, "Invalid start time format")
 			return
 		}
-		
+
 		// Validate that start time is in the future
 		if startTimeValidationError := utils.ValidateEventStartTime(newStartTime); startTimeValidationError != nil {
 			baseHandler.HandleError(responseWriter, startTimeValidationError, utils.ValidationError, startTimeValidationError.Error())
@@ -87,12 +87,12 @@ func UpdateHandler(applicationContext *config.ApplicationContext) http.HandlerFu
 			}
 			return event.UserID, nil
 		}
-		
+
 		// Verify that the current user owns the event
 		if !baseHandler.VerifyResourceOwnership(responseWriter, eventID, findEventOwnerID, currentUser.ID) {
 			return
 		}
-		
+
 		// Load the existing event from the database
 		var eventRecord models.Event
 		if findError := eventRecord.FindByID(applicationContext.Database, eventID); findError != nil {

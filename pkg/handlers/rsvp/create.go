@@ -14,49 +14,61 @@ func CreateHandler(applicationContext *config.ApplicationContext) http.HandlerFu
 	// Create a base handler for RSVPs
 	baseHandler := handlers.NewBaseHandler(applicationContext, "RSVP", config.WebRSVPs)
 
-	return func(w http.ResponseWriter, r *http.Request) {
+	return func(responseWriter http.ResponseWriter, request *http.Request) {
 		// Validate HTTP method
-		if !baseHandler.ValidateMethod(w, r, http.MethodPost) {
+		if !baseHandler.ValidateMethod(responseWriter, request, http.MethodPost) {
 			return
 		}
 
 		// Get event ID parameter
-		eventID := baseHandler.GetParam(r, "event_id")
+		eventID := baseHandler.GetParam(request, config.EventIDParam)
 		if eventID == "" {
-			http.Error(w, "Event ID is required", http.StatusBadRequest)
+			http.Error(responseWriter, "Event ID is required", http.StatusBadRequest)
 			return
 		}
 
 		// Get authenticated user data (authentication is guaranteed by middleware)
-		sessionData, _ := baseHandler.RequireAuthentication(w, r)
+		sessionData, _ := baseHandler.RequireAuthentication(responseWriter, request)
 
 		// Find the current user
 		var currentUser models.User
 		if findUserError := currentUser.FindByEmail(applicationContext.Database, sessionData.UserEmail); findUserError != nil {
-			baseHandler.HandleError(w, findUserError, utils.DatabaseError, "User not found in database")
+			baseHandler.HandleError(responseWriter, findUserError, utils.DatabaseError, "User not found in database")
 			return
 		}
 
 		// Define a function to find the owner ID of an event
 		findEventOwnerID := func(eventID string) (string, error) {
-			var event models.Event
-			if err := event.FindByID(applicationContext.Database, eventID); err != nil {
-				return "", err
+			var eventRecord models.Event
+			if eventFindError := eventRecord.FindByID(applicationContext.Database, eventID); eventFindError != nil {
+				return "", eventFindError
 			}
-			return event.UserID, nil
+			return eventRecord.UserID, nil
 		}
-		
+
 		// Verify that the current user owns the event
-		if !baseHandler.VerifyResourceOwnership(w, eventID, findEventOwnerID, currentUser.ID) {
+		if !baseHandler.VerifyResourceOwnership(responseWriter, eventID, findEventOwnerID, currentUser.ID) {
 			return
 		}
 
-		// Get RSVP name parameter
-		rsvpName := baseHandler.GetParam(r, "name")
-		
+		// Get RSVP name parameter - first try from the form directly since this is POST
+		rsvpName := request.FormValue(config.NameParam)
+		if rsvpName == "" {
+			// Fall back to GetParam which checks both URL and form params
+			rsvpName = baseHandler.GetParam(request, config.NameParam)
+		}
+
+		// Log debug info
+		baseHandler.Logger().Printf("Creating RSVP with name: %s for event: %s", rsvpName, eventID)
+
 		// Validate RSVP name
-		if nameError := utils.ValidateRSVPName(rsvpName); nameError != nil {
-			baseHandler.HandleError(w, nameError, utils.ValidationError, nameError.Error())
+		if rsvpName == "" {
+			baseHandler.HandleError(responseWriter, nil, utils.ValidationError, "RSVP name is required")
+			return
+		}
+
+		if nameValidationError := utils.ValidateRSVPName(rsvpName); nameValidationError != nil {
+			baseHandler.HandleError(responseWriter, nameValidationError, utils.ValidationError, nameValidationError.Error())
 			return
 		}
 
@@ -65,22 +77,22 @@ func CreateHandler(applicationContext *config.ApplicationContext) http.HandlerFu
 			Name:    rsvpName,
 			EventID: eventID,
 		}
-		if createError := newRSVP.Create(applicationContext.Database); createError != nil {
-			baseHandler.HandleError(w, createError, utils.DatabaseError, "Failed to create RSVP")
+		if rsvpCreateError := newRSVP.Create(applicationContext.Database); rsvpCreateError != nil {
+			baseHandler.HandleError(responseWriter, rsvpCreateError, utils.DatabaseError, "Failed to create RSVP")
 			return
 		}
 
 		// Check if the request came from the admin UI (form has event_id)
-		formEventID := baseHandler.GetParam(r, "event_id")
+		formEventID := baseHandler.GetParam(request, config.EventIDParam)
 		if formEventID != "" {
 			// Redirect back to the RSVP list for this event
-			baseHandler.RedirectWithParams(w, r, map[string]string{
-				"event_id": eventID,
+			baseHandler.RedirectWithParams(responseWriter, request, map[string]string{
+				config.EventIDParam: eventID,
 			})
 		} else {
 			// Redirect to the RSVP detail route using the RSVP ID as the code
-			baseHandler.RedirectWithParams(w, r, map[string]string{
-				"id": newRSVP.ID,
+			baseHandler.RedirectWithParams(responseWriter, request, map[string]string{
+				config.RSVPIDParam: newRSVP.ID,
 			})
 		}
 	}

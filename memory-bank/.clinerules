@@ -23,6 +23,8 @@
    - Use GORM methods consistently
    - Implement model methods for common operations
    - Preload relationships when needed
+   - Model methods should provide data in formats expected by templates
+   - For example, `DurationHours()` on the Event model calculates hours from start/end times for UI display
 
 2. **Route Handling**
    - RESTful route naming when possible
@@ -47,6 +49,49 @@
    - Follow consistent patterns for parameter extraction and validation
    - Use typed error handling with appropriate HTTP status codes
    - Use consistent redirection patterns
+
+## Page Structure and Navigation
+
+1. **Page Organization**
+   - The app has four main HTML pages:
+     1. **Events Page (`events.html`)**: Handles everything related to events (list, create, edit, delete)
+     2. **RSVPs Page (`rsvps.html`)**: Handles everything related to RSVPs for a specific event
+     3. **RSVP Visualization Page (`qr.html`)**: Displays QR codes for RSVPs
+     4. **RSVP Response Page (`response.html`)**: Unprotected page for invitees to respond to RSVPs
+     5. **RSVP Thank You Page (`thankyou.html`)**: Unprotected page to thank the invitees for their respond to RSVPs
+
+2. **Page Functionality**
+   - Each page handles multiple operations without requiring navigation to other pages
+   - Entity lists (events or RSVPs) are ALWAYS visible on the screen, regardless of what action is being performed
+   - Forms appear within the same page rather than in separate pages
+   - Navigation between pages is minimal and only for distinct functional areas
+
+3. **Entity Management Pattern**
+   - **Events and RSVPs pages have identical UI/UX patterns**:
+     - Both pages always show a list of their respective entities (events or RSVPs)
+     - Both pages handle empty states consistently:
+       - Events page shows an "Add" button when the user has no events
+       - RSVPs page shows a "New" button when an event has no RSVPs
+     - When Add/New button is clicked, a form appears above the entity table
+     - The form contains all entity details with consistent action buttons (Cancel, Delete, Update)
+     - The entity list remains visible at all times, maintaining user context
+
+4. **Form Interaction Pattern**
+   - When an entity (event or RSVP) is selected for editing:
+     - The edit form appears above the entity list
+     - The form is pre-populated with the entity's current values
+     - The form includes fields for all entity properties
+     - Three consistent action buttons are always present:
+       - Cancel: Hides the form without saving changes
+       - Delete: Removes the entity after confirmation
+       - Update: Saves changes to the entity
+   - Forms use standard HTML, with minimal JavaScript to enhance user experience
+   - Forms submit via standard HTML form submission, not AJAX
+
+5. **Navigation Links**
+   - Links in table rows navigate directly to the appropriate view with query parameters
+   - Events table rows link to the RSVPs page for that event
+   - RSVPs table provides options to view QR codes or visualization
 
 ## Project-Specific Knowledge
 

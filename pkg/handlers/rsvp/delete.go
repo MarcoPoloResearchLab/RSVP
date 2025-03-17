@@ -21,7 +21,7 @@ func DeleteHandler(applicationContext *config.ApplicationContext) http.HandlerFu
 		}
 
 		// Get RSVP ID parameter
-		rsvpID := baseHandler.GetParam(r, "id")
+		rsvpID := baseHandler.GetParam(r, config.RSVPIDParam)
 		if rsvpID == "" {
 			http.Error(w, "RSVP ID is required", http.StatusBadRequest)
 			return
@@ -35,13 +35,13 @@ func DeleteHandler(applicationContext *config.ApplicationContext) http.HandlerFu
 		}
 
 		// Get the event ID for redirection
-		eventID := baseHandler.GetParam(r, "event_id")
-		
+		eventID := baseHandler.GetParam(r, config.EventIDParam)
+
 		// If not provided in the query or form, use the one from the RSVP record
 		if eventID == "" {
 			eventID = rsvpRecord.EventID
 		}
-		
+
 		// Get authenticated user data (authentication is guaranteed by middleware)
 		sessionData, _ := baseHandler.RequireAuthentication(w, r)
 
@@ -51,7 +51,7 @@ func DeleteHandler(applicationContext *config.ApplicationContext) http.HandlerFu
 			baseHandler.HandleError(w, findUserError, utils.DatabaseError, "User not found in database")
 			return
 		}
-		
+
 		// Define a function to find the owner ID of an event
 		findEventOwnerID := func(eventID string) (string, error) {
 			var event models.Event
@@ -60,7 +60,7 @@ func DeleteHandler(applicationContext *config.ApplicationContext) http.HandlerFu
 			}
 			return event.UserID, nil
 		}
-		
+
 		// Verify that the current user owns the event that this RSVP belongs to
 		if !baseHandler.VerifyResourceOwnership(w, rsvpRecord.EventID, findEventOwnerID, currentUser.ID) {
 			return
@@ -74,7 +74,7 @@ func DeleteHandler(applicationContext *config.ApplicationContext) http.HandlerFu
 
 		// Redirect back to the event's RSVPs list
 		baseHandler.RedirectWithParams(w, r, map[string]string{
-			"event_id": eventID,
+			config.EventIDParam: eventID,
 		})
 	}
 }

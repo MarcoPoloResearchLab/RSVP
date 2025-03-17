@@ -45,25 +45,25 @@ func CreateHandler(applicationContext *config.ApplicationContext) http.HandlerFu
 		eventTitle := request.FormValue("title")
 		eventDescription := request.FormValue("description")
 		eventStartTimeStr := request.FormValue("start_time")
-		durationStr := request.FormValue("duration")
+		durationHoursStr := request.FormValue("duration")
 
 		// Validate title
-		if titleError := utils.ValidateEventTitle(eventTitle); titleError != nil {
-			baseHandler.HandleError(responseWriter, titleError, utils.ValidationError, titleError.Error())
+		if titleValidationError := utils.ValidateEventTitle(eventTitle); titleValidationError != nil {
+			baseHandler.HandleError(responseWriter, titleValidationError, utils.ValidationError, titleValidationError.Error())
 			return
 		}
 
 		// Validate duration
-		if durationError := utils.ValidateEventDuration(durationStr); durationError != nil {
-			baseHandler.HandleError(responseWriter, durationError, utils.ValidationError, durationError.Error())
+		if durationValidationError := utils.ValidateEventDuration(durationHoursStr); durationValidationError != nil {
+			baseHandler.HandleError(responseWriter, durationValidationError, utils.ValidationError, durationValidationError.Error())
 			return
 		}
 
 		// Parse and validate start time (expected format: "2006-01-02T15:04")
 		const timeLayout = "2006-01-02T15:04"
-		eventStartTime, startTimeError := time.Parse(timeLayout, eventStartTimeStr)
-		if startTimeError != nil {
-			baseHandler.HandleError(responseWriter, startTimeError, utils.ValidationError, "Invalid start time format")
+		eventStartTime, timeParseError := time.Parse(timeLayout, eventStartTimeStr)
+		if timeParseError != nil {
+			baseHandler.HandleError(responseWriter, timeParseError, utils.ValidationError, "Invalid start time format")
 			return
 		}
 
@@ -74,9 +74,9 @@ func CreateHandler(applicationContext *config.ApplicationContext) http.HandlerFu
 		}
 
 		// Parse duration (in hours)
-		durationHours, parseError := strconv.Atoi(durationStr)
-		if parseError != nil {
-			baseHandler.HandleError(responseWriter, parseError, utils.ValidationError, "Invalid duration value")
+		durationHours, durationParseError := strconv.Atoi(durationHoursStr)
+		if durationParseError != nil {
+			baseHandler.HandleError(responseWriter, durationParseError, utils.ValidationError, "Invalid duration value")
 			return
 		}
 
@@ -92,8 +92,8 @@ func CreateHandler(applicationContext *config.ApplicationContext) http.HandlerFu
 			UserID:      currentUser.ID,
 		}
 
-		if creationError := newEvent.Create(applicationContext.Database); creationError != nil {
-			baseHandler.HandleError(responseWriter, creationError, utils.DatabaseError, "Failed to create event")
+		if eventCreationError := newEvent.Create(applicationContext.Database); eventCreationError != nil {
+			baseHandler.HandleError(responseWriter, eventCreationError, utils.DatabaseError, "Failed to create event")
 			return
 		}
 
