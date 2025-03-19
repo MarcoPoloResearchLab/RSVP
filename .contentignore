@@ -16,3 +16,8 @@ bin/
 *.txt
 *.db
 *.pem
+.golangci.yml
+.gitignore
+.contentignore
+.env.docker
+.env.prod
