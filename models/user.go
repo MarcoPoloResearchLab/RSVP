@@ -1,3 +1,4 @@
+// Package models contains the database models for the RSVP system.
 package models
 
 import (
@@ -7,6 +8,7 @@ import (
 	"gorm.io/gorm"
 )
 
+// User is the persistent record for an authenticated user.
 type User struct {
 	BaseModel
 	Email   string  `gorm:"uniqueIndex;size:255;not null"`
@@ -15,7 +17,7 @@ type User struct {
 	Events  []Event `gorm:"foreignKey:UserID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
 }
 
-// BeforeCreate hook to generate a unique base62 ID.
+// BeforeCreate is a GORM hook that generates a unique base62 ID for this User.
 func (userRecord *User) BeforeCreate(databaseTransaction *gorm.DB) error {
 	if userRecord.ID == "" {
 		generatedID, generateIDError := EnsureUniqueID(databaseTransaction, "users", GenerateBase62ID)
@@ -46,8 +48,6 @@ func (userRecord *User) Create(databaseConnection *gorm.DB) error {
 func (userRecord *User) Save(databaseConnection *gorm.DB) error {
 	return databaseConnection.Save(userRecord).Error
 }
-
-// Removed LoadWithEvents – no longer used.
 
 // UpsertUser creates or updates a user record based on the email.
 func UpsertUser(

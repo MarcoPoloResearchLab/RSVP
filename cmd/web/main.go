@@ -1,10 +1,10 @@
+// Package main is the entry point for the RSVP application.
 package main
 
 import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/temirov/RSVP/pkg/routes"
 	"html/template"
 	"net/http"
 	"os"
@@ -15,17 +15,24 @@ import (
 	"github.com/temirov/GAuss/pkg/gauss"
 	"github.com/temirov/GAuss/pkg/session"
 	"github.com/temirov/RSVP/pkg/config"
+	"github.com/temirov/RSVP/pkg/routes"
 	"github.com/temirov/RSVP/pkg/services"
 	"github.com/temirov/RSVP/pkg/utils"
 )
 
-const (
-	HttpPort        = 8080
-	HttpIP          = "0.0.0.0"
-	TemplatesGlob   = "./templates/*.html"
-	ShutdownTimeout = 10 * time.Second
-)
+// HTTPPort is the default port for the web server.
+const HTTPPort = 8080
 
+// HTTPIP is the default IP address for the web server.
+const HTTPIP = "0.0.0.0"
+
+// TemplatesGlob is the pattern used to load all HTML templates.
+const TemplatesGlob = "./templates/*.html"
+
+// ShutdownTimeout is the duration for graceful shutdown.
+const ShutdownTimeout = 10 * time.Second
+
+// main is the application entry point.
 func main() {
 	applicationLogger := utils.NewLogger()
 	environmentConfiguration := config.NewEnvConfig(applicationLogger)
@@ -58,7 +65,7 @@ func main() {
 	route.RegisterMiddleware(httpRouter)
 	route.RegisterRoutes(httpRouter)
 
-	serverAddress := fmt.Sprintf("%s:%d", HttpIP, HttpPort)
+	serverAddress := fmt.Sprintf("%s:%d", HTTPIP, HTTPPort)
 	httpServer := &http.Server{
 		Addr:    serverAddress,
 		Handler: httpRouter,

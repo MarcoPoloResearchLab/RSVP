@@ -1,3 +1,4 @@
+// Package handlers provides shared logic for all HTTP handler components.
 package handlers
 
 import (
@@ -8,12 +9,14 @@ import (
 	"github.com/temirov/RSVP/pkg/utils"
 )
 
+// BaseHandler bundles application context, resource name, and resource path.
 type BaseHandler struct {
 	ApplicationContext *config.ApplicationContext
 	ResourceName       string
 	ResourcePath       string
 }
 
+// NewBaseHandler creates a new BaseHandler with the given context, resource name, and resource path.
 func NewBaseHandler(
 	appContext *config.ApplicationContext,
 	resourceName string,
@@ -26,7 +29,7 @@ func NewBaseHandler(
 	}
 }
 
-// LoggedUserData is defined in common.go, imported here from that file.
+// GetUserData retrieves the user's session data.
 func (handler *BaseHandler) GetUserData(httpRequest *http.Request) *LoggedUserData {
 	return GetUserData(httpRequest, handler.ApplicationContext)
 }
@@ -59,7 +62,7 @@ func (handler *BaseHandler) RequireAuthentication(
 	return sessionData, isAuthenticated
 }
 
-// VerifyResourceOwnership checks if the current user is the owner of a resource.
+// VerifyResourceOwnership checks if the current user owns the targeted resource.
 func (handler *BaseHandler) VerifyResourceOwnership(
 	httpResponseWriter http.ResponseWriter,
 	resourceIdentifier string,

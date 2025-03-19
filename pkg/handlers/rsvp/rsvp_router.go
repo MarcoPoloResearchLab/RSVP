@@ -1,3 +1,4 @@
+// Package rsvp contains HTTP handlers and router logic for RSVP resources.
 package rsvp
 
 import (
@@ -7,8 +8,8 @@ import (
 	"github.com/temirov/RSVP/pkg/handlers"
 )
 
-// RSVPRouter dispatches requests under the "/rsvps/" base path.
-func RSVPRouter(applicationContext *config.ApplicationContext) http.HandlerFunc {
+// Router dispatches requests under the "/rsvps/" base path.
+func Router(applicationContext *config.ApplicationContext) http.HandlerFunc {
 	rsvpHandlers := handlers.ResourceHandlers{
 		List:   ListHandler(applicationContext),
 		Create: CreateHandler(applicationContext),

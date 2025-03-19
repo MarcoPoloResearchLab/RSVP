@@ -1,3 +1,4 @@
+// Package handlers provides shared logic for all HTTP handler components.
 package handlers
 
 import (
@@ -9,6 +10,7 @@ import (
 	"github.com/temirov/RSVP/pkg/config"
 )
 
+// LoggedUserData holds user information from the session.
 type LoggedUserData struct {
 	UserPicture string
 	UserName    string
@@ -46,7 +48,7 @@ func GetUserData(httpRequest *http.Request, applicationContext *config.Applicati
 	}
 }
 
-// ValidateRSVPCode ensures the RSVP code is alphanumeric.
+// ValidateRSVPCode ensures the RSVP code is alphanumeric up to 8 characters.
 func ValidateRSVPCode(rsvpCode string) bool {
 	var validCodePattern = regexp.MustCompile(`^[0-9a-zA-Z]{1,8}$`)
 	return validCodePattern.MatchString(rsvpCode)

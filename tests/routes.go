@@ -44,7 +44,7 @@ func TestAuthMiddleware(next http.Handler) http.Handler {
 // RegisterRoutes registers all routes without authentication middleware.
 func (routes *Routes) RegisterRoutes(mux *http.ServeMux) {
 	// Register event routes with test auth middleware
-	mux.Handle(config.WebEvents, TestAuthMiddleware(event.EventRouter(routes.ApplicationContext)))
+	mux.Handle(config.WebEvents, TestAuthMiddleware(event.Router(routes.ApplicationContext)))
 
 	// Register RSVP routes with visualization support
 	mux.HandleFunc(config.WebRSVPs, func(w http.ResponseWriter, r *http.Request) {
@@ -54,7 +54,7 @@ func (routes *Routes) RegisterRoutes(mux *http.ServeMux) {
 			TestAuthMiddleware(rsvp.VisualizationHandler(routes.ApplicationContext)).ServeHTTP(w, r)
 		} else {
 			// Use the regular RSVP router with test auth middleware
-			TestAuthMiddleware(rsvp.RSVPRouter(routes.ApplicationContext)).ServeHTTP(w, r)
+			TestAuthMiddleware(rsvp.Router(routes.ApplicationContext)).ServeHTTP(w, r)
 		}
 	})
 

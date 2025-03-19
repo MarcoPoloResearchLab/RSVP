@@ -1,3 +1,4 @@
+// Package models contains the database models for the RSVP system.
 package models
 
 import (
@@ -9,7 +10,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// BaseModel replaces gorm.Model with a string ID.
+// BaseModel replaces gorm.Model with a string-based ID field.
 type BaseModel struct {
 	ID        string `gorm:"primaryKey;type:varchar(8);index"`
 	CreatedAt time.Time
@@ -18,13 +19,13 @@ type BaseModel struct {
 }
 
 const (
-	// Base62Chars contains all characters used for base62 encoding (0-9, A-Z, a-z).
+	// Base62Chars is the charset used for base62 encoding (0-9, A-Z, a-z).
 	Base62Chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
-	// Base36Chars contains all characters used for base36 encoding (0-9, A-Z).
+	// Base36Chars is the charset used for base36 encoding (0-9, A-Z).
 	Base36Chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 	// IDLength is the standard length for IDs.
 	IDLength = 8
-	// MaxAttempts is the maximum number of attempts to generate a unique ID.
+	// MaxAttempts is the maximum number of attempts for unique ID generation.
 	MaxAttempts = 10
 )
 
@@ -61,23 +62,19 @@ func EnsureUniqueID(databaseConnection *gorm.DB, tableName string, generateFunc 
 	var alreadyExists bool
 
 	for attemptIndex := 0; attemptIndex < MaxAttempts; attemptIndex++ {
-		// Generate a new ID
 		generatedID, generationError = generateFunc(IDLength)
 		if generationError != nil {
 			return "", generationError
 		}
 
-		// Check if the ID already exists
 		queryError := databaseConnection.Table(tableName).
 			Select("count(*) > 0").
 			Where("id = ?", generatedID).
 			Scan(&alreadyExists).Error
-
 		if queryError != nil {
 			return "", queryError
 		}
 
-		// If the ID doesn't exist, return it
 		if !alreadyExists {
 			return generatedID, nil
 		}

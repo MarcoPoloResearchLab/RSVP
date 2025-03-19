@@ -1,3 +1,4 @@
+// Package rsvp contains HTTP handlers and router logic for RSVP resources.
 package rsvp
 
 import (
@@ -12,7 +13,7 @@ import (
 	"github.com/temirov/RSVP/pkg/utils"
 )
 
-// ShowHandler handles GET /rsvps?rsvp_id={rsvp_id} and displays the QR code for the RSVP link.
+// ShowHandler handles GET /rsvps?rsvp_id={id} to display a QR code page.
 func ShowHandler(applicationContext *config.ApplicationContext) http.HandlerFunc {
 	baseHandler := handlers.NewBaseHandler(applicationContext, "RSVP", config.WebRSVPs)
 
@@ -22,18 +23,14 @@ func ShowHandler(applicationContext *config.ApplicationContext) http.HandlerFunc
 		}
 
 		rsvpCode := baseHandler.GetParam(httpRequest, config.RSVPIDParam)
-		eventIdentifier := baseHandler.GetParam(httpRequest, config.EventIDParam)
+		eventID := baseHandler.GetParam(httpRequest, config.EventIDParam)
 
-		if rsvpCode == "" {
-			http.Error(httpResponseWriter, "Missing RSVP code", http.StatusBadRequest)
+		if rsvpCode == "" || !handlers.ValidateRSVPCode(rsvpCode) {
+			http.Error(httpResponseWriter, "Invalid or missing RSVP code", http.StatusBadRequest)
 			return
 		}
 
-		if !handlers.ValidateRSVPCode(rsvpCode) {
-			http.Error(httpResponseWriter, "RSVP not found", http.StatusNotFound)
-			return
-		}
-
+		// Load the RSVP record by code
 		var rsvpRecord models.RSVP
 		findError := rsvpRecord.FindByCode(applicationContext.Database, rsvpCode)
 		if findError != nil {
@@ -41,9 +38,11 @@ func ShowHandler(applicationContext *config.ApplicationContext) http.HandlerFunc
 			return
 		}
 
-		if eventIdentifier != "" {
+		// If the URL includes ?event_id=..., verify ownership before we show anything
+		if eventID != "" {
 			sessionData, _ := baseHandler.RequireAuthentication(httpResponseWriter, httpRequest)
 
+			// Load the logged-in user from DB
 			var currentUser models.User
 			findUserError := currentUser.FindByEmail(applicationContext.Database, sessionData.UserEmail)
 			if findUserError != nil {
@@ -51,35 +50,35 @@ func ShowHandler(applicationContext *config.ApplicationContext) http.HandlerFunc
 				return
 			}
 
-			findEventOwnerID := func(eventID string) (string, error) {
-				var eventRecord models.Event
-				loadError := eventRecord.FindByID(applicationContext.Database, eventID)
-				if loadError != nil {
-					return "", loadError
+			// If user doesn’t own that event, forbid
+			findEventOwnerID := func(givenEventID string) (string, error) {
+				var ev models.Event
+				loadErr := ev.FindByID(applicationContext.Database, givenEventID)
+				if loadErr != nil {
+					return "", loadErr
 				}
-				return eventRecord.UserID, nil
+				return ev.UserID, nil
 			}
-
-			if !baseHandler.VerifyResourceOwnership(httpResponseWriter, eventIdentifier, findEventOwnerID, currentUser.ID) {
+			if !baseHandler.VerifyResourceOwnership(httpResponseWriter, eventID, findEventOwnerID, currentUser.ID) {
 				return
 			}
+		}
 
-			baseHandler.RedirectWithParams(httpResponseWriter, httpRequest, map[string]string{
-				config.EventIDParam: eventIdentifier,
-				config.RSVPIDParam:  rsvpCode,
-			})
+		// Require authentication again (to be safe) before showing QR
+		sessionData, authed := baseHandler.RequireAuthentication(httpResponseWriter, httpRequest)
+		if !authed {
 			return
 		}
 
-		sessionData, _ := baseHandler.RequireAuthentication(httpResponseWriter, httpRequest)
-
+		// Load the same user properly from DB, to get the user’s ID
 		var currentUser models.User
-		findUserError := currentUser.FindByEmail(applicationContext.Database, sessionData.UserEmail)
-		if findUserError != nil {
-			baseHandler.HandleError(httpResponseWriter, findUserError, utils.DatabaseError, "User not found in database")
+		loadUserErr := currentUser.FindByEmail(applicationContext.Database, sessionData.UserEmail)
+		if loadUserErr != nil {
+			baseHandler.HandleError(httpResponseWriter, loadUserErr, utils.DatabaseError, "User not found in database")
 			return
 		}
 
+		// Load the associated event
 		var eventRecord models.Event
 		eventFindError := eventRecord.FindByID(applicationContext.Database, rsvpRecord.EventID)
 		if eventFindError != nil {
@@ -87,16 +86,19 @@ func ShowHandler(applicationContext *config.ApplicationContext) http.HandlerFunc
 			return
 		}
 
+		// Correct check: eventRecord.UserID must match the user’s DB ID (not email)
 		if eventRecord.UserID != currentUser.ID {
 			http.Error(httpResponseWriter, "Forbidden", http.StatusForbidden)
 			return
 		}
 
+		// Optional security test header
 		if httpRequest.Header.Get("X-Security-Test") == "true" {
 			http.Error(httpResponseWriter, "Forbidden", http.StatusForbidden)
 			return
 		}
 
+		// Build final RSVP URL for the QR code
 		rsvpURLObject := url.URL{
 			Scheme: "http",
 			Host:   httpRequest.Host,
@@ -110,6 +112,7 @@ func ShowHandler(applicationContext *config.ApplicationContext) http.HandlerFunc
 		rsvpURLObject.RawQuery = queryParams.Encode()
 		finalRSVPURL := rsvpURLObject.String()
 
+		// Generate QR code as base64
 		qrCodeBytes, qrError := qrcode.Encode(finalRSVPURL, qrcode.Medium, 256)
 		if qrError != nil {
 			baseHandler.HandleError(httpResponseWriter, qrError, utils.ServerError, "Failed to generate QR code")
@@ -117,20 +120,21 @@ func ShowHandler(applicationContext *config.ApplicationContext) http.HandlerFunc
 		}
 		qrBase64String := base64.StdEncoding.EncodeToString(qrCodeBytes)
 
-		userSessionData := baseHandler.GetUserData(httpRequest)
-
+		// Render the qr.html template
 		templateData := struct {
-			Name        string
+			RSVP        models.RSVP
+			Event       models.Event
 			QRCode      string
-			RsvpURL     string
+			RSVPUrl     string
 			UserPicture string
 			UserName    string
 		}{
-			Name:        rsvpRecord.Name,
+			RSVP:        rsvpRecord,
+			Event:       eventRecord,
 			QRCode:      qrBase64String,
-			RsvpURL:     finalRSVPURL,
-			UserPicture: userSessionData.UserPicture,
-			UserName:    userSessionData.UserName,
+			RSVPUrl:     finalRSVPURL,
+			UserPicture: sessionData.UserPicture,
+			UserName:    sessionData.UserName,
 		}
 
 		baseHandler.RenderTemplate(httpResponseWriter, config.TemplateQR, templateData)

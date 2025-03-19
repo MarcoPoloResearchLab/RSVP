@@ -1,3 +1,4 @@
+// Package handlers provides shared logic for all HTTP handler components.
 package handlers
 
 import (
@@ -7,6 +8,7 @@ import (
 	"github.com/temirov/RSVP/pkg/utils"
 )
 
+// ResourceHandlers wraps standard CRUD handlers for a resource.
 type ResourceHandlers struct {
 	List   http.HandlerFunc
 	Create http.HandlerFunc
@@ -15,6 +17,7 @@ type ResourceHandlers struct {
 	Delete http.HandlerFunc
 }
 
+// ResourceRouterConfig holds parameters for a ResourceRouter.
 type ResourceRouterConfig struct {
 	IDParam       string
 	ParentIDParam string
@@ -22,6 +25,7 @@ type ResourceRouterConfig struct {
 	ResourceType  string
 }
 
+// DefaultResourceRouterConfig returns default router config for events.
 func DefaultResourceRouterConfig() ResourceRouterConfig {
 	return ResourceRouterConfig{
 		IDParam:       config.EventIDParam,
@@ -31,6 +35,7 @@ func DefaultResourceRouterConfig() ResourceRouterConfig {
 	}
 }
 
+// NewEventRouterConfig returns a router config for event resources.
 func NewEventRouterConfig() ResourceRouterConfig {
 	return ResourceRouterConfig{
 		IDParam:       config.EventIDParam,
@@ -40,6 +45,7 @@ func NewEventRouterConfig() ResourceRouterConfig {
 	}
 }
 
+// NewRSVPRouterConfig returns a router config for RSVP resources.
 func NewRSVPRouterConfig() ResourceRouterConfig {
 	return ResourceRouterConfig{
 		IDParam:       config.RSVPIDParam,
@@ -49,6 +55,7 @@ func NewRSVPRouterConfig() ResourceRouterConfig {
 	}
 }
 
+// NewUserRouterConfig returns a router config for user resources.
 func NewUserRouterConfig() ResourceRouterConfig {
 	return ResourceRouterConfig{
 		IDParam:       config.UserIDParam,
@@ -58,70 +65,53 @@ func NewUserRouterConfig() ResourceRouterConfig {
 	}
 }
 
-// ResourceRouter creates a router for a resource type (event, rsvp, etc.)
+// ResourceRouter is a generic router for CRUD operations on a resource (Event, RSVP, etc.).
 func ResourceRouter(
 	appContext *config.ApplicationContext,
 	resourceHandlers ResourceHandlers,
-	routerConfiguration ResourceRouterConfig,
+	routerConfig ResourceRouterConfig,
 ) http.HandlerFunc {
 	return func(httpResponseWriter http.ResponseWriter, httpRequest *http.Request) {
+		// Parse form if POST
 		if httpRequest.Method == http.MethodPost {
-			formParseError := httpRequest.ParseForm()
-			if formParseError != nil {
+			if err := httpRequest.ParseForm(); err != nil {
 				http.Error(httpResponseWriter, "Invalid form data", http.StatusBadRequest)
 				return
 			}
 		}
 
-		utils.ApplyMethodOverride(httpRequest, routerConfiguration.MethodParam)
+		// Apply _method override if present
+		utils.ApplyMethodOverride(httpRequest, routerConfig.MethodParam)
 
-		var resourceID string
-		var parentResourceID string
-
-		resourceID = httpRequest.URL.Query().Get(routerConfiguration.IDParam)
-		if routerConfiguration.ParentIDParam != "" {
-			parentResourceID = httpRequest.URL.Query().Get(routerConfiguration.ParentIDParam)
-		}
-
+		resourceID := httpRequest.URL.Query().Get(routerConfig.IDParam)
 		if resourceID == "" {
-			resourceID = httpRequest.FormValue(routerConfiguration.IDParam)
+			resourceID = httpRequest.FormValue(routerConfig.IDParam)
 		}
-		if routerConfiguration.ParentIDParam != "" && parentResourceID == "" {
-			parentResourceID = httpRequest.FormValue(routerConfiguration.ParentIDParam)
+
+		var parentResourceID string
+		if routerConfig.ParentIDParam != "" {
+			parentResourceID = httpRequest.URL.Query().Get(routerConfig.ParentIDParam)
+			if parentResourceID == "" {
+				parentResourceID = httpRequest.FormValue(routerConfig.ParentIDParam)
+			}
 		}
 
 		appContext.Logger.Printf(
-			"Request: Method=%s, ResourceID=%s, ParentID=%s",
-			httpRequest.Method,
-			resourceID,
-			parentResourceID,
+			"ResourceRouter: Method=%s Resource=%s Parent=%s",
+			httpRequest.Method, resourceID, parentResourceID,
 		)
 
-		switch {
-		case httpRequest.Method == http.MethodDelete && resourceID != "":
-			if resourceHandlers.Delete != nil {
-				resourceHandlers.Delete.ServeHTTP(httpResponseWriter, httpRequest)
-			} else {
-				http.Error(httpResponseWriter, "Method Not Allowed", http.StatusMethodNotAllowed)
-			}
-
-		case httpRequest.Method == http.MethodGet:
+		switch httpRequest.Method {
+		case http.MethodGet:
 			if resourceID != "" {
-				if routerConfiguration.ResourceType == "RSVP" &&
-					httpRequest.URL.Query().Get("print") == "true" {
-					if resourceHandlers.Show != nil {
-						resourceHandlers.Show.ServeHTTP(httpResponseWriter, httpRequest)
-					} else {
-						http.Error(httpResponseWriter, "Method Not Allowed", http.StatusMethodNotAllowed)
-					}
+				// If there's an ID, call ShowHandler
+				if resourceHandlers.Show != nil {
+					resourceHandlers.Show.ServeHTTP(httpResponseWriter, httpRequest)
 				} else {
-					if resourceHandlers.List != nil {
-						resourceHandlers.List.ServeHTTP(httpResponseWriter, httpRequest)
-					} else {
-						http.Error(httpResponseWriter, "Method Not Allowed", http.StatusMethodNotAllowed)
-					}
+					http.Error(httpResponseWriter, "Method Not Allowed", http.StatusMethodNotAllowed)
 				}
 			} else {
+				// No ID => call ListHandler
 				if resourceHandlers.List != nil {
 					resourceHandlers.List.ServeHTTP(httpResponseWriter, httpRequest)
 				} else {
@@ -129,14 +119,16 @@ func ResourceRouter(
 				}
 			}
 
-		case httpRequest.Method == http.MethodPost:
+		case http.MethodPost:
 			if resourceID != "" {
+				// Resource ID => update
 				if resourceHandlers.Update != nil {
 					resourceHandlers.Update.ServeHTTP(httpResponseWriter, httpRequest)
 				} else {
 					http.Error(httpResponseWriter, "Method Not Allowed", http.StatusMethodNotAllowed)
 				}
 			} else {
+				// No ID => create
 				if resourceHandlers.Create != nil {
 					resourceHandlers.Create.ServeHTTP(httpResponseWriter, httpRequest)
 				} else {
@@ -144,9 +136,9 @@ func ResourceRouter(
 				}
 			}
 
-		case httpRequest.Method == http.MethodPut || httpRequest.Method == http.MethodPatch:
+		case http.MethodPut, http.MethodPatch:
 			if resourceID == "" {
-				http.Error(httpResponseWriter, routerConfiguration.IDParam+" is required", http.StatusBadRequest)
+				http.Error(httpResponseWriter, routerConfig.IDParam+" is required", http.StatusBadRequest)
 				return
 			}
 			if resourceHandlers.Update != nil {
@@ -155,9 +147,9 @@ func ResourceRouter(
 				http.Error(httpResponseWriter, "Method Not Allowed", http.StatusMethodNotAllowed)
 			}
 
-		case httpRequest.Method == http.MethodDelete:
+		case http.MethodDelete:
 			if resourceID == "" {
-				http.Error(httpResponseWriter, routerConfiguration.IDParam+" is required", http.StatusBadRequest)
+				http.Error(httpResponseWriter, routerConfig.IDParam+" is required", http.StatusBadRequest)
 				return
 			}
 			if resourceHandlers.Delete != nil {

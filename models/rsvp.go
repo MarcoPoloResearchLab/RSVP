@@ -1,3 +1,4 @@
+// Package models contains the database models for the RSVP system.
 package models
 
 import (
@@ -13,7 +14,7 @@ type RSVP struct {
 	EventID     string `gorm:"type:varchar(8);not null;index"`
 }
 
-// BeforeCreate hook to generate a unique base36 ID.
+// BeforeCreate is a GORM hook that generates a unique base36 ID for this RSVP.
 func (rsvpRecord *RSVP) BeforeCreate(gormTransaction *gorm.DB) error {
 	if rsvpRecord.ID == "" {
 		uniqueID, uniqueIDError := EnsureUniqueID(gormTransaction, "rsvps", GenerateBase36ID)
@@ -25,7 +26,7 @@ func (rsvpRecord *RSVP) BeforeCreate(gormTransaction *gorm.DB) error {
 	return nil
 }
 
-// FindByCode loads a single RSVP by its ID (which is used as the code).
+// FindByCode loads a single RSVP by its ID (used as the code).
 func (rsvpRecord *RSVP) FindByCode(databaseConnection *gorm.DB, rsvpCode string) error {
 	return databaseConnection.Where("id = ?", rsvpCode).First(rsvpRecord).Error
 }

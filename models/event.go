@@ -1,3 +1,4 @@
+// Package models contains the database models for the RSVP system.
 package models
 
 import (
@@ -18,12 +19,12 @@ type Event struct {
 }
 
 // DurationHours provides the event duration in hours for the UI edit form.
-func (event Event) DurationHours() int {
+func (event *Event) DurationHours() int {
 	eventDuration := event.EndTime.Sub(event.StartTime)
 	return int(eventDuration.Hours())
 }
 
-// BeforeCreate hook to generate a unique base62 ID.
+// BeforeCreate is a GORM hook that generates a unique base62 ID for this Event.
 func (event *Event) BeforeCreate(gormTransaction *gorm.DB) error {
 	if event.ID == "" {
 		uniqueID, uniqueIDError := EnsureUniqueID(gormTransaction, "events", GenerateBase62ID)
@@ -35,18 +36,22 @@ func (event *Event) BeforeCreate(gormTransaction *gorm.DB) error {
 	return nil
 }
 
+// FindByID loads a single Event by its ID.
 func (event *Event) FindByID(databaseConnection *gorm.DB, eventIdentifier string) error {
 	return databaseConnection.Where("id = ?", eventIdentifier).First(event).Error
 }
 
+// Create inserts a new Event into the database.
 func (event *Event) Create(databaseConnection *gorm.DB) error {
 	return databaseConnection.Create(event).Error
 }
 
+// Save updates an existing Event in the database.
 func (event *Event) Save(databaseConnection *gorm.DB) error {
 	return databaseConnection.Save(event).Error
 }
 
+// LoadWithRSVPs loads an Event and its associated RSVPs.
 func (event *Event) LoadWithRSVPs(databaseConnection *gorm.DB, eventIdentifier string) error {
 	return databaseConnection.Preload("RSVPs").Where("id = ?", eventIdentifier).First(event).Error
 }
