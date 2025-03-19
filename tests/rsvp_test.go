@@ -11,7 +11,7 @@ func TestListRSVPs(testingContext *testing.T) {
 	// Setup test context
 	testContext := SetupTestContext(testingContext)
 	defer testContext.Cleanup()
-	
+
 	// Create a test event
 	event := testContext.CreateTestEvent()
 
@@ -40,7 +40,7 @@ func TestCreateRSVP(testingContext *testing.T) {
 	// Setup test context
 	testContext := SetupTestContext(testingContext)
 	defer testContext.Cleanup()
-	
+
 	// Create a test event
 	event := testContext.CreateTestEvent()
 
@@ -101,7 +101,7 @@ func TestShowRSVP(testingContext *testing.T) {
 	// Setup test context
 	testContext := SetupTestContext(testingContext)
 	defer testContext.Cleanup()
-	
+
 	// Create a test event
 	event := testContext.CreateTestEvent()
 
@@ -122,7 +122,7 @@ func TestUpdateRSVP(testingContext *testing.T) {
 	// Setup test context
 	testContext := SetupTestContext(testingContext)
 	defer testContext.Cleanup()
-	
+
 	// Create a test event
 	event := testContext.CreateTestEvent()
 
@@ -159,7 +159,7 @@ func TestDeleteRSVP(testingContext *testing.T) {
 	// Setup test context
 	testContext := SetupTestContext(testingContext)
 	defer testContext.Cleanup()
-	
+
 	// Create a test event
 	event := testContext.CreateTestEvent()
 

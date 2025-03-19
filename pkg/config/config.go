@@ -9,7 +9,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// DatabaseConfig holds database configuration
+// DatabaseConfig holds database configuration.
 type DatabaseConfig struct {
 	Name string // Database file name
 }
@@ -28,15 +28,12 @@ const (
 	TemplateThankYou = "thankyou.html"
 )
 
-// Parameter name constants for consistent use throughout the application
+// Parameter name constants for consistent use throughout the application.
 const (
-	// ID parameters
-	EventIDParam   = "event_id" // Always use event_id for event identifiers
-	RSVPIDParam    = "rsvp_id"  // Always use rsvp_id for RSVP identifiers
-	UserIDParam    = "user_id"  // Always use user_id for user identifiers
-	GenericIDParam = "id"       // Generic ID parameter (for test compatibility)
+	EventIDParam = "event_id"
+	RSVPIDParam  = "rsvp_id"
+	UserIDParam  = "user_id"
 
-	// Other common parameters
 	NameParam        = "name"
 	TitleParam       = "title"
 	DescriptionParam = "description"
@@ -46,8 +43,11 @@ const (
 	GuestsParam      = "guests"
 	CodeParam        = "code"
 
-	// Method override parameter
 	MethodOverrideParam = "_method"
+)
+
+const (
+	DefaultDBName = "rsvps.db"
 )
 
 // ApplicationContext holds shared resources for the application.
@@ -58,7 +58,7 @@ type ApplicationContext struct {
 	AuthService *gauss.Service
 }
 
-// EnvConfig holds all environment variable configurations
+// EnvConfig holds all environment variable configurations.
 type EnvConfig struct {
 	SessionSecret       string
 	GoogleClientID      string
@@ -69,17 +69,15 @@ type EnvConfig struct {
 	Database            DatabaseConfig
 }
 
-// NewEnvConfig creates and validates a new EnvConfig instance
-func NewEnvConfig(logger *log.Logger) *EnvConfig { // Assuming applicationLogger is of type *Logger
-	// Default database name
-	dbName := "rsvps.db"
+// NewEnvConfig creates and validates a new EnvConfig instance.
+func NewEnvConfig(applicationLogger *log.Logger) *EnvConfig {
+	dbName := DefaultDBName
 
-	// Override with environment variable if provided
 	if envDBName := os.Getenv("DB_NAME"); envDBName != "" {
 		dbName = envDBName
 	}
 
-	config := &EnvConfig{
+	configuration := &EnvConfig{
 		SessionSecret:       os.Getenv("SESSION_SECRET"),
 		GoogleClientID:      os.Getenv("GOOGLE_CLIENT_ID"),
 		GoogleClientSecret:  os.Getenv("GOOGLE_CLIENT_SECRET"),
@@ -93,17 +91,17 @@ func NewEnvConfig(logger *log.Logger) *EnvConfig { // Assuming applicationLogger
 
 	// Validate required fields
 	requiredFields := map[string]string{
-		"SESSION_SECRET":       config.SessionSecret,
-		"GOOGLE_CLIENT_ID":     config.GoogleClientID,
-		"GOOGLE_CLIENT_SECRET": config.GoogleClientSecret,
-		"GOOGLE_OAUTH2_BASE":   config.GoogleOauth2Base,
+		"SESSION_SECRET":       configuration.SessionSecret,
+		"GOOGLE_CLIENT_ID":     configuration.GoogleClientID,
+		"GOOGLE_CLIENT_SECRET": configuration.GoogleClientSecret,
+		"GOOGLE_OAUTH2_BASE":   configuration.GoogleOauth2Base,
 	}
 
-	for envVar, value := range requiredFields {
+	for environmentVariable, value := range requiredFields {
 		if value == "" {
-			logger.Fatalf(envVar + " is not set")
+			applicationLogger.Fatalf(environmentVariable + " is not set")
 		}
 	}
 
-	return config
+	return configuration
 }

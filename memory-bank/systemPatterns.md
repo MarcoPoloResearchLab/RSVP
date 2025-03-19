@@ -121,22 +121,69 @@ classDiagram
     }
 ```
 
-### 4.2 RESTful API Structure
-The application follows a RESTful API approach for its routes, using query parameters instead of path parameters:
+### 4.2 URL and Form Submission Patterns
 
-#### Event Routes
-- `GET /events` - Lists all events
-- `POST /events` - Creates a new event
-- `GET /events?id={id}` - Shows a specific event
-- `PUT/POST /events?id={id}` - Updates an event
-- `DELETE /events?id={id}` - Deletes an event
+The application implements strict patterns for URL consistency and form submissions to ensure proper routing and avoid redirect-related data loss.
 
-#### RSVP Routes
-- `GET /rsvps?event_id={id}` - Lists RSVPs for an event
-- `POST /rsvps?event_id={id}` - Creates a new RSVP
-- `GET /rsvps?id={id}` - Shows a specific RSVP
-- `PUT/POST /rsvps?id={id}` - Updates an RSVP
-- `DELETE /rsvps?id={id}` - Deletes an RSVP
+#### 4.2.1 Trailing Slash URL Pattern
+
+All resource URLs MUST use trailing slashes to prevent problematic redirects:
+
+```mermaid
+flowchart TD
+    Request[Form Submission] --> URL{URL Format?}
+    URL -->|With Trailing Slash| Direct[Direct Processing]
+    URL -->|Without Trailing Slash| Redirect[301 Redirect]
+    Direct --> Process[Process Form Data]
+    Redirect --> Loss[Form Data Lost]
+    Process --> Success[Success Response]
+    Loss --> Failure[Operation Fails]
+```
+
+- ✅ CORRECT: `/events/` (trailing slash)
+- ❌ INCORRECT: `/events` (no trailing slash)
+
+**Trailing Slash Requirement**: When browsers submit forms to URLs without trailing slashes, the server responds with a 301 redirect to the same URL with a trailing slash. During this redirect:
+- The browser changes the request from POST to GET
+- All form data is lost, including method override parameters
+- As a result, DELETE operations fail silently
+
+#### 4.2.2 Form Submission Pattern
+
+Form submissions must follow these patterns:
+
+1. **Action URLs**: All form action attributes must use trailing slashes
+   ```html
+   <form action="/events/" method="POST">
+   ```
+
+2. **Parameter Passing**: Use hidden form fields rather than query parameters
+   ```html
+   <input type="hidden" name="event_id" value="{{.ID}}">
+   ```
+   
+3. **Method Overrides**: For non-GET/POST methods (PUT, DELETE), use the _method override parameter
+   ```html
+   <input type="hidden" name="_method" value="DELETE">
+   ```
+
+#### 4.2.3 RESTful API Routes
+
+The application follows a RESTful API approach for its routes, using form data for parameters:
+
+##### Event Routes
+- `GET /events/` - Lists all events
+- `POST /events/` - Creates a new event
+- `GET /events/?event_id={id}` - Shows a specific event
+- `POST /events/` with event_id and fields - Updates an event
+- `POST /events/` with _method=DELETE and event_id - Deletes an event
+
+##### RSVP Routes
+- `GET /rsvps/?event_id={id}` - Lists RSVPs for an event
+- `POST /rsvps/` with event_id - Creates a new RSVP
+- `GET /rsvps/?rsvp_id={id}` - Shows a specific RSVP
+- `POST /rsvps/` with rsvp_id and fields - Updates an RSVP
+- `POST /rsvps/` with _method=DELETE and rsvp_id - Deletes an RSVP
 
 ### 4.3 Handler Organization
 Each HTTP operation is implemented in a dedicated file following RESTful naming conventions:

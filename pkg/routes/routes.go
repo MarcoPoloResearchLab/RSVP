@@ -18,67 +18,56 @@ type Routes struct {
 
 func New(applicationContext *config.ApplicationContext, envConfig config.EnvConfig) *Routes {
 	return &Routes{
-		applicationContext,
-		&envConfig,
+		ApplicationContext: applicationContext,
+		EnvConfig:          &envConfig,
 	}
 }
 
-func (routes Routes) RootRedirectHandler(responseWriter http.ResponseWriter, request *http.Request) {
-	webSession, sessionError := session.Store().Get(request, gconstants.SessionName)
+func (routes Routes) RootRedirectHandler(httpResponseWriter http.ResponseWriter, httpRequest *http.Request) {
+	webSession, sessionError := session.Store().Get(httpRequest, gconstants.SessionName)
 	if sessionError != nil {
-		http.Error(responseWriter, "Internal server error", http.StatusInternalServerError)
+		http.Error(httpResponseWriter, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
-	if userEmail, exists := webSession.Values[gconstants.SessionKeyUserEmail]; exists {
-		if userEmailString, ok := userEmail.(string); ok && userEmailString != "" {
-			http.Redirect(responseWriter, request, config.WebEvents, http.StatusFound)
+	if userEmailValue, exists := webSession.Values[gconstants.SessionKeyUserEmail]; exists {
+		if userEmailString, ok := userEmailValue.(string); ok && userEmailString != "" {
+			http.Redirect(httpResponseWriter, httpRequest, config.WebEvents, http.StatusFound)
 			return
 		}
 	}
 
-	// If not authenticated, redirect to the Google authentication route.
-	http.Redirect(responseWriter, request, gconstants.GoogleAuthPath, http.StatusFound)
+	http.Redirect(httpResponseWriter, httpRequest, gconstants.GoogleAuthPath, http.StatusFound)
 }
 
 func (routes Routes) RegisterMiddleware(mux *http.ServeMux) {
 	session.NewSession([]byte(routes.EnvConfig.SessionSecret))
-	authenticationService, authServiceErr := gauss.NewService(
+	authenticationService, authServiceError := gauss.NewService(
 		routes.EnvConfig.GoogleClientID,
 		routes.EnvConfig.GoogleClientSecret,
 		routes.EnvConfig.GoogleOauth2Base,
 		config.WebRoot,
 	)
-	if authServiceErr != nil {
-		routes.ApplicationContext.Logger.Fatal("Failed to initialize auth service:", authServiceErr)
+	if authServiceError != nil {
+		routes.ApplicationContext.Logger.Fatal("Failed to initialize auth service:", authServiceError)
 	}
 
-	gaussHandlers, gaussHandlersErr := gauss.NewHandlers(authenticationService)
-	if gaussHandlersErr != nil {
-		routes.ApplicationContext.Logger.Fatal("Failed to initialize auth handlers:", gaussHandlersErr)
+	gaussHandlers, gaussHandlersError := gauss.NewHandlers(authenticationService)
+	if gaussHandlersError != nil {
+		routes.ApplicationContext.Logger.Fatal("Failed to initialize auth handlers:", gaussHandlersError)
 	}
 	gaussHandlers.RegisterRoutes(mux)
 }
 
 func (routes Routes) RegisterRoutes(mux *http.ServeMux) {
-	// Register the root route with the dedicated handler.
 	mux.HandleFunc(config.WebRoot, routes.RootRedirectHandler)
-
-	// Register event routes using the event router
 	mux.Handle(config.WebEvents, gauss.AuthMiddleware(event.EventRouter(routes.ApplicationContext)))
-
-	// Register RSVP routes with visualization support
-	mux.HandleFunc(config.WebRSVPs, func(w http.ResponseWriter, r *http.Request) {
-		// Check if the print parameter is present for visualization
-		if r.URL.Query().Get("print") == "true" {
-			// Use the visualization handler
-			gauss.AuthMiddleware(rsvp.VisualizationHandler(routes.ApplicationContext)).ServeHTTP(w, r)
+	mux.HandleFunc(config.WebRSVPs, func(httpResponseWriter http.ResponseWriter, httpRequest *http.Request) {
+		if httpRequest.URL.Query().Get("print") == "true" {
+			gauss.AuthMiddleware(rsvp.VisualizationHandler(routes.ApplicationContext)).ServeHTTP(httpResponseWriter, httpRequest)
 		} else {
-			// Use the regular RSVP router
-			gauss.AuthMiddleware(rsvp.RSVPRouter(routes.ApplicationContext)).ServeHTTP(w, r)
+			gauss.AuthMiddleware(rsvp.RSVPRouter(routes.ApplicationContext)).ServeHTTP(httpResponseWriter, httpRequest)
 		}
 	})
-
-	// Register unprotected RSVP response route
 	mux.HandleFunc("/rsvp", rsvp.ResponseHandler(routes.ApplicationContext))
 }

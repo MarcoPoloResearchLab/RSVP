@@ -10,7 +10,6 @@ import (
 	"github.com/temirov/RSVP/pkg/utils"
 )
 
-// EventWithStats represents an event with additional statistics
 type EventWithStats struct {
 	ID                string
 	Title             string
@@ -20,7 +19,6 @@ type EventWithStats struct {
 	RSVPAnsweredCount int
 }
 
-// EnhancedEvent represents an event with additional calculated fields
 type EnhancedEvent struct {
 	models.Event
 	DurationHours int
@@ -28,81 +26,72 @@ type EnhancedEvent struct {
 
 // ListHandler handles GET requests to list all events.
 func ListHandler(applicationContext *config.ApplicationContext) http.HandlerFunc {
-	// Create a base handler for events
 	baseHandler := handlers.NewBaseHandler(applicationContext, "Event", config.WebEvents)
 
-	return func(responseWriter http.ResponseWriter, request *http.Request) {
-		// Validate HTTP method
-		if !baseHandler.ValidateMethod(responseWriter, request, http.MethodGet) {
+	return func(httpResponseWriter http.ResponseWriter, httpRequest *http.Request) {
+		if !baseHandler.ValidateMethod(httpResponseWriter, httpRequest, http.MethodGet) {
 			return
 		}
 
-		// Get authenticated user data (authentication is guaranteed by middleware)
-		sessionData, _ := baseHandler.RequireAuthentication(responseWriter, request)
+		sessionData, _ := baseHandler.RequireAuthentication(httpResponseWriter, httpRequest)
 
-		// Find or upsert the user
 		var currentUser models.User
-		if findUserError := currentUser.FindByEmail(applicationContext.Database, sessionData.UserEmail); findUserError != nil {
-			newUser, upsertError := models.UpsertUser(
+		userFindError := currentUser.FindByEmail(applicationContext.Database, sessionData.UserEmail)
+		if userFindError != nil {
+			upsertedUser, upsertError := models.UpsertUser(
 				applicationContext.Database,
 				sessionData.UserEmail,
 				sessionData.UserName,
 				sessionData.UserPicture,
 			)
 			if upsertError != nil {
-				baseHandler.HandleError(responseWriter, upsertError, utils.DatabaseError, "Failed to upsert user")
+				baseHandler.HandleError(httpResponseWriter, upsertError, utils.DatabaseError, "Failed to upsert user")
 				return
 			}
-			currentUser = *newUser
+			currentUser = *upsertedUser
 		}
 
-		// Load events for this user, also preload RSVPs so we can count them
 		var userEvents []models.Event
-		if eventsQueryError := applicationContext.Database.
+		eventsQueryError := applicationContext.Database.
 			Preload("RSVPs").
 			Where("user_id = ?", currentUser.ID).
-			Find(&userEvents).Error; eventsQueryError != nil {
-			baseHandler.HandleError(responseWriter, eventsQueryError, utils.DatabaseError, "Error retrieving events")
+			Find(&userEvents).Error
+		if eventsQueryError != nil {
+			baseHandler.HandleError(httpResponseWriter, eventsQueryError, utils.DatabaseError, "Error retrieving events")
 			return
 		}
 
-		// Compute total RSVPs (RSVPCount) and answered RSVPs (RSVPAnsweredCount)
 		var eventsWithStats []EventWithStats
-		for _, eventRecord := range userEvents {
-			rsvpCount := len(eventRecord.RSVPs)
+		for _, singleEvent := range userEvents {
+			rsvpCount := len(singleEvent.RSVPs)
 			rsvpAnsweredCount := 0
-			for _, rsvp := range eventRecord.RSVPs {
-				// "Answered" if the response is not empty/"Pending"
-				if rsvp.Response != "" && rsvp.Response != "Pending" {
+			for _, singleRSVP := range singleEvent.RSVPs {
+				if singleRSVP.Response != "" && singleRSVP.Response != "Pending" {
 					rsvpAnsweredCount++
 				}
 			}
 
 			eventsWithStats = append(eventsWithStats, EventWithStats{
-				ID:                eventRecord.ID,
-				Title:             eventRecord.Title,
-				StartTime:         eventRecord.StartTime,
-				EndTime:           eventRecord.EndTime,
+				ID:                singleEvent.ID,
+				Title:             singleEvent.Title,
+				StartTime:         singleEvent.StartTime,
+				EndTime:           singleEvent.EndTime,
 				RSVPCount:         rsvpCount,
 				RSVPAnsweredCount: rsvpAnsweredCount,
 			})
 		}
 
-		// Check if an event ID is provided in the query parameters
-		eventID := baseHandler.GetParam(request, config.EventIDParam)
+		eventIDFromParams := baseHandler.GetParam(httpRequest, config.EventIDParam)
 		var selectedEvent *EnhancedEvent
 
-		if eventID != "" {
-			// Load the selected event
-			var eventRecord models.Event
-			if findEventError := eventRecord.FindByID(applicationContext.Database, eventID); findEventError == nil {
-				// Calculate duration in hours
-				durationTime := eventRecord.EndTime.Sub(eventRecord.StartTime)
-				durationHours := int(durationTime.Hours())
-
-				// Create enhanced event with duration
+		if eventIDFromParams != "" {
+			var foundEvent models.Event
+			findEventError := foundEvent.FindByID(applicationContext.Database, eventIDFromParams)
+			if findEventError == nil {
+				calculatedDuration := foundEvent.EndTime.Sub(foundEvent.StartTime)
+				durationHours := int(calculatedDuration.Hours())
 				selectedEvent = &EnhancedEvent{
-					Event:         eventRecord,
+					Event:         foundEvent,
 					DurationHours: durationHours,
 				}
 			} else {
@@ -110,7 +99,6 @@ func ListHandler(applicationContext *config.ApplicationContext) http.HandlerFunc
 			}
 		}
 
-		// Pass the final slice to the template
 		templateData := struct {
 			UserPicture    string
 			UserName       string
@@ -125,7 +113,6 @@ func ListHandler(applicationContext *config.ApplicationContext) http.HandlerFunc
 			CreateEventURL: config.WebEvents,
 		}
 
-		// Render template
-		baseHandler.RenderTemplate(responseWriter, config.TemplateEvents, templateData)
+		baseHandler.RenderTemplate(httpResponseWriter, config.TemplateEvents, templateData)
 	}
 }

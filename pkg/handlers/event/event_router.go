@@ -11,22 +11,17 @@ import (
 // It supports:
 //   - GET "/events" for listing events
 //   - POST "/events" for creating a new event
-//   - GET "/events?event_id={event_id}" for viewing event details
+//   - GET "/events?event_id={event_id}" for displaying or editing an existing event
 //   - PUT/POST "/events?event_id={event_id}" for updating an event
 //   - DELETE "/events?event_id={event_id}" for deleting an event
 func EventRouter(applicationContext *config.ApplicationContext) http.HandlerFunc {
-	// Define the handlers for event operations
 	eventHandlers := handlers.ResourceHandlers{
 		List:   ListHandler(applicationContext),
 		Create: CreateHandler(applicationContext),
-		Show:   ShowHandler(applicationContext),
 		Update: UpdateHandler(applicationContext),
 		Delete: DeleteHandler(applicationContext),
 	}
 
-	// Configure the router with event-specific parameters
-	routerConfig := handlers.NewEventRouterConfig()
-
-	// Create and return the resource router
-	return handlers.ResourceRouter(applicationContext, eventHandlers, routerConfig)
+	routerConfiguration := handlers.NewEventRouterConfig()
+	return handlers.ResourceRouter(applicationContext, eventHandlers, routerConfiguration)
 }

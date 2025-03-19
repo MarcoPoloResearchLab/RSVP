@@ -32,6 +32,10 @@
    - Use consistent parameter naming
    - Use the generic resource router for standard CRUD operations
    - Configure resource routers with appropriate parameters
+   - All form submissions must use trailing slashes in action URLs
+   - Form data should be passed using form fields, not query parameters
+   - All URLs must follow the trailing slash pattern (`/events/` not `/events`)
+   - Method overrides for PUT/DELETE must use _method parameter
 
 3. **Authentication**
    - Google OAuth is the only authentication method

@@ -3,6 +3,7 @@ package models
 import (
 	"errors"
 	"log"
+
 	"gorm.io/gorm"
 )
 
@@ -14,103 +15,98 @@ type User struct {
 	Events  []Event `gorm:"foreignKey:UserID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
 }
 
-// BeforeCreate hook to generate a unique base62 ID
-func (user *User) BeforeCreate(databaseTransaction *gorm.DB) error {
-	if user.ID == "" {
-		generatedID, generateError := EnsureUniqueID(databaseTransaction, "users", GenerateBase62ID)
-		if generateError != nil {
-			return generateError
+// BeforeCreate hook to generate a unique base62 ID.
+func (userRecord *User) BeforeCreate(databaseTransaction *gorm.DB) error {
+	if userRecord.ID == "" {
+		generatedID, generateIDError := EnsureUniqueID(databaseTransaction, "users", GenerateBase62ID)
+		if generateIDError != nil {
+			return generateIDError
 		}
-		user.ID = generatedID
+		userRecord.ID = generatedID
 	}
 	return nil
 }
 
 // FindByEmail searches for a user by their email.
-func (user *User) FindByEmail(databaseConnection *gorm.DB, email string) error {
-	return databaseConnection.Where("email = ?", email).First(user).Error
+func (userRecord *User) FindByEmail(databaseConnection *gorm.DB, emailAddress string) error {
+	return databaseConnection.Where("email = ?", emailAddress).First(userRecord).Error
 }
 
 // FindByID searches for a user by their ID.
-func (user *User) FindByID(databaseConnection *gorm.DB, userID string) error {
-	return databaseConnection.Where("id = ?", userID).First(user).Error
+func (userRecord *User) FindByID(databaseConnection *gorm.DB, userIdentifier string) error {
+	return databaseConnection.Where("id = ?", userIdentifier).First(userRecord).Error
 }
 
 // Create inserts a new user into the database.
-func (user *User) Create(databaseConnection *gorm.DB) error {
-	return databaseConnection.Create(user).Error
+func (userRecord *User) Create(databaseConnection *gorm.DB) error {
+	return databaseConnection.Create(userRecord).Error
 }
 
 // Save updates an existing user in the database.
-func (user *User) Save(databaseConnection *gorm.DB) error {
-	return databaseConnection.Save(user).Error
+func (userRecord *User) Save(databaseConnection *gorm.DB) error {
+	return databaseConnection.Save(userRecord).Error
 }
 
-// LoadWithEvents preloads the user's events.
-func (user *User) LoadWithEvents(databaseConnection *gorm.DB, userID string) error {
-	return databaseConnection.Preload("Events").Where("id = ?", userID).First(user).Error
-}
+// Removed LoadWithEvents – no longer used.
 
 // UpsertUser creates or updates a user record based on the email.
-// It logs detailed information about the process for debugging.
 func UpsertUser(
 	databaseConnection *gorm.DB,
-	email string,
-	name string,
-	picture string,
+	emailAddress string,
+	fullName string,
+	pictureURL string,
 ) (*User, error) {
-	var user User
+	var existingUser User
 
 	// Try to find the user by email
-	result := databaseConnection.First(&user, "email = ?", email)
-	if result.Error != nil {
-		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+	findResult := databaseConnection.First(&existingUser, "email = ?", emailAddress)
+	if findResult.Error != nil {
+		if errors.Is(findResult.Error, gorm.ErrRecordNotFound) {
 			// User not found, create a new one
-			log.Printf("User with email %s not found, creating new user", email)
-			user = User{
-				Email:   email,
-				Name:    name,
-				Picture: picture,
+			log.Printf("User with email %s not found, creating new user", emailAddress)
+			existingUser = User{
+				Email:   emailAddress,
+				Name:    fullName,
+				Picture: pictureURL,
 			}
-			
-			// Create the user
-			if createError := databaseConnection.Create(&user).Error; createError != nil {
+
+			if createError := databaseConnection.Create(&existingUser).Error; createError != nil {
 				log.Printf("Error creating user: %v", createError)
 				return nil, createError
 			}
-			
+
 			// Verify the user was created by fetching it again
-			var verifyUser User
-			if verifyError := databaseConnection.First(&verifyUser, "email = ?", email).Error; verifyError != nil {
+			var verificationUser User
+			if verifyError := databaseConnection.First(&verificationUser, "email = ?", emailAddress).Error; verifyError != nil {
 				log.Printf("Warning: User was created but could not be verified: %v", verifyError)
 			} else {
-				log.Printf("User created successfully with ID: %s", verifyUser.ID)
+				log.Printf("User created successfully with ID: %s", verificationUser.ID)
 			}
 		} else {
 			// Some other database error
-			log.Printf("Database error when finding user: %v", result.Error)
-			return nil, result.Error
+			log.Printf("Database error when finding user: %v", findResult.Error)
+			return nil, findResult.Error
 		}
 	} else {
 		// Existing user, update fields if changed
-		log.Printf("Found existing user with ID: %s", user.ID)
-		updated := false
-		if user.Name != name {
-			user.Name = name
-			updated = true
+		log.Printf("Found existing user with ID: %s", existingUser.ID)
+		fieldsUpdated := false
+		if existingUser.Name != fullName {
+			existingUser.Name = fullName
+			fieldsUpdated = true
 		}
-		if user.Picture != picture {
-			user.Picture = picture
-			updated = true
+		if existingUser.Picture != pictureURL {
+			existingUser.Picture = pictureURL
+			fieldsUpdated = true
 		}
-		if updated {
-			log.Printf("Updating user details for ID: %s", user.ID)
-			if saveError := databaseConnection.Save(&user).Error; saveError != nil {
+		if fieldsUpdated {
+			log.Printf("Updating user details for ID: %s", existingUser.ID)
+			if saveError := databaseConnection.Save(&existingUser).Error; saveError != nil {
 				log.Printf("Error updating user: %v", saveError)
 				return nil, saveError
 			}
 		}
 	}
 
-	return &user, nil
+	return &existingUser, nil
 }

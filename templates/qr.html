@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>RSVP QR Code - {{.RSVP.Name}}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400&display=swap" rel="stylesheet">
+    <link href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            background: linear-gradient(135deg, #ffffff, #ffe6f2);
+            font-family: 'Montserrat', sans-serif;
+            color: #333;
+            padding-top: 70px;
+        }
+        .navbar-custom {
+            background: linear-gradient(135deg, #ffffff, #ffe6f2);
+        }
+        .fixed-navbar {
+            position: fixed;
+            top: 0;
+            width: 100%;
+            z-index: 1030;
+        }
+        .qr-container {
+            background: white;
+            padding: 40px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .qr-code {
+            margin: 0 auto;
+            display: block;
+            max-width: 100%;
+            height: auto;
+        }
+        .print-hide {
+            display: block;
+        }
+        @media print {
+            .print-hide {
+                display: none !important;
+            }
+            body {
+                background: white;
+                padding-top: 0;
+            }
+            .container {
+                max-width: 100%;
+                width: 100%;
+            }
+            .qr-container {
+                box-shadow: none;
+                padding: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+<nav class="navbar navbar-expand-lg navbar-custom fixed-navbar print-hide">
+    <a class="navbar-brand" href="#">QR RSVP Tracker</a>
+    <div class="ml-auto">
+        <form action="/logout" method="POST" class="form-inline">
+            <button type="submit" class="btn btn-outline-secondary d-flex align-items-center">
+                <img src="{{.UserPicture}}" alt="{{.UserName}}" class="rounded-circle"
+                     style="width:30px; height:30px; margin-right:5px;">
+                Sign out
+            </button>
+        </form>
+    </div>
+</nav>
+
+<div class="container my-5">
+    <div class="row">
+        <div class="col-md-8 offset-md-2">
+            <div class="qr-container text-center">
+                <h2 class="mb-4">RSVP for {{.RSVP.Name}}</h2>
+                <h4 class="mb-4">Event: {{.Event.Title}}</h4>
+                <p class="mb-4">Date: {{.Event.StartTime.Format "January 2, 2006 at 3:04 PM"}}</p>
+                
+                <div class="qr-wrapper mb-4">
+                    <img src="data:image/png;base64,{{.QRCodeBase64}}" alt="RSVP QR Code" class="qr-code">
+                </div>
+                
+                <p class="mb-2">RSVP Code: <strong>{{.RSVP.ID}}</strong></p>
+                <p class="mb-4">URL: {{.RSVPUrl}}</p>
+                
+                <div class="print-hide mt-5">
+                    <button onclick="window.print();" class="btn btn-primary mb-3">Print QR Code</button>
+                    <div class="mt-3">
+                        <a href="/rsvps/?rsvp_id={{.RSVP.ID}}&event_id={{.Event.ID}}" class="btn btn-outline-secondary mr-2">Edit RSVP</a>
+                        <a href="/rsvps/?event_id={{.Event.ID}}" class="btn btn-outline-secondary">Back to RSVPs</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@4.5.2/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

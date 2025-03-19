@@ -4,14 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/temirov/RSVP/pkg/routes"
 	"html/template"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
-
-	"github.com/temirov/RSVP/pkg/routes"
 
 	"github.com/temirov/GAuss/pkg/gauss"
 	"github.com/temirov/GAuss/pkg/session"
@@ -29,20 +28,21 @@ const (
 
 func main() {
 	applicationLogger := utils.NewLogger()
-	envConfig := config.NewEnvConfig(applicationLogger)
+	environmentConfiguration := config.NewEnvConfig(applicationLogger)
 
-	session.NewSession([]byte(envConfig.SessionSecret))
-	authenticationService, authServiceErr := gauss.NewService(
-		envConfig.GoogleClientID,
-		envConfig.GoogleClientSecret,
-		envConfig.GoogleOauth2Base,
+	session.NewSession([]byte(environmentConfiguration.SessionSecret))
+
+	authenticationService, authenticationServiceError := gauss.NewService(
+		environmentConfiguration.GoogleClientID,
+		environmentConfiguration.GoogleClientSecret,
+		environmentConfiguration.GoogleOauth2Base,
 		config.WebEvents,
 	)
-	if authServiceErr != nil {
-		applicationLogger.Fatal("Failed to initialize auth service:", authServiceErr)
+	if authenticationServiceError != nil {
+		applicationLogger.Fatal("Failed to initialize auth service:", authenticationServiceError)
 	}
 
-	databaseConnection := services.InitDatabase(envConfig.Database.Name, applicationLogger)
+	databaseConnection := services.InitDatabase(environmentConfiguration.Database.Name, applicationLogger)
 	parsedTemplates := template.Must(template.ParseGlob(TemplatesGlob))
 
 	applicationContext := &config.ApplicationContext{
@@ -54,7 +54,7 @@ func main() {
 
 	httpRouter := http.NewServeMux()
 
-	route := routes.New(applicationContext, *envConfig)
+	route := routes.New(applicationContext, *environmentConfiguration)
 	route.RegisterMiddleware(httpRouter)
 	route.RegisterRoutes(httpRouter)
 
@@ -64,20 +64,23 @@ func main() {
 		Handler: httpRouter,
 	}
 
-	if envConfig.CertificateFilePath == "" || envConfig.KeyFilePath == "" {
+	if environmentConfiguration.CertificateFilePath == "" || environmentConfiguration.KeyFilePath == "" {
 		applicationLogger.Printf("Starting HTTP server on http://%s", serverAddress)
 		go func() {
-			serverError := httpServer.ListenAndServe()
-			if serverError != nil && !errors.Is(serverError, http.ErrServerClosed) {
-				applicationLogger.Printf("ListenAndServe error: %v", serverError)
+			listenAndServeError := httpServer.ListenAndServe()
+			if listenAndServeError != nil && !errors.Is(listenAndServeError, http.ErrServerClosed) {
+				applicationLogger.Printf("ListenAndServe error: %v", listenAndServeError)
 			}
 		}()
 	} else {
 		applicationLogger.Printf("Starting HTTPS server on https://%s", serverAddress)
 		go func() {
-			secureServerError := httpServer.ListenAndServeTLS(envConfig.CertificateFilePath, envConfig.KeyFilePath)
-			if secureServerError != nil && !errors.Is(secureServerError, http.ErrServerClosed) {
-				applicationLogger.Printf("ListenAndServeTLS error: %v", secureServerError)
+			listenAndServeTLSError := httpServer.ListenAndServeTLS(
+				environmentConfiguration.CertificateFilePath,
+				environmentConfiguration.KeyFilePath,
+			)
+			if listenAndServeTLSError != nil && !errors.Is(listenAndServeTLSError, http.ErrServerClosed) {
+				applicationLogger.Printf("ListenAndServeTLS error: %v", listenAndServeTLSError)
 			}
 		}()
 	}

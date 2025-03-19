@@ -14,122 +14,110 @@ import (
 
 // UpdateHandler handles PUT/POST requests to update an existing RSVP.
 func UpdateHandler(applicationContext *config.ApplicationContext) http.HandlerFunc {
-	// Create a base handler for RSVPs
 	baseHandler := handlers.NewBaseHandler(applicationContext, "RSVP", config.WebRSVPs)
 
-	return func(w http.ResponseWriter, r *http.Request) {
-		// Validate HTTP method
-		if !baseHandler.ValidateMethod(w, r, http.MethodPost, http.MethodPut, http.MethodPatch) {
+	return func(httpResponseWriter http.ResponseWriter, httpRequest *http.Request) {
+		if !baseHandler.ValidateMethod(httpResponseWriter, httpRequest, http.MethodPost, http.MethodPut, http.MethodPatch) {
 			return
 		}
 
-		// Get RSVP ID parameter
-		rsvpID := baseHandler.GetParam(r, config.RSVPIDParam)
-		if rsvpID == "" {
-			http.Error(w, "RSVP ID is required", http.StatusBadRequest)
+		rsvpIdentifier := baseHandler.GetParam(httpRequest, config.RSVPIDParam)
+		if rsvpIdentifier == "" {
+			http.Error(httpResponseWriter, "RSVP ID is required", http.StatusBadRequest)
 			return
 		}
 
-		// Load the existing RSVP from the database
-		var rsvpRecord models.RSVP
-		if findError := rsvpRecord.FindByCode(applicationContext.Database, rsvpID); findError != nil {
-			baseHandler.HandleError(w, findError, utils.NotFoundError, "RSVP not found")
+		var existingRSVP models.RSVP
+		findError := existingRSVP.FindByCode(applicationContext.Database, rsvpIdentifier)
+		if findError != nil {
+			baseHandler.HandleError(httpResponseWriter, findError, utils.NotFoundError, "RSVP not found")
 			return
 		}
 
-		// Get authenticated user data (authentication is guaranteed by middleware)
-		sessionData, _ := baseHandler.RequireAuthentication(w, r)
+		sessionData, _ := baseHandler.RequireAuthentication(httpResponseWriter, httpRequest)
 
-		// Find the current user
 		var currentUser models.User
-		if findUserError := currentUser.FindByEmail(applicationContext.Database, sessionData.UserEmail); findUserError != nil {
-			baseHandler.HandleError(w, findUserError, utils.DatabaseError, "User not found in database")
+		findUserError := currentUser.FindByEmail(applicationContext.Database, sessionData.UserEmail)
+		if findUserError != nil {
+			baseHandler.HandleError(httpResponseWriter, findUserError, utils.DatabaseError, "User not found in database")
 			return
 		}
 
-		// Define a function to find the owner ID of an event
 		findEventOwnerID := func(eventID string) (string, error) {
-			var event models.Event
-			if err := event.FindByID(applicationContext.Database, eventID); err != nil {
-				return "", err
+			var eventRecord models.Event
+			loadError := eventRecord.FindByID(applicationContext.Database, eventID)
+			if loadError != nil {
+				return "", loadError
 			}
-			return event.UserID, nil
+			return eventRecord.UserID, nil
 		}
 
-		// Verify that the current user owns the event that this RSVP belongs to
-		if !baseHandler.VerifyResourceOwnership(w, rsvpRecord.EventID, findEventOwnerID, currentUser.ID) {
+		if !baseHandler.VerifyResourceOwnership(httpResponseWriter, existingRSVP.EventID, findEventOwnerID, currentUser.ID) {
 			return
 		}
 
-		// Get updated RSVP details from the form
-		params := baseHandler.GetParams(r, "name", "response", "extra_guests")
+		formParams := baseHandler.GetParams(httpRequest, "name", "response", "extra_guests")
 
-		// Update RSVP fields if provided
-		if params["name"] != "" {
-			// Validate name
-			if nameError := utils.ValidateRSVPName(params["name"]); nameError != nil {
-				baseHandler.HandleError(w, nameError, utils.ValidationError, nameError.Error())
+		if formParams["name"] != "" {
+			nameError := utils.ValidateRSVPName(formParams["name"])
+			if nameError != nil {
+				baseHandler.HandleError(httpResponseWriter, nameError, utils.ValidationError, nameError.Error())
 				return
 			}
-			rsvpRecord.Name = params["name"]
+			existingRSVP.Name = formParams["name"]
 		}
 
-		if params["response"] != "" {
-			// Validate response
-			if responseError := utils.ValidateRSVPResponse(params["response"]); responseError != nil {
-				baseHandler.HandleError(w, responseError, utils.ValidationError, responseError.Error())
+		if formParams["response"] != "" {
+			responseError := utils.ValidateRSVPResponse(formParams["response"])
+			if responseError != nil {
+				baseHandler.HandleError(httpResponseWriter, responseError, utils.ValidationError, responseError.Error())
 				return
 			}
-			rsvpRecord.Response = params["response"]
+			existingRSVP.Response = formParams["response"]
 
-			// If response is "Yes,N", update extra_guests accordingly
-			if params["response"] != "No" && len(params["response"]) > 4 {
-				parts := strings.Split(params["response"], ",")
+			if formParams["response"] != "No" && len(formParams["response"]) > 4 {
+				parts := strings.Split(formParams["response"], ",")
 				if len(parts) == 2 {
 					guestCount, parseError := strconv.Atoi(parts[1])
 					if parseError == nil {
-						rsvpRecord.ExtraGuests = guestCount
+						existingRSVP.ExtraGuests = guestCount
 					}
 				}
-			} else if params["response"] == "No" {
-				// If response is "No", set extra_guests to 0
-				rsvpRecord.ExtraGuests = 0
+			} else if formParams["response"] == "No" {
+				existingRSVP.ExtraGuests = 0
 			}
-		} else if params["extra_guests"] != "" {
-			// If extra_guests is provided separately
-			newExtraGuests, parseError := strconv.Atoi(params["extra_guests"])
+		} else if formParams["extra_guests"] != "" {
+			newExtraGuests, parseError := strconv.Atoi(formParams["extra_guests"])
 			if parseError != nil {
-				baseHandler.HandleError(w, parseError, utils.ValidationError, "Invalid extra guests value")
+				baseHandler.HandleError(httpResponseWriter, parseError, utils.ValidationError, "Invalid extra guests value")
 				return
 			}
-
-			// Validate guest count
 			if newExtraGuests < 0 || newExtraGuests > utils.MaxGuestCount {
-				baseHandler.HandleError(w, errors.New("invalid guest count"), utils.ValidationError,
-					"Guest count must be between 0 and "+strconv.Itoa(utils.MaxGuestCount))
+				baseHandler.HandleError(
+					httpResponseWriter,
+					errors.New("invalid guest count"),
+					utils.ValidationError,
+					"Guest count must be between 0 and "+strconv.Itoa(utils.MaxGuestCount),
+				)
 				return
 			}
-
-			rsvpRecord.ExtraGuests = newExtraGuests
+			existingRSVP.ExtraGuests = newExtraGuests
 		}
 
-		// Save the updated RSVP
-		if saveError := rsvpRecord.Save(applicationContext.Database); saveError != nil {
-			baseHandler.HandleError(w, saveError, utils.DatabaseError, "Failed to update RSVP")
+		saveError := existingRSVP.Save(applicationContext.Database)
+		if saveError != nil {
+			baseHandler.HandleError(httpResponseWriter, saveError, utils.DatabaseError, "Failed to update RSVP")
 			return
 		}
 
-		// Check if event_id was provided (for admin editing flow)
-		eventID := baseHandler.GetParam(r, config.EventIDParam)
-		if eventID != "" {
-			// Redirect back to the RSVP list page for this event
-			baseHandler.RedirectWithParams(w, r, map[string]string{
-				config.EventIDParam: eventID,
+		eventIDFromForm := baseHandler.GetParam(httpRequest, config.EventIDParam)
+		if eventIDFromForm != "" {
+			baseHandler.RedirectWithParams(httpResponseWriter, httpRequest, map[string]string{
+				config.EventIDParam: eventIDFromForm,
 			})
 		} else {
-			// Redirect back to the RSVP detail page (for invitee flow)
-			baseHandler.RedirectWithParams(w, r, map[string]string{
-				config.RSVPIDParam: rsvpID,
+			baseHandler.RedirectWithParams(httpResponseWriter, httpRequest, map[string]string{
+				config.RSVPIDParam: rsvpIdentifier,
 			})
 		}
 	}

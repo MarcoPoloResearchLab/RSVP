@@ -10,19 +10,19 @@ import (
 	"github.com/temirov/RSVP/pkg/handlers/rsvp"
 )
 
-// Routes holds the application context for integration routes
+// Routes holds the application context for integration routes.
 type Routes struct {
 	ApplicationContext *config.ApplicationContext
 }
 
-// New creates a new Routes instance for integration testing
+// New creates a new Routes instance for integration testing.
 func New(applicationContext *config.ApplicationContext) *Routes {
 	return &Routes{
 		ApplicationContext: applicationContext,
 	}
 }
 
-// TestAuthMiddleware is a middleware that sets up a test session for integration testing
+// TestAuthMiddleware is a middleware that sets up a test session for integration testing.
 func TestAuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Create a test session using the shared test user data
@@ -30,14 +30,18 @@ func TestAuthMiddleware(next http.Handler) http.Handler {
 		sess.Values[gconstants.SessionKeyUserEmail] = DefaultTestUser.Email
 		sess.Values[gconstants.SessionKeyUserName] = DefaultTestUser.Name
 		sess.Values[gconstants.SessionKeyUserPicture] = DefaultTestUser.Picture
-		sess.Save(r, w)
+		saveError := sess.Save(r, w)
+		if saveError != nil {
+			http.Error(w, "Failed to save session", http.StatusInternalServerError)
+			return
+		}
 
 		// Call the next handler
 		next.ServeHTTP(w, r)
 	})
 }
 
-// RegisterRoutes registers all routes without authentication middleware
+// RegisterRoutes registers all routes without authentication middleware.
 func (routes *Routes) RegisterRoutes(mux *http.ServeMux) {
 	// Register event routes with test auth middleware
 	mux.Handle(config.WebEvents, TestAuthMiddleware(event.EventRouter(routes.ApplicationContext)))

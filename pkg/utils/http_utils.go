@@ -6,108 +6,129 @@ import (
 	"net/url"
 )
 
-// ParamSource defines where to look for parameters
 type ParamSource int
 
 const (
-	// QueryParam indicates to look in URL query parameters
 	QueryParam ParamSource = iota
-	// FormParam indicates to look in form values
 	FormParam
-	// BothParams indicates to look in both query and form values, with query taking precedence
 	BothParams
 )
 
-// GetParam extracts a parameter from a request based on the source preference
-func GetParam(r *http.Request, paramName string, source ParamSource) string {
-	var value string
+// GetParam extracts a parameter from a request based on the source preference.
+func GetParam(httpRequest *http.Request, paramName string, source ParamSource) string {
+	var retrievedValue string
 
-	// Check query parameters if specified
 	if source == QueryParam || source == BothParams {
-		value = r.URL.Query().Get(paramName)
-		if value != "" {
-			return value
+		retrievedValue = httpRequest.URL.Query().Get(paramName)
+		if retrievedValue != "" {
+			return retrievedValue
 		}
 	}
 
-	// Check form values if specified
 	if source == FormParam || source == BothParams {
-		// Parse form if not already parsed
-		if r.Form == nil {
-			r.ParseForm()
+		if httpRequest.Form == nil {
+			parseFormErr := httpRequest.ParseForm()
+			if parseFormErr != nil {
+				return ""
+			}
 		}
-		value = r.FormValue(paramName)
+		retrievedValue = httpRequest.FormValue(paramName)
 	}
 
-	return value
+	return retrievedValue
 }
 
-// GetParams extracts multiple parameters from a request
-func GetParams(r *http.Request, paramNames []string, source ParamSource) map[string]string {
-	params := make(map[string]string)
-	for _, name := range paramNames {
-		params[name] = GetParam(r, name, source)
+// GetParams extracts multiple parameters from a request.
+func GetParams(httpRequest *http.Request, paramNames []string, source ParamSource) map[string]string {
+	parameters := make(map[string]string)
+	for _, singleParamName := range paramNames {
+		parameters[singleParamName] = GetParam(httpRequest, singleParamName, source)
 	}
-	return params
+	return parameters
 }
 
-// BuildURL creates a URL with query parameters
+// BuildURL creates a URL with query parameters.
 func BuildURL(basePath string, params map[string]string) string {
-	baseURL, _ := url.Parse(basePath)
-	queryParams := baseURL.Query()
-	
-	for key, value := range params {
-		if value != "" {
-			queryParams.Set(key, value)
+	parsedBaseURL, _ := url.Parse(basePath)
+	queryParams := parsedBaseURL.Query()
+	for keyName, keyValue := range params {
+		if keyValue != "" {
+			queryParams.Set(keyName, keyValue)
 		}
 	}
-	
-	baseURL.RawQuery = queryParams.Encode()
-	return baseURL.String()
+	parsedBaseURL.RawQuery = queryParams.Encode()
+	return parsedBaseURL.String()
 }
 
-// ErrorType defines the type of error for proper handling
 type ErrorType int
 
 const (
-	// DatabaseError represents database-related errors
 	DatabaseError ErrorType = iota
-	// ValidationError represents input validation errors
 	ValidationError
-	// AuthenticationError represents authentication-related errors
 	AuthenticationError
-	// NotFoundError represents resource not found errors
 	NotFoundError
-	// ServerError represents internal server errors
 	ServerError
 )
 
-// HandleError handles common HTTP errors with appropriate status codes and logging
-func HandleError(w http.ResponseWriter, err error, errorType ErrorType, logger *log.Logger, message string) {
-	// Log the error
+// HandleError handles common HTTP errors with appropriate status codes and logging.
+func HandleError(
+	httpResponseWriter http.ResponseWriter,
+	err error,
+	errorType ErrorType,
+	logger *log.Logger,
+	message string,
+) {
 	if logger != nil {
 		logger.Printf("%s: %v", message, err)
 	}
 
-	// Set appropriate status code and message based on error type
 	switch errorType {
 	case ValidationError:
-		http.Error(w, message, http.StatusBadRequest)
+		http.Error(httpResponseWriter, message, http.StatusBadRequest)
 	case AuthenticationError:
-		http.Error(w, message, http.StatusUnauthorized)
+		http.Error(httpResponseWriter, message, http.StatusUnauthorized)
 	case NotFoundError:
-		http.Error(w, message, http.StatusNotFound)
-	case DatabaseError:
-		http.Error(w, message, http.StatusInternalServerError)
-	case ServerError:
-		http.Error(w, message, http.StatusInternalServerError)
+		http.Error(httpResponseWriter, message, http.StatusNotFound)
+	case DatabaseError, ServerError:
+		http.Error(httpResponseWriter, message, http.StatusInternalServerError)
 	default:
-		http.Error(w, message, http.StatusInternalServerError)
+		http.Error(httpResponseWriter, message, http.StatusInternalServerError)
 	}
 }
 
-// RedirectWithParams redirects to a URL with the given parameters
-func RedirectWithParams(w http.ResponseWriter, r *http.Request, basePath string, params map[string]string, statusCode int) {
+// RedirectWithParams redirects to a URL with the given parameters.
+func RedirectWithParams(
+	httpResponseWriter http.ResponseWriter,
+	httpRequest *http.Request,
+	basePath string,
+	params map[string]string,
+	statusCode int,
+) {
 	redirectURL := BuildURL(basePath, params)
-	http.Redirect(w, r, redirectURL, statusCode)
+	http.Redirect(httpResponseWriter, httpRequest, redirectURL, statusCode)
+}
+
+// ApplyMethodOverride checks for method override in form data.
+func ApplyMethodOverride(httpRequest *http.Request, methodParamName string) {
+	if httpRequest.Method != http.MethodPost {
+		return
+	}
+	if httpRequest.Form == nil {
+		parseFormError := httpRequest.ParseForm()
+		if parseFormError != nil {
+			return
+		}
+	}
+	methodOverride := httpRequest.FormValue(methodParamName)
+	if methodOverride == "" {
+		return
+	}
+	switch methodOverride {
+	case http.MethodDelete:
+		httpRequest.Method = http.MethodDelete
+	case http.MethodPut:
+		httpRequest.Method = http.MethodPut
+	case http.MethodPatch:
+		httpRequest.Method = http.MethodPatch
+	}
 }

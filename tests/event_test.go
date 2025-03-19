@@ -12,7 +12,7 @@ func TestListEvents(testingContext *testing.T) {
 	// Setup test context
 	testContext := SetupTestContext(testingContext)
 	defer testContext.Cleanup()
-	
+
 	// Create some test events
 	testContext.CreateTestEvent()
 	testContext.CreateTestEvent()
@@ -38,7 +38,7 @@ func TestCreateEvent(testingContext *testing.T) {
 	// Setup test context
 	testContext := SetupTestContext(testingContext)
 	defer testContext.Cleanup()
-	
+
 	// Test creating an event
 	startTime := time.Now().Add(24 * time.Hour).Format("2006-01-02T15:04")
 
@@ -73,7 +73,7 @@ func TestShowEvent(testingContext *testing.T) {
 	// Setup test context
 	testContext := SetupTestContext(testingContext)
 	defer testContext.Cleanup()
-	
+
 	// Create a test event
 	event := testContext.CreateTestEvent()
 
@@ -91,7 +91,7 @@ func TestUpdateEvent(testingContext *testing.T) {
 	// Setup test context
 	testContext := SetupTestContext(testingContext)
 	defer testContext.Cleanup()
-	
+
 	// Create a test event
 	event := testContext.CreateTestEvent()
 
@@ -124,7 +124,7 @@ func TestDeleteEvent(testingContext *testing.T) {
 	// Setup test context
 	testContext := SetupTestContext(testingContext)
 	defer testContext.Cleanup()
-	
+
 	// Create a test event
 	event := testContext.CreateTestEvent()
 

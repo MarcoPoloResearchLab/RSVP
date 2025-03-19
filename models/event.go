@@ -17,36 +17,36 @@ type Event struct {
 	RSVPs       []RSVP    `gorm:"foreignKey:EventID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
 }
 
-// DurationHours provides the event duration in hours for the UI edit form
+// DurationHours provides the event duration in hours for the UI edit form.
 func (event Event) DurationHours() int {
-	duration := event.EndTime.Sub(event.StartTime)
-	return int(duration.Hours())
+	eventDuration := event.EndTime.Sub(event.StartTime)
+	return int(eventDuration.Hours())
 }
 
-// BeforeCreate hook to generate a unique base62 ID
-func (event *Event) BeforeCreate(tx *gorm.DB) error {
+// BeforeCreate hook to generate a unique base62 ID.
+func (event *Event) BeforeCreate(gormTransaction *gorm.DB) error {
 	if event.ID == "" {
-		id, err := EnsureUniqueID(tx, "events", GenerateBase62ID)
-		if err != nil {
-			return err
+		uniqueID, uniqueIDError := EnsureUniqueID(gormTransaction, "events", GenerateBase62ID)
+		if uniqueIDError != nil {
+			return uniqueIDError
 		}
-		event.ID = id
+		event.ID = uniqueID
 	}
 	return nil
 }
 
-func (event *Event) FindByID(db *gorm.DB, id string) error {
-	return db.Where("id = ?", id).First(event).Error
+func (event *Event) FindByID(databaseConnection *gorm.DB, eventIdentifier string) error {
+	return databaseConnection.Where("id = ?", eventIdentifier).First(event).Error
 }
 
-func (event *Event) Create(db *gorm.DB) error {
-	return db.Create(event).Error
+func (event *Event) Create(databaseConnection *gorm.DB) error {
+	return databaseConnection.Create(event).Error
 }
 
-func (event *Event) Save(db *gorm.DB) error {
-	return db.Save(event).Error
+func (event *Event) Save(databaseConnection *gorm.DB) error {
+	return databaseConnection.Save(event).Error
 }
 
-func (event *Event) LoadWithRSVPs(db *gorm.DB, id string) error {
-	return db.Preload("RSVPs").Where("id = ?", id).First(event).Error
+func (event *Event) LoadWithRSVPs(databaseConnection *gorm.DB, eventIdentifier string) error {
+	return databaseConnection.Preload("RSVPs").Where("id = ?", eventIdentifier).First(event).Error
 }

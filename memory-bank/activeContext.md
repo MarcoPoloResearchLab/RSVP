@@ -28,6 +28,18 @@ The current focus is on code refactoring and enhancing the QR RSVP Tracker appli
 
 ## Recent Changes
 
+### URL Path Consistency Fix for Form Submissions
+- Fixed a critical bug with event deletion and form submissions
+- Identified and fixed inconsistent URL patterns across the application
+- Standardized all form submissions to use trailing slashes (`/events/` instead of `/events`)
+- Modified forms to use form data instead of query parameters for better reliability
+- Implemented comprehensive tests to verify different form submission patterns
+- Updated documentation to clearly define URL and form submission patterns
+- Added detailed explanation in systemPatterns.md about the trailing slash requirement
+- Documented how form redirects can cause data loss when form parameters aren't properly retained
+
+The critical issue was that when browsers submit forms to URLs without trailing slashes, the server redirects with a 301 to the trailing slash version. During this redirect, the browser changes the request from POST to GET, causing all form data (including the DELETE method override) to be lost. This silently prevented event deletion from working.
+
 ### Comprehensive Integration Testing Implementation
 - Implemented a comprehensive integration test suite covering all aspects of the system
 - Created specialized test files for different testing concerns:

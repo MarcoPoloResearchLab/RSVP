@@ -8,7 +8,7 @@ import (
 	"github.com/temirov/RSVP/pkg/config"
 )
 
-// TestEventOwnershipAuthorization tests that users can only access and modify their own events
+// TestEventOwnershipAuthorization tests that users can only access and modify their own events.
 func TestEventOwnershipAuthorization(testingContext *testing.T) {
 	// Setup test context
 	testContext := SetupTestContext(testingContext)
@@ -95,7 +95,7 @@ func TestEventOwnershipAuthorization(testingContext *testing.T) {
 	}
 }
 
-// TestRSVPEventOwnershipAuthorization tests that users can only access and modify RSVPs for their own events
+// TestRSVPEventOwnershipAuthorization tests that users can only access and modify RSVPs for their own events.
 func TestRSVPEventOwnershipAuthorization(testingContext *testing.T) {
 	// Setup test context
 	testContext := SetupTestContext(testingContext)
@@ -219,7 +219,7 @@ func TestRSVPEventOwnershipAuthorization(testingContext *testing.T) {
 	}
 }
 
-// TestRSVPAccessSecurity tests that RSVPs can only be accessed by their owners
+// TestRSVPAccessSecurity tests that RSVPs can only be accessed by their owners.
 func TestRSVPAccessSecurity(testingContext *testing.T) {
 	// Setup test context
 	testContext := SetupTestContext(testingContext)

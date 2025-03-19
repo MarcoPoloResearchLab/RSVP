@@ -8,12 +8,12 @@ import (
 	"github.com/temirov/RSVP/models"
 )
 
-// TestEventValidation tests validation for event creation and updates
+// TestEventValidation tests validation for event creation and updates.
 func TestEventValidation(testingContext *testing.T) {
 	// Setup test context
 	testContext := SetupTestContext(testingContext)
 	defer testContext.Cleanup()
-	
+
 	// Test cases for event validation
 	validationTests := []struct {
 		name          string
@@ -70,7 +70,7 @@ func TestEventValidation(testingContext *testing.T) {
 		{
 			name: "Very Long Title",
 			formValues: map[string][]string{
-				"title":       {string(make([]byte, 300, 300))}, // 300 character title
+				"title":       {string(make([]byte, 300))}, // 300 character title
 				"description": {"Test Description"},
 				"start_time":  {time.Now().Add(24 * time.Hour).Format("2006-01-02T15:04")},
 				"duration":    {"2"},
@@ -88,20 +88,20 @@ func TestEventValidation(testingContext *testing.T) {
 			expectSuccess: true,
 		},
 	}
-	
+
 	for _, test := range validationTests {
 		testingContext.Run(test.name, func(subTestContext *testing.T) {
 			// Attempt to create an event with these values
 			resp := testContext.CreateEvent(subTestContext, test.formValues)
 			defer resp.Body.Close()
-			
+
 			// Check if the response matches expectations
 			if test.expectSuccess {
 				if resp.StatusCode != http.StatusSeeOther && resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
 					body := ReadResponseBody(subTestContext, resp)
 					subTestContext.Errorf("Expected success status (303, 201, or 200), got %d: %s", resp.StatusCode, body)
 				}
-				
+
 				// Verify event was created in database
 				var event models.Event
 				result := testContext.DB.Where("title = ?", test.formValues["title"][0]).First(&event)
@@ -120,15 +120,15 @@ func TestEventValidation(testingContext *testing.T) {
 	}
 }
 
-// TestRSVPValidation tests validation for RSVP creation and updates
+// TestRSVPValidation tests validation for RSVP creation and updates.
 func TestRSVPValidation(testingContext *testing.T) {
 	// Setup test context
 	testContext := SetupTestContext(testingContext)
 	defer testContext.Cleanup()
-	
+
 	// Create a test event for valid RSVPs
 	event := testContext.CreateTestEvent()
-	
+
 	// Test cases for RSVP validation
 	validationTests := []struct {
 		name          string
@@ -137,8 +137,8 @@ func TestRSVPValidation(testingContext *testing.T) {
 		expectSuccess bool
 	}{
 		{
-			name:    "Missing Name",
-			eventID: event.ID,
+			name:       "Missing Name",
+			eventID:    event.ID,
 			formValues: map[string][]string{
 				// No name provided
 			},
@@ -156,7 +156,7 @@ func TestRSVPValidation(testingContext *testing.T) {
 			name:    "Very Long Name",
 			eventID: event.ID,
 			formValues: map[string][]string{
-				"name": {string(make([]byte, 300, 300))}, // 300 character name
+				"name": {string(make([]byte, 300))}, // 300 character name
 			},
 			expectSuccess: false, // This may succeed depending on validation implementation
 		},
@@ -177,20 +177,20 @@ func TestRSVPValidation(testingContext *testing.T) {
 			expectSuccess: true,
 		},
 	}
-	
+
 	for _, test := range validationTests {
 		testingContext.Run(test.name, func(subTestContext *testing.T) {
 			// Attempt to create an RSVP with these values
 			resp := testContext.CreateRSVP(subTestContext, test.eventID, test.formValues, true)
 			defer resp.Body.Close()
-			
+
 			// Check if the response matches expectations
 			if test.expectSuccess {
 				if resp.StatusCode != http.StatusSeeOther && resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
 					body := ReadResponseBody(subTestContext, resp)
 					subTestContext.Errorf("Expected success status (303, 201, or 200), got %d: %s", resp.StatusCode, body)
 				}
-				
+
 				// Verify RSVP was created in database
 				var rsvp models.RSVP
 				result := testContext.DB.Where("name = ? AND event_id = ?", test.formValues["name"][0], test.eventID).First(&rsvp)
@@ -209,18 +209,18 @@ func TestRSVPValidation(testingContext *testing.T) {
 	}
 }
 
-// TestRSVPResponseValidation tests validation for RSVP response updates
+// TestRSVPResponseValidation tests validation for RSVP response updates.
 func TestRSVPResponseValidation(testingContext *testing.T) {
 	// Setup test context
 	testContext := SetupTestContext(testingContext)
 	defer testContext.Cleanup()
-	
+
 	// Create a test event
 	event := testContext.CreateTestEvent()
-	
+
 	// Create a test RSVP
 	rsvp := testContext.CreateTestRSVP(event.ID)
-	
+
 	// Test cases for RSVP response validation
 	validationTests := []struct {
 		name          string
@@ -268,28 +268,28 @@ func TestRSVPResponseValidation(testingContext *testing.T) {
 			expectSuccess: true,
 		},
 	}
-	
+
 	for _, test := range validationTests {
 		testingContext.Run(test.name, func(subTestContext *testing.T) {
 			// Update RSVP with this response
 			formValues := map[string][]string{
 				"response": {test.response},
 			}
-			
+
 			resp := testContext.UpdateRSVP(subTestContext, rsvp.ID, event.ID, formValues)
 			defer resp.Body.Close()
-			
+
 			// Check if the response matches expectations
 			if test.expectSuccess {
 				if resp.StatusCode != http.StatusSeeOther && resp.StatusCode != http.StatusOK {
 					body := ReadResponseBody(subTestContext, resp)
 					subTestContext.Errorf("Expected success status (303 or 200), got %d: %s", resp.StatusCode, body)
 				}
-				
+
 				// Verify RSVP was updated in database
 				var updatedRSVP models.RSVP
 				testContext.DB.First(&updatedRSVP, "id = ?", rsvp.ID)
-				
+
 				if updatedRSVP.Response != test.response {
 					subTestContext.Errorf("Expected response '%s', got '%s'", test.response, updatedRSVP.Response)
 				}

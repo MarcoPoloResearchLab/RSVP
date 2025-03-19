@@ -9,7 +9,6 @@ import (
 	"github.com/temirov/RSVP/pkg/config"
 )
 
-// LoggedUserData holds user session details for RSVP and event templates.
 type LoggedUserData struct {
 	UserPicture string
 	UserName    string
@@ -23,21 +22,23 @@ func GetUserData(httpRequest *http.Request, applicationContext *config.Applicati
 		applicationContext.Logger.Println("Error retrieving session:", sessionError)
 		return &LoggedUserData{}
 	}
-	sessionUserPicture, pictureOk := sessionInstance.Values[gconstants.SessionKeyUserPicture].(string)
-	if !pictureOk {
+
+	sessionUserPicture, pictureOK := sessionInstance.Values[gconstants.SessionKeyUserPicture].(string)
+	if !pictureOK {
 		applicationContext.Logger.Printf("Error retrieving session user Picture %s", sessionUserPicture)
 		sessionUserPicture = ""
 	}
-	sessionUserName, nameOk := sessionInstance.Values[gconstants.SessionKeyUserName].(string)
-	if !nameOk {
+	sessionUserName, nameOK := sessionInstance.Values[gconstants.SessionKeyUserName].(string)
+	if !nameOK {
 		applicationContext.Logger.Printf("Error retrieving session user name %s", sessionUserName)
 		sessionUserName = ""
 	}
-	sessionUserEmail, emailOk := sessionInstance.Values[gconstants.SessionKeyUserEmail].(string)
-	if !emailOk {
+	sessionUserEmail, emailOK := sessionInstance.Values[gconstants.SessionKeyUserEmail].(string)
+	if !emailOK {
 		applicationContext.Logger.Printf("Error retrieving session user email %s", sessionUserEmail)
 		sessionUserEmail = ""
 	}
+
 	return &LoggedUserData{
 		UserPicture: sessionUserPicture,
 		UserName:    sessionUserName,
@@ -46,16 +47,7 @@ func GetUserData(httpRequest *http.Request, applicationContext *config.Applicati
 }
 
 // ValidateRSVPCode ensures the RSVP code is alphanumeric.
-// In production, it should be exactly 6 characters long,
-// but for testing, we allow other lengths.
 func ValidateRSVPCode(rsvpCode string) bool {
-	// Check if we're in a testing environment
-	if len(rsvpCode) == 8 && rsvpCode[0:2] == "TE" {
-		// Special case for testing
-		return true
-	}
-	
-	// Regular validation for production
 	var validCodePattern = regexp.MustCompile(`^[0-9a-zA-Z]{1,8}$`)
 	return validCodePattern.MatchString(rsvpCode)
 }

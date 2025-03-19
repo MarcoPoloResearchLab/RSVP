@@ -16,11 +16,10 @@ import (
 	"github.com/temirov/RSVP/models"
 	"github.com/temirov/RSVP/pkg/config"
 	"github.com/temirov/RSVP/pkg/services"
-	"github.com/temirov/RSVP/pkg/utils"
 	"gorm.io/gorm"
 )
 
-// TestContext holds all the components needed for testing
+// TestContext holds all the components needed for testing.
 type TestContext struct {
 	DB          *gorm.DB
 	AppContext  *config.ApplicationContext
@@ -29,13 +28,17 @@ type TestContext struct {
 	TestUser    *models.User
 }
 
-// SetupTestContext creates a test context with a unique test database and test servers
+// SetupTestContext creates a test context with a unique test database and test servers.
 func SetupTestContext(testingContext *testing.T) *TestContext {
 	// Initialize session store with a test secret
 	session.NewSession([]byte("test-secret-key-for-integration-tests"))
 
 	// Generate unique database name for this test with a proper path
-	dbBaseName := fmt.Sprintf("test_%s.db", utils.Base36Encode(8))
+	base36ID, err := models.GenerateBase36ID(8)
+	if err != nil {
+		return nil
+	}
+	dbBaseName := fmt.Sprintf("test_%s.db", base36ID)
 	// Store the database path in a temporary directory
 	tempDir := os.TempDir()
 	databasePath := fmt.Sprintf("%s/%s", tempDir, dbBaseName)
@@ -90,7 +93,7 @@ func SetupTestContext(testingContext *testing.T) *TestContext {
 	}
 }
 
-// CleanupTestContext closes test servers and cleans up resources
+// CleanupTestContext closes test servers and cleans up resources.
 func (testContext *TestContext) Cleanup() {
 	testContext.EventServer.Close()
 	testContext.RSVPServer.Close()
@@ -153,7 +156,7 @@ func (testContext *TestContext) Cleanup() {
 	}
 }
 
-// CreateTestEvent creates a test event in the database
+// CreateTestEvent creates a test event in the database.
 func (testContext *TestContext) CreateTestEvent() *models.Event {
 	event := &models.Event{
 		Title:       "Test Event",
@@ -166,7 +169,7 @@ func (testContext *TestContext) CreateTestEvent() *models.Event {
 	return event
 }
 
-// CreateTestRSVP creates a test RSVP in the database
+// CreateTestRSVP creates a test RSVP in the database.
 func (testContext *TestContext) CreateTestRSVP(eventID string) *models.RSVP {
 	rsvp := &models.RSVP{
 		Name:    "Test Attendee",
@@ -176,7 +179,7 @@ func (testContext *TestContext) CreateTestRSVP(eventID string) *models.RSVP {
 	return rsvp
 }
 
-// Helper functions for making HTTP requests
+// Helper functions for making HTTP requests.
 func (testContext *TestContext) GetEvent(testingContext *testing.T, eventID string) *http.Response {
 	url := testContext.EventServer.URL + config.WebEvents
 	if eventID != "" {
@@ -218,7 +221,7 @@ func (testContext *TestContext) DeleteEvent(testingContext *testing.T, eventID s
 	return resp
 }
 
-// Similar helper functions for RSVP operations
+// Similar helper functions for RSVP operations.
 func (testContext *TestContext) GetRSVP(testingContext *testing.T, rsvpID string, eventID string) *http.Response {
 	url := testContext.RSVPServer.URL + config.WebRSVPs
 	params := []string{}
@@ -289,7 +292,7 @@ func (testContext *TestContext) DeleteRSVP(testingContext *testing.T, rsvpID str
 	return resp
 }
 
-// DeleteRSVPWithForm simulates a form submission with _method=DELETE
+// DeleteRSVPWithForm simulates a form submission with _method=DELETE.
 func (testContext *TestContext) DeleteRSVPWithForm(testingContext *testing.T, rsvpID string, eventID string) *http.Response {
 	url := testContext.RSVPServer.URL + config.WebRSVPs + "?" + config.RSVPIDParam + "=" + rsvpID
 	if eventID != "" {
@@ -304,7 +307,7 @@ func (testContext *TestContext) DeleteRSVPWithForm(testingContext *testing.T, rs
 	return resp
 }
 
-// Helper function to read response body
+// Helper function to read response body.
 func ReadResponseBody(testingContext *testing.T, resp *http.Response) string {
 	body, readError := io.ReadAll(resp.Body)
 	if readError != nil {
