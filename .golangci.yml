@@ -1,0 +1,44 @@
+linters:
+  enable:
+    - unused
+    - staticcheck
+    - stylecheck
+    - gocritic
+    - errcheck            # Checks for unchecked errors
+    - ineffassign         # Detects unused assignments
+    - gosimple            # Simplifies redundant code
+    - govet               # Standard Go vet checks
+    - revive              # Faster, configurable replacement for golint
+    - goconst             # Finds repeated string and number constants
+    - gosec               # Security scanner for Go code
+    - gofmt               # Ensures code is formatted properly
+    - lll                 # Detects long lines (default 120 chars)
+    - prealloc            # Suggests preallocating slices for performance
+    - funlen              # Warns when functions exceed a certain length
+    - unconvert           # Detects unnecessary conversions
+    - nakedret            # Warns about naked returns (bad practice)
+    - noctx               # Ensures proper use of context in functions
+    - cyclop              # Detects high cyclomatic complexity
+    - depguard            # Prevents using disallowed dependencies
+    - dupl                # Detects duplicate code
+    - copyloopvar       # Detects loop variables being captured incorrectly
+    - godot               # Ensures comments end with a period
+    - godox               # Detects TODO, FIXME, etc.
+    - goprintffuncname    # Ensures printf-like functions are named correctly
+    - whitespace          # Detects trailing whitespace
+
+gocritic:
+  enable:
+    - mixed-receiver      # Detects structs with both pointer and value receivers
+    - commentedOutCode    # Finds commented-out code
+    - dupImport           # Warns about duplicate imports
+    - rangeExprCopy       # Detects expensive copies in range loops
+    - hugeParam           # Warns about passing large structs by value
+
+issues:
+  max-same-issues: 0  # No limit on repeated issues
+  max-issues-per-linter: 0  # No limit on issues per linter
+  exclude-use-default: false  # Use all linters' default exclusions
+
+run:
+  timeout: 5m  # Extend timeout for large
