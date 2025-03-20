@@ -227,7 +227,7 @@
     });
 
     // Cancel new event creation
-    var cancelNewButton = document.getElementById('cancelNewButton');
+    const cancelNewButton = document.getElementById('cancelNewButton');
     if (cancelNewButton) {
         cancelNewButton.addEventListener('click', function() {
             document.getElementById('newEventCard').style.display = 'none';
@@ -236,7 +236,7 @@
     }
 
     // Cancel edit event
-    var cancelEditButton = document.getElementById('cancelEditButton');
+    const cancelEditButton = document.getElementById('cancelEditButton');
     if (cancelEditButton) {
         cancelEditButton.addEventListener('click', function() {
             window.location.href = "/events/";
