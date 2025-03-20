@@ -2,6 +2,7 @@
 package routes
 
 import (
+	"github.com/temirov/RSVP/pkg/handlers/response"
 	"net/http"
 
 	gconstants "github.com/temirov/GAuss/pkg/constants"
@@ -75,5 +76,6 @@ func (routes Routes) RegisterRoutes(mux *http.ServeMux) {
 			gauss.AuthMiddleware(rsvp.Router(routes.ApplicationContext)).ServeHTTP(httpResponseWriter, httpRequest)
 		}
 	})
-	mux.HandleFunc("/rsvp", rsvp.ResponseHandler(routes.ApplicationContext))
+	mux.HandleFunc(config.WebResponse, response.Handler(routes.ApplicationContext))
+	mux.HandleFunc(config.WebResponseThankYou, response.ThankYouHandler(routes.ApplicationContext))
 }
