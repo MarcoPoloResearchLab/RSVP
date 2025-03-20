@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>RSVP Response</title>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400&display=swap" rel="stylesheet">
+    <link href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            background: linear-gradient(135deg, #ffffff, #ffe6f2);
+            font-family: 'Montserrat', sans-serif;
+            color: #333;
+            margin: 0;
+            padding: 0;
+            text-align: center;
+            overflow-x: hidden;
+        }
+        .container {
+            max-width: 800px;
+            margin: 40px auto;
+            padding: 20px;
+        }
+        .card {
+            background-color: rgba(255, 255, 255, 0.85);
+            border-radius: 10px;
+            padding: 30px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            font-weight: 300;
+            font-size: 2.5rem;
+            margin-bottom: 20px;
+        }
+        h2 {
+            font-weight: 300;
+            font-size: 1.8rem;
+            margin-bottom: 20px;
+        }
+        .event-details {
+            background-color: rgba(255, 255, 255, 0.5);
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 30px;
+        }
+        .response-btn {
+            font-family: 'Montserrat', sans-serif;
+            font-weight: 300;
+            font-size: 1rem;
+            color: #333;
+            background-color: #ffb6c1;
+            border: 1px solid #ff8fab;
+            border-radius: 4px;
+            padding: 10px 20px;
+            margin: 10px 5px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+            width: 100%;
+            max-width: 200px;
+        }
+        .response-btn:hover {
+            background-color: #ff8fab;
+        }
+        .btn-no {
+            background-color: #a2d2ff;
+            border-color: #7aa7e8;
+        }
+        .btn-no:hover {
+            background-color: #7aa7e8;
+        }
+        button.active {
+            background-color: #ff8fab !important;
+        }
+        .btn-no.active {
+            background-color: #7aa7e8 !important;
+        }
+        input[type="hidden"] {
+            display: none;
+        }
+        .response-buttons {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            margin: 30px 0;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="card">
+        <h1>You're invited!</h1>
+        
+        <div class="event-details">
+            <h2>{{.Event.Title}}</h2>
+            <p><strong>Date:</strong> {{.Event.StartTime.Format "Monday, January 2, 2006"}}</p>
+            <p><strong>Time:</strong> {{.Event.StartTime.Format "3:04 PM"}} - {{.Event.EndTime.Format "3:04 PM"}}</p>
+            <p><strong>Description:</strong> {{.Event.Description}}</p>
+        </div>
+        
+        <h3>RSVP for {{.RSVP.Name}}</h3>
+        
+        <!-- The form posts to /rsvp?code={code} -->
+        <form action="/rsvps/?code={{.RSVP.ID}}" method="POST">
+            <input type="hidden" name="response" id="responseHidden" value="{{.RSVP.Response}}">
+            
+            <div class="response-buttons">
+                <button type="submit" data-response="Yes,0" class="response-btn {{if eq .RSVP.Response "Yes,0"}}active{{end}}">
+                    Yes, just me
+                </button>
+                <button type="submit" data-response="Yes,1" class="response-btn {{if eq .RSVP.Response "Yes,1"}}active{{end}}">
+                    Yes, +1 guest
+                </button>
+                <button type="submit" data-response="Yes,2" class="response-btn {{if eq .RSVP.Response "Yes,2"}}active{{end}}">
+                    Yes, +2 guests
+                </button>
+                <button type="submit" data-response="Yes,3" class="response-btn {{if eq .RSVP.Response "Yes,3"}}active{{end}}">
+                    Yes, +3 guests
+                </button>
+                <button type="submit" data-response="Yes,4" class="response-btn {{if eq .RSVP.Response "Yes,4"}}active{{end}}">
+                    Yes, +4 guests
+                </button>
+                <button type="submit" data-response="No,0" class="response-btn btn-no {{if eq .RSVP.Response "No,0"}}active{{end}}">
+                    No, I can't attend
+                </button>
+            </div>
+            
+            <!-- Bookmark message -->
+            <div class="mt-4">
+                <p class="text-muted small">
+                    Note: Bookmark this page if you want to update your response later.
+                </p>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+    // Attach click listeners to set hidden field
+    const buttonElements = document.querySelectorAll('button[data-response]');
+    buttonElements.forEach(function(buttonElement) {
+        buttonElement.addEventListener('click', function(clickEvent) {
+            document.getElementById("responseHidden").value = buttonElement.getAttribute("data-response");
+        });
+    });
+</script>
+</body>
+</html>
