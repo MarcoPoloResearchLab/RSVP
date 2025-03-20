@@ -6,7 +6,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN GOOS=linux GOARCH=amd64 go build -o myapp
+RUN GOOS=linux GOARCH=amd64 go build -o myapp cmd/web/main.go
 
 FROM debian:bullseye-slim
 WORKDIR /app
