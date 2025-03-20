@@ -227,7 +227,7 @@
 <script>
     // When the global "New" button is clicked, show the new RSVP form
     document.getElementById('globalNewButton').addEventListener('click', function () {
-        var editCard = document.getElementById('editRSVPCard');
+        const editCard = document.getElementById('editRSVPCard');
         if (editCard) {
             editCard.style.display = 'none';
         }
@@ -245,7 +245,7 @@
     }
 
     // Cancel edit RSVP
-    var cancelEditButton = document.getElementById('cancelEditButton');
+    const cancelEditButton = document.getElementById('cancelEditButton');
     if (cancelEditButton) {
         cancelEditButton.addEventListener('click', function () {
             // Return to the RSVP list for this event
