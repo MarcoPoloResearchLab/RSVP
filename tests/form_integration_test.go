@@ -99,8 +99,8 @@ func TestRSVPFormCorrectness(t *testing.T) {
 
 			// Verify the form action is compatible with handler expectations
 			// It should have a query parameter format or at least point to the rsvps endpoint
-			if strings.Contains(action, fmt.Sprintf("/rsvps?%s=%s", config.EventIDParam, testEvent.ID)) ||
-				strings.Contains(action, "/rsvps") {
+			if strings.Contains(action, fmt.Sprintf("/rsvps/?%s=%s", config.EventIDParam, testEvent.ID)) ||
+				strings.Contains(action, "/rsvps/") {
 				formActionOK = true
 			} else {
 				t.Errorf("Form action '%s' doesn't match expected format", action)

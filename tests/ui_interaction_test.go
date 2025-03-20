@@ -196,8 +196,8 @@ func TestEventDetailToRSVPNavigation(testingInstance *testing.T) {
 			// Verify the form action is compatible with handler expectations
 			if strings.Contains(action, fmt.Sprintf("/events/%s/rsvps", testEvent.ID)) {
 				testingInstance.Errorf("RSVP form action '%s' uses path parameters but handler expects query parameters", action)
-			} else if strings.Contains(action, fmt.Sprintf("/rsvps?%s=%s", config.EventIDParam, testEvent.ID)) ||
-				strings.Contains(action, "/rsvps") {
+			} else if strings.Contains(action, fmt.Sprintf("/rsvps/?%s=%s", config.EventIDParam, testEvent.ID)) ||
+				strings.Contains(action, "/rsvps/") {
 				formActionOK = true
 			}
 		}

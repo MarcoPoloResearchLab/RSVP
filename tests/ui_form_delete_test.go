@@ -147,7 +147,7 @@ func TestDifferentFormSubmissionPatterns(t *testing.T) {
 		},
 		{
 			name:    "With Event ID in Query String",
-			urlPath: "/events?event_id=", // Will be completed dynamically
+			urlPath: "/events/?event_id=", // Will be completed dynamically
 			formValues: url.Values{
 				config.MethodOverrideParam: []string{"DELETE"},
 			},

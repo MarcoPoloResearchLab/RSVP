@@ -10,62 +10,52 @@ import (
 )
 
 // DeleteHandler handles DELETE requests to delete an RSVP.
-func DeleteHandler(applicationContext *config.ApplicationContext) http.HandlerFunc {
-	baseHandler := handlers.NewBaseHandler(applicationContext, "RSVP", config.WebRSVPs)
+func DeleteHandler(appCtx *config.ApplicationContext) http.HandlerFunc {
+	baseHandler := handlers.NewBaseHandler(appCtx, "RSVP", config.WebRSVPs)
 
-	return func(httpResponseWriter http.ResponseWriter, httpRequest *http.Request) {
-		if !baseHandler.ValidateMethod(httpResponseWriter, httpRequest, http.MethodDelete, http.MethodPost) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !baseHandler.ValidateMethod(w, r, http.MethodDelete, http.MethodPost) {
 			return
 		}
 
-		rsvpIdentifier := baseHandler.GetParam(httpRequest, config.RSVPIDParam)
+		rsvpIdentifier := baseHandler.GetParam(r, config.RSVPIDParam)
 		if rsvpIdentifier == "" {
-			http.Error(httpResponseWriter, "RSVP ID is required", http.StatusBadRequest)
+			http.Error(w, "RSVP ID is required", http.StatusBadRequest)
 			return
 		}
 
 		var rsvpRecord models.RSVP
-		findError := rsvpRecord.FindByCode(applicationContext.Database, rsvpIdentifier)
-		if findError != nil {
-			baseHandler.HandleError(httpResponseWriter, findError, utils.NotFoundError, "RSVP not found")
+		if findErr := rsvpRecord.FindByCode(appCtx.Database, rsvpIdentifier); findErr != nil {
+			baseHandler.HandleError(w, findErr, utils.NotFoundError, "RSVP not found")
 			return
 		}
 
-		eventIdentifier := baseHandler.GetParam(httpRequest, config.EventIDParam)
-		if eventIdentifier == "" {
-			eventIdentifier = rsvpRecord.EventID
-		}
-
-		sessionData, _ := baseHandler.RequireAuthentication(httpResponseWriter, httpRequest)
+		sessionData, _ := baseHandler.RequireAuthentication(w, r)
 
 		var currentUser models.User
-		findUserError := currentUser.FindByEmail(applicationContext.Database, sessionData.UserEmail)
-		if findUserError != nil {
-			baseHandler.HandleError(httpResponseWriter, findUserError, utils.DatabaseError, "User not found in database")
+		if errUser := currentUser.FindByEmail(appCtx.Database, sessionData.UserEmail); errUser != nil {
+			baseHandler.HandleError(w, errUser, utils.DatabaseError, "User not found in database")
 			return
 		}
 
-		findEventOwnerID := func(eventID string) (string, error) {
-			var eventRecord models.Event
-			loadError := eventRecord.FindByID(applicationContext.Database, eventID)
-			if loadError != nil {
-				return "", loadError
+		findEventOwnerID := func(eid string) (string, error) {
+			var ev models.Event
+			if errEv := ev.FindByID(appCtx.Database, eid); errEv != nil {
+				return "", errEv
 			}
-			return eventRecord.UserID, nil
+			return ev.UserID, nil
 		}
-
-		if !baseHandler.VerifyResourceOwnership(httpResponseWriter, rsvpRecord.EventID, findEventOwnerID, currentUser.ID) {
+		if !baseHandler.VerifyResourceOwnership(w, rsvpRecord.EventID, findEventOwnerID, currentUser.ID) {
 			return
 		}
 
-		deletionError := applicationContext.Database.Delete(&rsvpRecord).Error
-		if deletionError != nil {
-			baseHandler.HandleError(httpResponseWriter, deletionError, utils.DatabaseError, "Failed to delete RSVP")
+		if errDel := appCtx.Database.Delete(&rsvpRecord).Error; errDel != nil {
+			baseHandler.HandleError(w, errDel, utils.DatabaseError, "Failed to delete RSVP")
 			return
 		}
 
-		baseHandler.RedirectWithParams(httpResponseWriter, httpRequest, map[string]string{
-			config.EventIDParam: eventIdentifier,
+		baseHandler.RedirectWithParams(w, r, map[string]string{
+			config.EventIDParam: rsvpRecord.EventID,
 		})
 	}
 }

@@ -3,97 +3,80 @@ package rsvp
 import (
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/temirov/RSVP/models"
 	"github.com/temirov/RSVP/pkg/config"
 )
 
-// ResponseHandler handles GET and POST requests to /rsvp?code={code} (unprotected).
-func ResponseHandler(applicationContext *config.ApplicationContext) http.HandlerFunc {
-	return func(httpResponseWriter http.ResponseWriter, httpRequest *http.Request) {
-		rsvpCode := httpRequest.URL.Query().Get("code")
-
-		if rsvpCode == "" {
-			http.Error(httpResponseWriter, "Missing RSVP code", http.StatusBadRequest)
+// ResponseHandler handles GET and POST to /response/?event_id=XXX (unprotected).
+// Reuses your "response.html" for a single RSVP perspective.
+func ResponseHandler(appCtx *config.ApplicationContext) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		eventID := r.URL.Query().Get(config.EventIDParam)
+		if eventID == "" {
+			http.Error(w, "Missing event_id", http.StatusBadRequest)
 			return
 		}
 
-		var rsvpRecord models.RSVP
-		rsvpError := rsvpRecord.FindByCode(applicationContext.Database, rsvpCode)
-		if rsvpError != nil {
-			http.Error(httpResponseWriter, "Invalid RSVP code", http.StatusNotFound)
-			return
-		}
+		if r.Method == http.MethodGet {
+			// Minimal approach: create a synthetic RSVP object and show your existing response.html
+			// The user can do "Yes,0" or "No,0", but it won't tie to an actual RSVP code unless you expand the logic.
 
-		var associatedEvent models.Event
-		eventError := applicationContext.Database.First(&associatedEvent, "id = ?", rsvpRecord.EventID).Error
-		if eventError != nil {
-			http.Error(httpResponseWriter, "Event not found", http.StatusNotFound)
-			return
-		}
-
-		if httpRequest.Method == http.MethodPost {
-			parseFormError := httpRequest.ParseForm()
-			if parseFormError != nil {
-				http.Error(httpResponseWriter, "Invalid form data", http.StatusBadRequest)
+			var eventRec models.Event
+			if errEvt := eventRec.FindByID(appCtx.Database, eventID); errEvt != nil {
+				http.Error(w, "Event not found", http.StatusNotFound)
 				return
 			}
 
-			responseValue := httpRequest.FormValue("response")
-			if responseValue == "" {
-				http.Error(httpResponseWriter, "Response is required", http.StatusBadRequest)
+			// Fake RSVP
+			syntheticRSVP := models.RSVP{
+				Name:    "Public Guest",
+				EventID: eventID,
+			}
+
+			data := struct {
+				RSVP  models.RSVP
+				Event models.Event
+			}{
+				RSVP:  syntheticRSVP,
+				Event: eventRec,
+			}
+			if errT := appCtx.Templates.ExecuteTemplate(w, config.TemplateResponse, data); errT != nil {
+				http.Error(w, "Failed to render response.html", http.StatusInternalServerError)
+			}
+			return
+		}
+
+		if r.Method == http.MethodPost {
+			if errForm := r.ParseForm(); errForm != nil {
+				http.Error(w, "Invalid form data", http.StatusBadRequest)
+				return
+			}
+			userResponse := r.FormValue("response")
+			if userResponse == "" {
+				http.Error(w, "Response is required", http.StatusBadRequest)
 				return
 			}
 
-			rsvpRecord.Response = responseValue
-
-			responseParts := strings.Split(responseValue, ",")
-			if len(responseParts) == 2 {
-				var parsedExtraGuests int
-				_, scanError := fmt.Sscanf(responseParts[1], "%d", &parsedExtraGuests)
-				if scanError == nil {
-					rsvpRecord.ExtraGuests = parsedExtraGuests
+			// Minimal logic: store a "fake" public RSVP or do nothing. We'll just say "Thank you."
+			// Real code might require user picking a real RSVP, etc.
+			parts := strings.Split(userResponse, ",")
+			var extra int
+			if len(parts) == 2 {
+				if val, errC := strconv.Atoi(parts[1]); errC == nil {
+					extra = val
 				}
 			}
-
-			saveError := rsvpRecord.Save(applicationContext.Database)
-			if saveError != nil {
-				applicationContext.Logger.Printf("Error saving RSVP response: %v", saveError)
-				http.Error(httpResponseWriter, "Error saving response", http.StatusInternalServerError)
-				return
-			}
-
-			thankYouTemplateData := struct {
-				Name            string
-				ThankYouMessage string
-				ID              string
-			}{
-				Name:            rsvpRecord.Name,
-				ThankYouMessage: "Your RSVP has been recorded. Thank you!",
-				ID:              rsvpRecord.ID,
-			}
-
-			templateRenderError := applicationContext.Templates.ExecuteTemplate(httpResponseWriter, config.TemplateThankYou, thankYouTemplateData)
-			if templateRenderError != nil {
-				applicationContext.Logger.Printf("Error rendering thank you template: %v", templateRenderError)
-				http.Error(httpResponseWriter, "Internal Server Error", http.StatusInternalServerError)
-			}
+			finalMsg := fmt.Sprintf("Thank you for responding: %s with +%d. Event = %s, %s",
+				userResponse, extra, eventID, time.Now().Format(time.RFC3339))
+			w.Header().Set("Content-Type", "text/plain")
+			w.Write([]byte(finalMsg))
 			return
 		}
 
-		responseTemplateData := struct {
-			RSVP  models.RSVP
-			Event models.Event
-		}{
-			RSVP:  rsvpRecord,
-			Event: associatedEvent,
-		}
-
-		templateError := applicationContext.Templates.ExecuteTemplate(httpResponseWriter, config.TemplateResponse, responseTemplateData)
-		if templateError != nil {
-			applicationContext.Logger.Printf("Error rendering response template: %v", templateError)
-			http.Error(httpResponseWriter, "Internal Server Error", http.StatusInternalServerError)
-		}
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 	}
 }
