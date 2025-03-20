@@ -1,4 +1,6 @@
-# RSVP - QR Code RSVP Tracker
+# RSVP 
+
+RSVP is an events invitation platform that relies on physical QR Codes and allows printing, sending and tracking invitations to events.
 
 ## Running Tests
 
