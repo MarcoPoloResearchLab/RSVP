@@ -56,9 +56,9 @@ func TestEventEditFormDisplay(testingInstance *testing.T) {
 	}
 
 	// Step 2: When the event row is clicked, the edit form should be displayed
-	// Clicking is simulated by making a request to /events?id={id}
+	// Clicking is simulated by making a request to /events/?id={id}
 	// (This is what the JavaScript click handler in templates/event/event_index.html does)
-	editURL := fmt.Sprintf("%s%s?%s=%s", uiTestContext.EventServer.URL, config.WebEvents, config.EventIDParam, testEvent.ID)
+	editURL := fmt.Sprintf("%s%s/?%s=%s", uiTestContext.EventServer.URL, config.WebEvents, config.EventIDParam, testEvent.ID)
 	editResponse, editError := http.Get(editURL)
 	if editError != nil {
 		testingInstance.Fatalf("Failed to request edit page: %v", editError)

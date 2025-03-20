@@ -131,10 +131,10 @@
             <!-- Update Event button referencing the update form by ID -->
             <button form="editEventForm" type="submit" class="btn btn-primary">Update Event</button>
         </div>
-        
+
         <!-- RSVPs link row -->
         <div class="mt-3 text-right">
-            <a href="/rsvps//?event_id={{.SelectedEvent.ID}}" class="btn btn-outline-primary">RSVPs &gt;</a>
+            <a href="/rsvps/?event_id={{.SelectedEvent.ID}}" class="btn btn-outline-primary">RSVPs &gt;</a>
         </div>
     </div>
     {{ else }}

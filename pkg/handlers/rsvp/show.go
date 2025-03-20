@@ -1,4 +1,3 @@
-// Package rsvp contains HTTP handlers and router logic for RSVP resources.
 package rsvp
 
 import (
@@ -13,130 +12,89 @@ import (
 	"github.com/temirov/RSVP/pkg/utils"
 )
 
-// ShowHandler handles GET /rsvps?rsvp_id={id} to display a QR code page.
-func ShowHandler(applicationContext *config.ApplicationContext) http.HandlerFunc {
-	baseHandler := handlers.NewBaseHandler(applicationContext, "RSVP", config.WebRSVPs)
+// ShowHandler handles GET /rsvps/?rsvp_id=ABC => protected printing page
+// with QR pointing to GET /response/?event_id=XXX (unprotected).
+func ShowHandler(appCtx *config.ApplicationContext) http.HandlerFunc {
+	baseHandler := handlers.NewBaseHandler(appCtx, "RSVP", config.WebRSVPs)
 
-	return func(httpResponseWriter http.ResponseWriter, httpRequest *http.Request) {
-		if !baseHandler.ValidateMethod(httpResponseWriter, httpRequest, http.MethodGet) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		rsvpID := baseHandler.GetParam(r, config.RSVPIDParam)
+		if rsvpID == "" {
+			http.Error(w, "Missing rsvp_id", http.StatusBadRequest)
+			return
+		}
+		if !baseHandler.ValidateMethod(w, r, http.MethodGet) {
 			return
 		}
 
-		rsvpCode := baseHandler.GetParam(httpRequest, config.RSVPIDParam)
-		eventID := baseHandler.GetParam(httpRequest, config.EventIDParam)
-
-		if rsvpCode == "" || !handlers.ValidateRSVPCode(rsvpCode) {
-			http.Error(httpResponseWriter, "Invalid or missing RSVP code", http.StatusBadRequest)
+		// Must be logged in
+		sessionData, isAuth := baseHandler.RequireAuthentication(w, r)
+		if !isAuth {
 			return
 		}
 
-		// Load the RSVP record by code
-		var rsvpRecord models.RSVP
-		findError := rsvpRecord.FindByCode(applicationContext.Database, rsvpCode)
-		if findError != nil {
-			baseHandler.HandleError(httpResponseWriter, findError, utils.NotFoundError, "RSVP not found")
-			return
-		}
-
-		// If the URL includes ?event_id=..., verify ownership before we show anything
-		if eventID != "" {
-			sessionData, _ := baseHandler.RequireAuthentication(httpResponseWriter, httpRequest)
-
-			// Load the logged-in user from DB
-			var currentUser models.User
-			findUserError := currentUser.FindByEmail(applicationContext.Database, sessionData.UserEmail)
-			if findUserError != nil {
-				baseHandler.HandleError(httpResponseWriter, findUserError, utils.DatabaseError, "User not found in database")
-				return
-			}
-
-			// If user doesn’t own that event, forbid
-			findEventOwnerID := func(givenEventID string) (string, error) {
-				var ev models.Event
-				loadErr := ev.FindByID(applicationContext.Database, givenEventID)
-				if loadErr != nil {
-					return "", loadErr
-				}
-				return ev.UserID, nil
-			}
-			if !baseHandler.VerifyResourceOwnership(httpResponseWriter, eventID, findEventOwnerID, currentUser.ID) {
-				return
-			}
-		}
-
-		// Require authentication again (to be safe) before showing QR
-		sessionData, authed := baseHandler.RequireAuthentication(httpResponseWriter, httpRequest)
-		if !authed {
-			return
-		}
-
-		// Load the same user properly from DB, to get the user’s ID
 		var currentUser models.User
-		loadUserErr := currentUser.FindByEmail(applicationContext.Database, sessionData.UserEmail)
-		if loadUserErr != nil {
-			baseHandler.HandleError(httpResponseWriter, loadUserErr, utils.DatabaseError, "User not found in database")
+		if errUsr := currentUser.FindByEmail(appCtx.Database, sessionData.UserEmail); errUsr != nil {
+			baseHandler.HandleError(w, errUsr, utils.DatabaseError, "User not found")
 			return
 		}
 
-		// Load the associated event
-		var eventRecord models.Event
-		eventFindError := eventRecord.FindByID(applicationContext.Database, rsvpRecord.EventID)
-		if eventFindError != nil {
-			baseHandler.HandleError(httpResponseWriter, eventFindError, utils.NotFoundError, "Event not found")
+		var rsvpRec models.RSVP
+		if errLoad := rsvpRec.FindByCode(appCtx.Database, rsvpID); errLoad != nil {
+			baseHandler.HandleError(w, errLoad, utils.NotFoundError, "RSVP not found")
 			return
 		}
 
-		// Correct check: eventRecord.UserID must match the user’s DB ID (not email)
-		if eventRecord.UserID != currentUser.ID {
-			http.Error(httpResponseWriter, "Forbidden", http.StatusForbidden)
+		var eventRec models.Event
+		if errEvt := eventRec.FindByID(appCtx.Database, rsvpRec.EventID); errEvt != nil {
+			baseHandler.HandleError(w, errEvt, utils.NotFoundError, "Event not found")
+			return
+		}
+		if eventRec.UserID != currentUser.ID {
+			http.Error(w, "Forbidden", http.StatusForbidden)
 			return
 		}
 
-		// Optional security test header
-		if httpRequest.Header.Get("X-Security-Test") == "true" {
-			http.Error(httpResponseWriter, "Forbidden", http.StatusForbidden)
-			return
-		}
-
-		// Build final RSVP URL for the QR code
-		rsvpURLObject := url.URL{
+		// The QR points to GET /response/?event_id=XYZ
+		publicURL := url.URL{
 			Scheme: "http",
-			Host:   httpRequest.Host,
-			Path:   config.WebRSVPs,
+			Host:   r.Host,
+			Path:   "/response/",
 		}
-		if httpRequest.TLS != nil {
-			rsvpURLObject.Scheme = "https"
+		if r.TLS != nil {
+			publicURL.Scheme = "https"
 		}
-		queryParams := rsvpURLObject.Query()
-		queryParams.Set(config.RSVPIDParam, rsvpRecord.ID)
-		rsvpURLObject.RawQuery = queryParams.Encode()
-		finalRSVPURL := rsvpURLObject.String()
+		q := publicURL.Query()
+		q.Set(config.EventIDParam, eventRec.ID)
+		publicURL.RawQuery = q.Encode()
+		finalLink := publicURL.String()
 
-		// Generate QR code as base64
-		qrCodeBytes, qrError := qrcode.Encode(finalRSVPURL, qrcode.Medium, 256)
-		if qrError != nil {
-			baseHandler.HandleError(httpResponseWriter, qrError, utils.ServerError, "Failed to generate QR code")
+		codeBytes, errQR := qrcode.Encode(finalLink, qrcode.Medium, 256)
+		if errQR != nil {
+			baseHandler.HandleError(w, errQR, utils.ServerError, "Failed generating QR code")
 			return
 		}
-		qrBase64String := base64.StdEncoding.EncodeToString(qrCodeBytes)
+		codeBase64 := base64.StdEncoding.EncodeToString(codeBytes)
 
-		// Render the qr.html template
-		templateData := struct {
+		data := struct {
 			RSVP        models.RSVP
 			Event       models.Event
 			QRCode      string
-			RSVPUrl     string
-			UserPicture string
+			PublicURL   string
 			UserName    string
+			UserPicture string
 		}{
-			RSVP:        rsvpRecord,
-			Event:       eventRecord,
-			QRCode:      qrBase64String,
-			RSVPUrl:     finalRSVPURL,
-			UserPicture: sessionData.UserPicture,
+			RSVP:        rsvpRec,
+			Event:       eventRec,
+			QRCode:      codeBase64,
+			PublicURL:   finalLink,
 			UserName:    sessionData.UserName,
+			UserPicture: sessionData.UserPicture,
 		}
 
-		baseHandler.RenderTemplate(httpResponseWriter, config.TemplateQR, templateData)
+		renderErr := appCtx.Templates.ExecuteTemplate(w, "rsvp.html", data)
+		if renderErr != nil {
+			baseHandler.HandleError(w, renderErr, utils.ServerError, "Failed rendering rsvp.html")
+		}
 	}
 }

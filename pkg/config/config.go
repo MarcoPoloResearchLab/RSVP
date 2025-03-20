@@ -12,37 +12,23 @@ import (
 
 // DatabaseConfig holds database configuration.
 type DatabaseConfig struct {
-	Name string // Database file name
+	Name string
 }
 
-// Common web paths.
+// Common web paths
 const (
-	// WebRoot is the root path for the application.
-	WebRoot = "/"
-
-	// WebEvents is the base path for event routes.
+	WebRoot   = "/"
 	WebEvents = "/events/"
-
-	// WebRSVPs is the base path for RSVP routes.
-	WebRSVPs = "/rsvps/"
+	WebRSVPs  = "/rsvps/"
 )
 
 // Template constants.
 const (
-	// TemplateEvents is the filename for events page template.
-	TemplateEvents = "events.html"
-
-	// TemplateRSVPs is the filename for RSVPs page template.
-	TemplateRSVPs = "rsvps.html"
-
-	// TemplateQR is the filename for QR code visualization template.
-	TemplateQR = "qr.html"
-
-	// TemplateResponse is the filename for the RSVP response template.
+	TemplateEvents   = "events.html"
+	TemplateRSVPs    = "rsvps.html"
 	TemplateResponse = "response.html"
-
-	// TemplateThankYou is the filename for the RSVP thank you template.
 	TemplateThankYou = "thankyou.html"
+	// Note: No TemplateQR. Removed entirely.
 )
 
 // Parameter name constants for consistent use throughout the application.
@@ -61,10 +47,10 @@ const (
 	MethodOverrideParam = "_method"
 )
 
-// DefaultDBName is the default SQLite file if none is set.
+// DefaultDBName ...
 const DefaultDBName = "rsvps.db"
 
-// ApplicationContext holds shared resources for the application.
+// ApplicationContext ...
 type ApplicationContext struct {
 	Database    *gorm.DB
 	Templates   *template.Template
@@ -72,7 +58,7 @@ type ApplicationContext struct {
 	AuthService *gauss.Service
 }
 
-// EnvConfig holds all environment variable configurations.
+// EnvConfig ...
 type EnvConfig struct {
 	SessionSecret       string
 	GoogleClientID      string
@@ -83,15 +69,14 @@ type EnvConfig struct {
 	Database            DatabaseConfig
 }
 
-// NewEnvConfig creates and validates a new EnvConfig instance.
-func NewEnvConfig(applicationLogger *log.Logger) *EnvConfig {
+// NewEnvConfig ...
+func NewEnvConfig(appLogger *log.Logger) *EnvConfig {
 	dbName := DefaultDBName
-
-	if envDBName := os.Getenv("DB_NAME"); envDBName != "" {
-		dbName = envDBName
+	if envDB := os.Getenv("DB_NAME"); envDB != "" {
+		dbName = envDB
 	}
 
-	configuration := &EnvConfig{
+	cfg := &EnvConfig{
 		SessionSecret:       os.Getenv("SESSION_SECRET"),
 		GoogleClientID:      os.Getenv("GOOGLE_CLIENT_ID"),
 		GoogleClientSecret:  os.Getenv("GOOGLE_CLIENT_SECRET"),
@@ -103,19 +88,16 @@ func NewEnvConfig(applicationLogger *log.Logger) *EnvConfig {
 		},
 	}
 
-	// Validate required fields
-	requiredFields := map[string]string{
-		"SESSION_SECRET":       configuration.SessionSecret,
-		"GOOGLE_CLIENT_ID":     configuration.GoogleClientID,
-		"GOOGLE_CLIENT_SECRET": configuration.GoogleClientSecret,
-		"GOOGLE_OAUTH2_BASE":   configuration.GoogleOauth2Base,
+	required := map[string]string{
+		"SESSION_SECRET":       cfg.SessionSecret,
+		"GOOGLE_CLIENT_ID":     cfg.GoogleClientID,
+		"GOOGLE_CLIENT_SECRET": cfg.GoogleClientSecret,
+		"GOOGLE_OAUTH2_BASE":   cfg.GoogleOauth2Base,
 	}
-
-	for environmentVariable, value := range requiredFields {
-		if value == "" {
-			applicationLogger.Fatalf(environmentVariable + " is not set")
+	for envVar, val := range required {
+		if val == "" {
+			appLogger.Fatalf(envVar + " is not set")
 		}
 	}
-
-	return configuration
+	return cfg
 }
