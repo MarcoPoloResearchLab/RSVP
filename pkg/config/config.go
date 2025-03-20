@@ -17,9 +17,11 @@ type DatabaseConfig struct {
 
 // Common web paths
 const (
-	WebRoot   = "/"
-	WebEvents = "/events/"
-	WebRSVPs  = "/rsvps/"
+	WebRoot             = "/"
+	WebEvents           = "/events/"
+	WebRSVPs            = "/rsvps/"
+	WebResponse         = "/response/"
+	WebResponseThankYou = "/response/thankyou"
 )
 
 // Template constants.
@@ -28,7 +30,6 @@ const (
 	TemplateRSVPs    = "rsvps.html"
 	TemplateResponse = "response.html"
 	TemplateThankYou = "thankyou.html"
-	// Note: No TemplateQR. Removed entirely.
 )
 
 // Parameter name constants for consistent use throughout the application.

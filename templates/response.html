@@ -101,20 +101,16 @@
 <div class="container">
     <div class="card">
         <h1>You're invited!</h1>
-
         <div class="event-details">
             <h2>{{.Event.Title}}</h2>
             <p><strong>Date:</strong> {{.Event.StartTime.Format "Monday, January 2, 2006"}}</p>
             <p><strong>Time:</strong> {{.Event.StartTime.Format "3:04 PM"}} - {{.Event.EndTime.Format "3:04 PM"}}</p>
             <p><strong>Description:</strong> {{.Event.Description}}</p>
         </div>
-
         <h3>RSVP for {{.RSVP.Name}}</h3>
-
-        <!-- The form posts to /rsvps/?code={code} -->
-        <form action="/rsvps/?code={{.RSVP.ID}}" method="POST">
+        <!-- The form now posts to /response/ with the correct rsvp_id query parameter -->
+        <form action="/response/?rsvp_id={{.RSVP.ID}}" method="POST">
             <input type="hidden" name="response" id="responseHidden" value="{{.RSVP.Response}}">
-
             <div class="response-buttons">
                 <button type="submit" data-response="Yes,0"
                         class="response-btn {{ if eq .RSVP.Response "Yes,0"}}active{{ end }}">
@@ -141,8 +137,6 @@
                     No, I can't attend
                 </button>
             </div>
-
-            <!-- Bookmark message -->
             <div class="mt-4">
                 <p class="text-muted small">
                     Note: Bookmark this page if you want to update your response later.
@@ -151,12 +145,10 @@
         </form>
     </div>
 </div>
-
 <script>
-    // Attach click listeners to set hidden field
     const buttonElements = document.querySelectorAll('button[data-response]');
     buttonElements.forEach(function (buttonElement) {
-        buttonElement.addEventListener('click', function (clickEvent) {
+        buttonElement.addEventListener('click', function () {
             document.getElementById("responseHidden").value = buttonElement.getAttribute("data-response");
         });
     });

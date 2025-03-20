@@ -1,3 +1,4 @@
+// Package rsvp contains HTTP handlers and router logic for RSVP resources.
 package rsvp
 
 import (
@@ -13,7 +14,7 @@ import (
 )
 
 // ShowHandler handles GET /rsvps/?rsvp_id=ABC => protected printing page
-// with QR pointing to GET /response/?event_id=XXX (unprotected).
+// with QR pointing to GET /response/?rsvp_id=XYZ for public (unprotected) RSVP.
 func ShowHandler(appCtx *config.ApplicationContext) http.HandlerFunc {
 	baseHandler := handlers.NewBaseHandler(appCtx, "RSVP", config.WebRSVPs)
 
@@ -27,7 +28,7 @@ func ShowHandler(appCtx *config.ApplicationContext) http.HandlerFunc {
 			return
 		}
 
-		// Must be logged in
+		// Must be logged in to see the printable QR page
 		sessionData, isAuth := baseHandler.RequireAuthentication(w, r)
 		if !isAuth {
 			return
@@ -55,20 +56,22 @@ func ShowHandler(appCtx *config.ApplicationContext) http.HandlerFunc {
 			return
 		}
 
-		// The QR points to GET /response/?event_id=XYZ
+		// FIX #1: Generate a QR pointing to /response/?rsvp_id=F5QO6RTS (public form).
 		publicURL := url.URL{
 			Scheme: "http",
 			Host:   r.Host,
 			Path:   "/response/",
 		}
+		// If HTTPS is in use
 		if r.TLS != nil {
 			publicURL.Scheme = "https"
 		}
-		q := publicURL.Query()
-		q.Set(config.EventIDParam, eventRec.ID)
-		publicURL.RawQuery = q.Encode()
+		queryValues := publicURL.Query()
+		queryValues.Set(config.RSVPIDParam, rsvpRec.ID)
+		publicURL.RawQuery = queryValues.Encode()
 		finalLink := publicURL.String()
 
+		// Generate the QR code
 		codeBytes, errQR := qrcode.Encode(finalLink, qrcode.Medium, 256)
 		if errQR != nil {
 			baseHandler.HandleError(w, errQR, utils.ServerError, "Failed generating QR code")

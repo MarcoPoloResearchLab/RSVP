@@ -53,11 +53,10 @@ func SetupTestContext(testingContext *testing.T) *TestContext {
 	templates := template.New("test")
 
 	// Define the templates with the names expected by the handlers
-	template.Must(templates.New("events.html").Parse(`Mock events template`))
-	template.Must(templates.New("rsvps.html").Parse(`Mock rsvps template`))
-	template.Must(templates.New("qr.html").Parse(`Mock QR template`))
-	template.Must(templates.New("response.html").Parse(`Mock response template`))
-	template.Must(templates.New("thankyou.html").Parse(`Mock thank you template`))
+	template.Must(templates.New(config.TemplateEvents).Parse(`Mock events template`))
+	template.Must(templates.New(config.TemplateRSVPs).Parse(`Mock rsvps template`))
+	template.Must(templates.New(config.TemplateResponse).Parse(`Mock response template`))
+	template.Must(templates.New(config.TemplateThankYou).Parse(`Mock thank you template`))
 
 	appContext := &config.ApplicationContext{
 		Database:  databaseConnection,
