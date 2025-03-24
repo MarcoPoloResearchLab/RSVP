@@ -44,7 +44,7 @@ func Handler(appContext *config.ApplicationContext) http.HandlerFunc {
 			}
 			if templateError := appContext.Templates.ExecuteTemplate(responseWriter, config.TemplateResponse, data); templateError != nil {
 				http.Error(responseWriter, "Internal Server Error", http.StatusInternalServerError)
-				appContext.Logger.Printf("Failed to render response.html: %v", templateError)
+				appContext.Logger.Printf("Failed to render %s: %v", config.TemplateResponse, templateError)
 			}
 
 		case http.MethodPost:
@@ -139,7 +139,7 @@ func ThankYouHandler(appContext *config.ApplicationContext) http.HandlerFunc {
 		}
 		if templateError := appContext.Templates.ExecuteTemplate(responseWriter, config.TemplateThankYou, data); templateError != nil {
 			http.Error(responseWriter, "Internal Server Error", http.StatusInternalServerError)
-			appContext.Logger.Printf("Failed to render thankyou.html: %v", templateError)
+			appContext.Logger.Printf("Failed to render %s: %v", config.TemplateThankYou, templateError)
 		}
 	}
 }

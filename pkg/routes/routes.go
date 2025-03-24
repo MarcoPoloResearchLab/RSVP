@@ -53,6 +53,7 @@ func (routes Routes) RegisterMiddleware(mux *http.ServeMux) {
 		routes.EnvConfig.GoogleClientSecret,
 		routes.EnvConfig.GoogleOauth2Base,
 		config.WebRoot,
+		"",
 	)
 	if authServiceError != nil {
 		routes.ApplicationContext.Logger.Fatal("Failed to initialize auth service:", authServiceError)

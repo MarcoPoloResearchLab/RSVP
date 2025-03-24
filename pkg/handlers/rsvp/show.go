@@ -18,52 +18,52 @@ import (
 func ShowHandler(appCtx *config.ApplicationContext) http.HandlerFunc {
 	baseHandler := handlers.NewBaseHandler(appCtx, "RSVP", config.WebRSVPs)
 
-	return func(w http.ResponseWriter, r *http.Request) {
-		rsvpID := baseHandler.GetParam(r, config.RSVPIDParam)
+	return func(responseWriter http.ResponseWriter, request *http.Request) {
+		rsvpID := baseHandler.GetParam(request, config.RSVPIDParam)
 		if rsvpID == "" {
-			http.Error(w, "Missing rsvp_id", http.StatusBadRequest)
+			http.Error(responseWriter, "Missing rsvp_id", http.StatusBadRequest)
 			return
 		}
-		if !baseHandler.ValidateMethod(w, r, http.MethodGet) {
+		if !baseHandler.ValidateMethod(responseWriter, request, http.MethodGet) {
 			return
 		}
 
 		// Must be logged in to see the printable QR page
-		sessionData, isAuth := baseHandler.RequireAuthentication(w, r)
+		sessionData, isAuth := baseHandler.RequireAuthentication(responseWriter, request)
 		if !isAuth {
 			return
 		}
 
 		var currentUser models.User
 		if errUsr := currentUser.FindByEmail(appCtx.Database, sessionData.UserEmail); errUsr != nil {
-			baseHandler.HandleError(w, errUsr, utils.DatabaseError, "User not found")
+			baseHandler.HandleError(responseWriter, errUsr, utils.DatabaseError, "User not found")
 			return
 		}
 
 		var rsvpRec models.RSVP
 		if errLoad := rsvpRec.FindByCode(appCtx.Database, rsvpID); errLoad != nil {
-			baseHandler.HandleError(w, errLoad, utils.NotFoundError, "RSVP not found")
+			baseHandler.HandleError(responseWriter, errLoad, utils.NotFoundError, "RSVP not found")
 			return
 		}
 
 		var eventRec models.Event
 		if errEvt := eventRec.FindByID(appCtx.Database, rsvpRec.EventID); errEvt != nil {
-			baseHandler.HandleError(w, errEvt, utils.NotFoundError, "Event not found")
+			baseHandler.HandleError(responseWriter, errEvt, utils.NotFoundError, "Event not found")
 			return
 		}
 		if eventRec.UserID != currentUser.ID {
-			http.Error(w, "Forbidden", http.StatusForbidden)
+			http.Error(responseWriter, "Forbidden", http.StatusForbidden)
 			return
 		}
 
 		// FIX #1: Generate a QR pointing to /response/?rsvp_id=F5QO6RTS (public form).
 		publicURL := url.URL{
 			Scheme: "http",
-			Host:   r.Host,
+			Host:   request.Host,
 			Path:   "/response/",
 		}
 		// If HTTPS is in use
-		if r.TLS != nil {
+		if request.TLS != nil {
 			publicURL.Scheme = "https"
 		}
 		queryValues := publicURL.Query()
@@ -74,7 +74,7 @@ func ShowHandler(appCtx *config.ApplicationContext) http.HandlerFunc {
 		// Generate the QR code
 		codeBytes, errQR := qrcode.Encode(finalLink, qrcode.Medium, 256)
 		if errQR != nil {
-			baseHandler.HandleError(w, errQR, utils.ServerError, "Failed generating QR code")
+			baseHandler.HandleError(responseWriter, errQR, utils.ServerError, "Failed generating QR code")
 			return
 		}
 		codeBase64 := base64.StdEncoding.EncodeToString(codeBytes)
@@ -95,9 +95,9 @@ func ShowHandler(appCtx *config.ApplicationContext) http.HandlerFunc {
 			UserPicture: sessionData.UserPicture,
 		}
 
-		renderErr := appCtx.Templates.ExecuteTemplate(w, "rsvp.html", data)
+		renderErr := appCtx.Templates.ExecuteTemplate(responseWriter, config.TemplateRSVP, data)
 		if renderErr != nil {
-			baseHandler.HandleError(w, renderErr, utils.ServerError, "Failed rendering rsvp.html")
+			baseHandler.HandleError(responseWriter, renderErr, utils.ServerError, "Failed rendering rsvp.html")
 		}
 	}
 }

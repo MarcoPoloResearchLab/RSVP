@@ -6,7 +6,6 @@ import (
 	"log"
 	"os"
 
-	"github.com/temirov/GAuss/pkg/gauss"
 	"gorm.io/gorm"
 )
 
@@ -15,7 +14,7 @@ type DatabaseConfig struct {
 	Name string
 }
 
-// Common web paths
+// Common web paths.
 const (
 	WebRoot             = "/"
 	WebEvents           = "/events/"
@@ -27,6 +26,7 @@ const (
 // Template constants.
 const (
 	TemplateEvents   = "events.html"
+	TemplateRSVP     = "rsvp.html"
 	TemplateRSVPs    = "rsvps.html"
 	TemplateResponse = "response.html"
 	TemplateThankYou = "thankyou.html"
@@ -48,18 +48,17 @@ const (
 	MethodOverrideParam = "_method"
 )
 
-// DefaultDBName ...
+// DefaultDBName is the default name for the database.
 const DefaultDBName = "rsvps.db"
 
-// ApplicationContext ...
+// ApplicationContext holds the shared context for the application.
 type ApplicationContext struct {
-	Database    *gorm.DB
-	Templates   *template.Template
-	Logger      *log.Logger
-	AuthService *gauss.Service
+	Database  *gorm.DB
+	Templates *template.Template
+	Logger    *log.Logger
 }
 
-// EnvConfig ...
+// EnvConfig holds environment configuration.
 type EnvConfig struct {
 	SessionSecret       string
 	GoogleClientID      string
@@ -70,7 +69,7 @@ type EnvConfig struct {
 	Database            DatabaseConfig
 }
 
-// NewEnvConfig ...
+// NewEnvConfig creates a new environment configuration based on environment variables.
 func NewEnvConfig(appLogger *log.Logger) *EnvConfig {
 	dbName := DefaultDBName
 	if envDB := os.Getenv("DB_NAME"); envDB != "" {

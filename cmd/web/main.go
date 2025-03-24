@@ -12,7 +12,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/temirov/GAuss/pkg/gauss"
 	"github.com/temirov/GAuss/pkg/session"
 	"github.com/temirov/RSVP/pkg/config"
 	"github.com/temirov/RSVP/pkg/routes"
@@ -41,32 +40,24 @@ func main() {
 
 	session.NewSession([]byte(environmentConfiguration.SessionSecret))
 
-	authenticationService, authenticationServiceError := gauss.NewService(
-		environmentConfiguration.GoogleClientID,
-		environmentConfiguration.GoogleClientSecret,
-		environmentConfiguration.GoogleOauth2Base,
-		config.WebEvents,
-	)
-	if authenticationServiceError != nil {
-		applicationLogger.Fatal("Failed to initialize auth service:", authenticationServiceError)
-	}
-
+	// Initialize the database and parse templates.
 	databaseConnection := services.InitDatabase(environmentConfiguration.Database.Name, applicationLogger)
 	parsedTemplates := template.Must(template.ParseGlob(TemplatesGlob))
 
+	// Build the application context.
 	applicationContext := &config.ApplicationContext{
-		Database:    databaseConnection,
-		Templates:   parsedTemplates,
-		Logger:      applicationLogger,
-		AuthService: authenticationService,
+		Database:  databaseConnection,
+		Templates: parsedTemplates,
+		Logger:    applicationLogger,
 	}
 
+	// Setup the HTTP router and register all routes and middleware.
 	httpRouter := http.NewServeMux()
-
 	route := routes.New(applicationContext, *environmentConfiguration)
 	route.RegisterMiddleware(httpRouter)
 	route.RegisterRoutes(httpRouter)
 
+	// Start the HTTP/HTTPS server.
 	serverAddress := fmt.Sprintf("%s:%d", HTTPIP, HTTPPort)
 	httpServer := &http.Server{
 		Addr:    serverAddress,
