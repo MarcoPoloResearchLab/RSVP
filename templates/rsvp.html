@@ -39,8 +39,10 @@
             height: auto;
         }
 
-        .print-hide {
-            display: block;
+        .button-group {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
 
         @media print {
@@ -67,15 +69,12 @@
 </head>
 <body>
 <nav class="navbar navbar-expand-lg navbar-custom fixed-navbar print-hide">
-    <a class="navbar-brand" href="#">Single RSVP</a>
+    <a class="navbar-brand" href="/">Event Manager</a>
     <div class="ml-auto">
         <form action="/logout" method="POST" class="form-inline">
-            <button type="submit" class="btn btn-outline-secondary d-flex align-items-center">
-                <img
-                        src="{{.UserPicture}}"
-                        alt="{{.UserName}}"
-                        class="rounded-circle"
-                        style="width:30px; height:30px; margin-right:5px;">
+            <button type="submit" class="btn btn-outline-secondary">
+                <img src="{{.UserPicture}}" alt="{{.UserName}}" class="rounded-circle"
+                     style="width:30px; height:30px; margin-right:5px;">
                 Sign out
             </button>
         </form>
@@ -91,18 +90,13 @@
 
         <img src="data:image/png;base64,{{.QRCode}}" alt="QR Code" class="qr-code mb-4">
 
-        <p class="mb-2"><strong>RSVP Code:</strong> {{.RSVP.ID}}</p>
-        <!-- FIX: We reference .PublicURL instead of .RSVPUrl -->
-        <p class="mb-4"><strong>URL:</strong> {{.PublicURL}}</p>
+        <p class="mb-4"><strong>{{.PublicURL}}</strong></p>
 
-        <div class="print-hide mt-5">
-            <button onclick="window.print();" class="btn btn-primary mb-3">Print QR Code</button>
-            <div class="mt-3">
-                <!-- Return to RSVP list for this event -->
-                <a href="/rsvps/?event_id={{.Event.ID}}" class="btn btn-outline-secondary">
-                    Back to RSVPs
-                </a>
-            </div>
+        <div class="button-group print-hide mt-5">
+            <a href="/rsvps/?event_id={{.Event.ID}}" class="btn btn-outline-secondary">
+                Back to RSVPs
+            </a>
+            <button onclick="window.print();" class="btn btn-primary">Print QR Code</button>
         </div>
     </div>
 </div>

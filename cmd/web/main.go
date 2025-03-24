@@ -20,17 +20,19 @@ import (
 	"github.com/temirov/RSVP/pkg/utils"
 )
 
-// HTTPPort is the default port for the web server.
-const HTTPPort = 8080
+const (
+	// HTTPPort is the default port for the web server.
+	HTTPPort = 8080
 
-// HTTPIP is the default IP address for the web server.
-const HTTPIP = "0.0.0.0"
+	// HTTPIP is the default IP address for the web server.
+	HTTPIP = "0.0.0.0"
 
-// TemplatesGlob is the pattern used to load all HTML templates.
-const TemplatesGlob = "./templates/*.html"
+	// TemplatesGlob is the pattern used to load all HTML templates.
+	TemplatesGlob = "./templates/*.html"
 
-// ShutdownTimeout is the duration for graceful shutdown.
-const ShutdownTimeout = 10 * time.Second
+	// ShutdownTimeout is the duration for graceful shutdown.
+	ShutdownTimeout = 10 * time.Second
+)
 
 // main is the application entry point.
 func main() {

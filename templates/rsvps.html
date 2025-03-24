@@ -77,12 +77,11 @@
 </head>
 <body>
 <nav class="navbar navbar-expand-lg navbar-custom fixed-navbar">
-    <a class="navbar-brand" href="#">RSVP Manager</a>
+    <a class="navbar-brand" href="/">Event Manager</a>
     <div class="ml-auto">
         <form action="/logout" method="POST" class="form-inline">
-            <button type="submit" class="btn btn-outline-secondary d-flex align-items-center">
-                <img src="{{.UserPicture}}" alt="{{.UserName}}" class="rounded-circle"
-                     style="width:30px; height:30px; margin-right:5px;">
+            <button type="submit" class="btn btn-outline-secondary">
+                <img src="{{.UserPicture}}" alt="{{.UserName}}" class="rounded-circle" style="width:30px; height:30px; margin-right:5px;">
                 Sign out
             </button>
         </form>
