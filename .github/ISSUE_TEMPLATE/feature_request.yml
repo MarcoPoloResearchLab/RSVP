@@ -47,9 +47,8 @@ body:
       label: Priority
       description: How important is this feature?
       options:
-        - P0 (Critical)
-        - P1 (High)
-        - P2 (Medium)
-        - P3 (Low)
+        - P0
+        - P1
+        - P2
     validations:
       required: true
