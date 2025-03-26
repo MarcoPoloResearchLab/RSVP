@@ -31,6 +31,20 @@ func (rsvpRecord *RSVP) FindByCode(databaseConnection *gorm.DB, rsvpCode string)
 	return databaseConnection.Where("id = ?", rsvpCode).First(rsvpRecord).Error
 }
 
+// FindByIDAndEventID loads a single RSVP by its ID, ensuring it belongs to the specified EventID.
+// Populates the 'rsvpRecord' receiver if found and associated.
+func (rsvpRecord *RSVP) FindByIDAndEventID(databaseConnection *gorm.DB, rsvpIdentifier string, parentEventID string) error {
+	return databaseConnection.Where("id = ? AND event_id = ?", rsvpIdentifier, parentEventID).First(rsvpRecord).Error
+}
+
+// FindRSVPsByEventID retrieves all RSVP records associated with a specific event ID.
+// Results are ordered by Name ascending.
+func FindRSVPsByEventID(databaseConnection *gorm.DB, parentEventID string) ([]RSVP, error) {
+	var eventRSVPs []RSVP
+	result := databaseConnection.Where("event_id = ?", parentEventID).Order("name ASC").Find(&eventRSVPs)
+	return eventRSVPs, result.Error
+}
+
 // Create inserts a new RSVP into the database.
 func (rsvpRecord *RSVP) Create(databaseConnection *gorm.DB) error {
 	return databaseConnection.Create(rsvpRecord).Error

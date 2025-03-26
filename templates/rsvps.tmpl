@@ -1,0 +1,118 @@
+<!-- File: templates/rsvps.tmpl -->
+{{ define "title" }}RSVP Management for {{ .Event.Title }}{{ end }}
+
+{{ define "content" }}
+    {{ $viewData := . }}
+
+    {{ if $viewData.SelectedItemForEdit }}
+        {{ template "partials/_edit_rsvp_form.tmpl" $viewData }}
+    {{ else }}
+        <div id="newRsvpContainer" style="display: none;">
+            {{ template "partials/_new_rsvp_form.tmpl" $viewData }}
+        </div>
+    {{ end }}
+
+    <div class="card card-rsvps mt-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h4 class="mb-0">RSVPs for {{ $viewData.Event.Title }}</h4>
+            <button id="globalNewRsvpButton" class="btn btn-primary"
+                    {{ if $viewData.SelectedItemForEdit }}disabled{{ end }}>
+                + New RSVP
+            </button>
+        </div>
+
+        {{ if $viewData.RsvpList }}
+            <div class="table-responsive mt-0">
+                <table class="table table-striped table-hover mb-0">
+                    <thead class="table-light">
+                    <tr>
+                        <th scope="col">Name</th>
+                        <th scope="col">Response</th>
+                        <th scope="col">Guests</th>
+                        <th scope="col">RSVP Code</th>
+                        <th scope="col">Actions</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    {{ range $viewData.RsvpList }}
+                        <tr>
+                            <td>{{ .Name }}</td>
+                            <td>
+                                {{ if eq .Response "Yes,0" }}<span class="badge bg-success">Yes</span>
+                                {{ else if eq .Response "Yes,1" }}<span class="badge bg-success">Yes (+1)</span>
+                                {{ else if eq .Response "Yes,2" }}<span class="badge bg-success">Yes (+2)</span>
+                                {{ else if eq .Response "Yes,3" }}<span class="badge bg-success">Yes (+3)</span>
+                                {{ else if eq .Response "Yes,4" }}<span class="badge bg-success">Yes (+4)</span>
+                                {{ else if or (eq .Response "No,0") (eq .Response "No") }}
+                                    <span class="badge bg-danger">No</span>
+                                {{ else }}<span class="badge bg-secondary">Pending</span>{{ end }}
+                            </td>
+                            <td>{{ .ExtraGuests }}</td>
+                            <td><code>{{ .ID }}</code></td>
+                            <td>
+                                <div class="btn-group btn-group-sm" role="group">
+                                    {{/* Use values from viewData for links and params */}}
+                                    <a href="{{ $viewData.URLForRSVPActions }}?{{ $viewData.ParamNameRSVPID }}={{ .ID }}"
+                                       class="btn btn-outline-secondary">Edit</a>
+                                    <a href="{{ $viewData.URLForRSVPQRBase }}?{{ $viewData.ParamNameRSVPID }}={{ .ID }}"
+                                       class="btn btn-outline-info">QR</a>
+                                </div>
+                            </td>
+                        </tr>
+                    {{ end }}
+                    </tbody>
+                </table>
+            </div>
+        {{ else }}
+            <p class="text-center mt-3 mb-3">No RSVPs have been created for this event yet. Click "+ New RSVP" to add
+                invitees.</p>
+        {{ end }}
+    </div>
+
+    <div class="mt-4">
+        {{/* Use value from viewData */}}
+        <a href="{{ $viewData.URLForEventList }}" class="btn btn-outline-secondary">< Back to All Events</a>
+    </div>
+
+{{ end }}
+
+{{ define "scripts" }}
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            const newRsvpButton = document.getElementById('globalNewRsvpButton');
+            const newRsvpContainer = document.getElementById('newRsvpContainer');
+            const editRsvpCard = document.getElementById('editRsvpCard');
+
+            if (newRsvpButton && newRsvpContainer) {
+                if (editRsvpCard) {
+                    newRsvpButton.disabled = true;
+                } else {
+                    newRsvpButton.addEventListener('click', function () {
+                        if (newRsvpContainer.style.display === 'none' || newRsvpContainer.style.display === '') {
+                            newRsvpContainer.style.display = 'block';
+                            newRsvpButton.textContent = 'Cancel New RSVP';
+                            newRsvpButton.classList.remove('btn-primary');
+                            newRsvpButton.classList.add('btn-secondary');
+                        } else {
+                            newRsvpContainer.style.display = 'none';
+                            newRsvpButton.textContent = '+ New RSVP';
+                            newRsvpButton.classList.remove('btn-secondary');
+                            newRsvpButton.classList.add('btn-primary');
+                        }
+                    });
+                }
+            }
+
+            const deleteForms = document.querySelectorAll('form[id^="deleteRSVPForm_"]');
+            deleteForms.forEach(form => {
+                form.addEventListener('submit', function (event) {
+                    if (!confirm('Are you sure you want to delete this RSVP? This cannot be undone.')) {
+                        event.preventDefault();
+                    }
+                });
+            });
+        });
+    </script>
+{{ end }}
+
+{{ template "layout" . }}

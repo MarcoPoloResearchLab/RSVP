@@ -1,8 +1,13 @@
+// File: pkg/handlers/event/list.go
 package event
 
 import (
+	"errors"
+	// "fmt" // No longer needed after removing fmt.Sprintf
 	"net/http"
 	"time"
+
+	"gorm.io/gorm"
 
 	"github.com/temirov/RSVP/models"
 	"github.com/temirov/RSVP/pkg/config"
@@ -10,7 +15,8 @@ import (
 	"github.com/temirov/RSVP/pkg/utils"
 )
 
-type EventWithStats struct {
+// EventStatisticsData holds calculated statistics for display in the event list.
+type EventStatisticsData struct {
 	ID                string
 	Title             string
 	StartTime         time.Time
@@ -19,100 +25,119 @@ type EventWithStats struct {
 	RSVPAnsweredCount int
 }
 
-type EnhancedEvent struct {
+// EnhancedEventData extends models.Event with calculated fields needed for the edit form.
+type EnhancedEventData struct {
 	models.Event
-	DurationHours int
+	CalculatedDurationInHours int
 }
 
-// ListHandler handles GET requests to list all events.
-func ListHandler(applicationContext *config.ApplicationContext) http.HandlerFunc {
-	baseHandler := handlers.NewBaseHandler(applicationContext, "Event", config.WebEvents)
+// eventListViewData structure for the events.tmpl view.
+// This is the struct passed as `PageData.Data` when calling RenderView.
+type eventListViewData struct {
+	EventList           []EventStatisticsData
+	SelectedItemForEdit *EnhancedEventData
+	// Config values passed to templates
+	URLForEventActions      string
+	URLForRSVPListBase      string
+	ParamNameEventID        string
+	ParamNameTitle          string // Added
+	ParamNameDescription    string // Added
+	ParamNameStartTime      string // Added
+	ParamNameDuration       string // Added
+	ParamNameMethodOverride string // Added
+}
+
+// ListEventsHandler handles GET requests for the events list page.
+func ListEventsHandler(applicationContext *config.ApplicationContext) http.HandlerFunc {
+	baseHandler := handlers.NewBaseHttpHandler(applicationContext, "Event", config.WebEvents)
 
 	return func(httpResponseWriter http.ResponseWriter, httpRequest *http.Request) {
-		if !baseHandler.ValidateMethod(httpResponseWriter, httpRequest, http.MethodGet) {
+		if !baseHandler.ValidateHttpMethod(httpResponseWriter, httpRequest, http.MethodGet) {
 			return
 		}
 
-		sessionData, _ := baseHandler.RequireAuthentication(httpResponseWriter, httpRequest)
+		userSessionData, isAuthenticated := baseHandler.RequireAuthentication(httpResponseWriter, httpRequest)
+		if !isAuthenticated {
+			return
+		}
 
 		var currentUser models.User
-		userFindError := currentUser.FindByEmail(applicationContext.Database, sessionData.UserEmail)
+		userFindError := currentUser.FindByEmail(applicationContext.Database, userSessionData.UserEmail)
 		if userFindError != nil {
-			upsertedUser, upsertError := models.UpsertUser(
-				applicationContext.Database,
-				sessionData.UserEmail,
-				sessionData.UserName,
-				sessionData.UserPicture,
-			)
-			if upsertError != nil {
-				baseHandler.HandleError(httpResponseWriter, upsertError, utils.DatabaseError, "Failed to upsert user")
+			if errors.Is(userFindError, gorm.ErrRecordNotFound) {
+				newUser, upsertErr := models.UpsertUser(applicationContext.Database, userSessionData.UserEmail, userSessionData.UserName, userSessionData.UserPicture)
+				if upsertErr != nil {
+					baseHandler.HandleError(httpResponseWriter, upsertErr, utils.DatabaseError, "Failed to create user record during login.")
+					return
+				}
+				currentUser = *newUser
+			} else {
+				baseHandler.HandleError(httpResponseWriter, userFindError, utils.DatabaseError, "Failed to retrieve user data.")
 				return
 			}
-			currentUser = *upsertedUser
 		}
 
-		var userEvents []models.Event
-		eventsQueryError := applicationContext.Database.
-			Preload("RSVPs").
-			Where("user_id = ?", currentUser.ID).
-			Find(&userEvents).Error
-		if eventsQueryError != nil {
-			baseHandler.HandleError(httpResponseWriter, eventsQueryError, utils.DatabaseError, "Error retrieving events")
+		userEvents, eventsRetrievalError := models.FindEventsByUserID(applicationContext.Database, currentUser.ID, true)
+		if eventsRetrievalError != nil {
+			baseHandler.HandleError(httpResponseWriter, eventsRetrievalError, utils.DatabaseError, "Failed to retrieve your events.")
 			return
 		}
 
-		var eventsWithStats []EventWithStats
-		for _, singleEvent := range userEvents {
-			rsvpCount := len(singleEvent.RSVPs)
-			rsvpAnsweredCount := 0
-			for _, singleRSVP := range singleEvent.RSVPs {
-				if singleRSVP.Response != "" && singleRSVP.Response != "Pending" {
-					rsvpAnsweredCount++
+		eventStatistics := make([]EventStatisticsData, 0, len(userEvents))
+		for _, event := range userEvents {
+			totalRSVPCount := len(event.RSVPs)
+			answeredRSVPCount := 0
+			for _, rsvp := range event.RSVPs {
+				if rsvp.Response != "" && rsvp.Response != "Pending" {
+					answeredRSVPCount++
 				}
 			}
-
-			eventsWithStats = append(eventsWithStats, EventWithStats{
-				ID:                singleEvent.ID,
-				Title:             singleEvent.Title,
-				StartTime:         singleEvent.StartTime,
-				EndTime:           singleEvent.EndTime,
-				RSVPCount:         rsvpCount,
-				RSVPAnsweredCount: rsvpAnsweredCount,
+			eventStatistics = append(eventStatistics, EventStatisticsData{
+				ID:                event.ID,
+				Title:             event.Title,
+				StartTime:         event.StartTime,
+				EndTime:           event.EndTime,
+				RSVPCount:         totalRSVPCount,
+				RSVPAnsweredCount: answeredRSVPCount,
 			})
 		}
 
-		eventIDFromParams := baseHandler.GetParam(httpRequest, config.EventIDParam)
-		var selectedEvent *EnhancedEvent
+		var selectedEventForEdit *EnhancedEventData
+		requestedEventID := baseHandler.GetParam(httpRequest, config.EventIDParam)
 
-		if eventIDFromParams != "" {
-			var foundEvent models.Event
-			findEventError := foundEvent.FindByID(applicationContext.Database, eventIDFromParams)
-			if findEventError == nil {
-				calculatedDuration := foundEvent.EndTime.Sub(foundEvent.StartTime)
-				durationHours := int(calculatedDuration.Hours())
-				selectedEvent = &EnhancedEvent{
-					Event:         foundEvent,
-					DurationHours: durationHours,
+		if requestedEventID != "" {
+			var eventToEdit models.Event
+			findErr := eventToEdit.FindByIDAndOwner(applicationContext.Database, requestedEventID, currentUser.ID)
+			if findErr == nil {
+				duration := eventToEdit.EndTime.Sub(eventToEdit.StartTime)
+				selectedEventForEdit = &EnhancedEventData{
+					Event:                     eventToEdit,
+					CalculatedDurationInHours: int(duration.Hours()),
 				}
+			} else if errors.Is(findErr, gorm.ErrRecordNotFound) {
+				baseHandler.HandleError(httpResponseWriter, findErr, utils.NotFoundError, "Event not found or you do not have permission to edit it.")
+				return
 			} else {
-				baseHandler.Logger().Printf("Error loading selected event: %v", findEventError)
+				baseHandler.HandleError(httpResponseWriter, findErr, utils.DatabaseError, "Error retrieving event details for editing.")
+				return
 			}
 		}
 
-		templateData := struct {
-			UserPicture    string
-			UserName       string
-			Events         []EventWithStats
-			SelectedEvent  *EnhancedEvent
-			CreateEventURL string
-		}{
-			UserPicture:    sessionData.UserPicture,
-			UserName:       sessionData.UserName,
-			Events:         eventsWithStats,
-			SelectedEvent:  selectedEvent,
-			CreateEventURL: config.WebEvents,
+		// Prepare the data payload, including the config values needed by templates
+		viewData := eventListViewData{
+			EventList:           eventStatistics,
+			SelectedItemForEdit: selectedEventForEdit,
+			// Populate config values
+			URLForEventActions:      config.WebEvents,
+			URLForRSVPListBase:      config.WebRSVPs,
+			ParamNameEventID:        config.EventIDParam,
+			ParamNameTitle:          config.TitleParam,          // Populate
+			ParamNameDescription:    config.DescriptionParam,    // Populate
+			ParamNameStartTime:      config.StartTimeParam,      // Populate
+			ParamNameDuration:       config.DurationParam,       // Populate
+			ParamNameMethodOverride: config.MethodOverrideParam, // Populate
 		}
 
-		baseHandler.RenderTemplate(httpResponseWriter, config.TemplateEvents, templateData)
+		baseHandler.RenderView(httpResponseWriter, httpRequest, config.TemplateEvents, viewData)
 	}
 }

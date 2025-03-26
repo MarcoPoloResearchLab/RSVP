@@ -1,0 +1,22 @@
+<!-- File: templates/thankyou.tmpl -->
+{{ define "title" }}Thank You{{ if .Name }}, {{ .Name }}{{ end }}!{{ end }}
+
+{{ define "content" }}
+    {{ $viewData := . }}
+    <div class="card thankyou-container">
+        <div class="card-body">
+            <h1 class="card-title h2">Thank You{{ if $viewData.Name }}, {{ $viewData.Name }}{{ end }}!</h1>
+
+            <div class="thankyou-message mt-4 mb-4">
+                {{ $viewData.ThankYouMessage }}
+            </div>
+
+            {{/* Use URL from viewData */}}
+            <a href="{{ $viewData.URLForResponseChange }}" class="back-link">Need to change your response?</a>
+        </div>
+    </div>
+{{ end }}
+
+{{ define "scripts" }}{{ end }}
+
+{{ template "layout" . }}

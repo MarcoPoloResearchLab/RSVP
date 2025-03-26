@@ -1,0 +1,75 @@
+<!-- File: templates/partials/_edit_event_form.tmpl -->
+{{ define "partials/_edit_event_form.tmpl" }}
+    {{/* Context is now the parent viewData, e.g., eventListViewData */}}
+    {{ $viewData := . }}
+    {{ $eventData := $viewData.SelectedItemForEdit }}
+    <div class="card" id="editEventCard">
+        <div class="card-header">
+            <h4 class="mb-0">Edit Event: {{ $eventData.Title }}</h4>
+            {{/* Use URL from viewData */}}
+            <a href="{{ $viewData.URLForEventActions }}" class="btn btn-sm btn-outline-secondary">Cancel Edit</a>
+        </div>
+        {{/* Use URL from viewData */}}
+        <form id="editEventForm" action="{{ $viewData.URLForEventActions }}" method="POST">
+            {{/* Use param names from viewData */}}
+            <input type="hidden" name="{{ $viewData.ParamNameEventID }}" value="{{ $eventData.ID }}">
+            <input type="hidden" name="{{ $viewData.ParamNameMethodOverride }}" value="PUT">
+
+            <div class="card-body">
+                <div class="form-group mb-3">
+                    <label for="editTitleInput">Event Title:</label>
+                    {{/* Use param name from viewData */}}
+                    <input type="text" class="form-control" id="editTitleInput" name="{{ $viewData.ParamNameTitle }}"
+                           required value="{{ $eventData.Title }}">
+                </div>
+
+                <div class="form-group mb-3">
+                    <label for="editDescriptionInput">Description:</label>
+                    {{/* Use param name from viewData */}}
+                    <textarea class="form-control" id="editDescriptionInput" name="{{ $viewData.ParamNameDescription }}"
+                              rows="3">{{ $eventData.Description }}</textarea>
+                </div>
+
+                <div class="row mb-3">
+                    <div class="form-group col-md-6">
+                        <label for="editStartTimeInput">Start Time:</label>
+                        {{/* Use param name from viewData */}}
+                        <input type="datetime-local" class="form-control" id="editStartTimeInput"
+                               name="{{ $viewData.ParamNameStartTime }}" required
+                               value="{{ $eventData.StartTime.Format "2006-01-02T15:04" }}">
+                    </div>
+                    <div class="form-group col-md-6">
+                        <label for="editDurationSelect">Duration (hours):</label>
+                        {{/* Use param name from viewData */}}
+                        <select class="form-select" id="editDurationSelect" name="{{ $viewData.ParamNameDuration }}"
+                                required>
+                            {{ $currentDuration := $eventData.CalculatedDurationInHours }}
+                            <option value="1" {{ if eq $currentDuration 1 }}selected{{ end }}>1 hour</option>
+                            <option value="2" {{ if eq $currentDuration 2 }}selected{{ end }}>2 hours</option>
+                            <option value="3" {{ if eq $currentDuration 3 }}selected{{ end }}>3 hours</option>
+                            <option value="4" {{ if eq $currentDuration 4 }}selected{{ end }}>4 hours</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-footer-row">
+                <div class="button-group">
+                    {{/* Use URL and param names from viewData */}}
+                    <form id="deleteEventForm_{{ $eventData.ID }}" action="{{ $viewData.URLForEventActions }}"
+                          method="POST" class="d-inline">
+                        <input type="hidden" name="{{ $viewData.ParamNameMethodOverride }}" value="DELETE">
+                        <input type="hidden" name="{{ $viewData.ParamNameEventID }}" value="{{ $eventData.ID }}">
+                        <button type="submit" class="btn btn-delete">Delete Event</button>
+                    </form>
+                </div>
+                <div class="button-group">
+                    {{/* Use URL and param name from viewData */}}
+                    <a href="{{ $viewData.URLForRSVPListBase }}?{{ $viewData.ParamNameEventID }}={{ $eventData.ID }}"
+                       class="btn btn-outline-primary">Manage RSVPs ></a>
+                    <button form="editEventForm" type="submit" class="btn btn-primary">Update Event</button>
+                </div>
+            </div>
+        </form>
+    </div>
+{{ end }}

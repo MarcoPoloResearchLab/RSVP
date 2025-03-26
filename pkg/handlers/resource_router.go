@@ -55,16 +55,6 @@ func NewRSVPRouterConfig() ResourceRouterConfig {
 	}
 }
 
-// NewUserRouterConfig returns a router config for user resources.
-func NewUserRouterConfig() ResourceRouterConfig {
-	return ResourceRouterConfig{
-		IDParam:       config.UserIDParam,
-		ParentIDParam: "",
-		MethodParam:   config.MethodOverrideParam,
-		ResourceType:  "User",
-	}
-}
-
 // ResourceRouter is a generic router for CRUD operations on a resource (Event, RSVP, etc.).
 func ResourceRouter(
 	appContext *config.ApplicationContext,
