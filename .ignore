@@ -1,4 +1,5 @@
 .git/
+.github/
 vendor/
 uploads/
 downloads/
@@ -18,6 +19,8 @@ bin/
 *.pem
 .golangci.yml
 .gitignore
-.contentignore
+.ignore
 .env.docker
 .env.prod
+memory-bank/
+tests/
