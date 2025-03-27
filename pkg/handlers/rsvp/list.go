@@ -1,7 +1,12 @@
+// File: pkg/handlers/rsvp/list.go
 package rsvp
 
 import (
+	"errors"
+	// "fmt" // No longer needed
 	"net/http"
+
+	"gorm.io/gorm"
 
 	"github.com/temirov/RSVP/models"
 	"github.com/temirov/RSVP/pkg/config"
@@ -9,142 +14,137 @@ import (
 	"github.com/temirov/RSVP/pkg/utils"
 )
 
-// ListHandler handles:
-//
-//	GET /rsvps/?event_id=XYZ => protected list of RSVPs for that event
-//	PUT /rsvps/?rsvp_id=ABC  => merges that event's RSVP list with an edit form for ABC
-func ListHandler(appCtx *config.ApplicationContext) http.HandlerFunc {
-	baseHandler := handlers.NewBaseHandler(appCtx, "RSVP", config.WebRSVPs)
+// rsvpListViewData structure for the rsvps.tmpl template.
+type rsvpListViewData struct {
+	RsvpList            []models.RSVP
+	SelectedItemForEdit *models.RSVP
+	Event               models.Event
+	// Config values passed to templates
+	URLForRSVPActions       string
+	URLForRSVPQRBase        string
+	URLForEventList         string
+	ParamNameEventID        string
+	ParamNameRSVPID         string
+	ParamNameName           string // Added
+	ParamNameResponse       string // Added
+	ParamNameMethodOverride string // Added
+}
 
-	return func(w http.ResponseWriter, r *http.Request) {
-		if !baseHandler.ValidateMethod(w, r, http.MethodGet, http.MethodPut) {
+// ListHandler handles GET requests for the RSVP list page for a specific event.
+func ListHandler(applicationContext *config.ApplicationContext) http.HandlerFunc {
+	baseHandler := handlers.NewBaseHttpHandler(applicationContext, "RSVP", config.WebRSVPs)
+
+	return func(httpResponseWriter http.ResponseWriter, httpRequest *http.Request) {
+		if !baseHandler.ValidateHttpMethod(httpResponseWriter, httpRequest, http.MethodGet) {
 			return
 		}
 
-		eventID := baseHandler.GetParam(r, config.EventIDParam)
-		rsvpID := baseHandler.GetParam(r, config.RSVPIDParam)
-
-		// CASE 1: GET => show event’s RSVP list (requires event_id)
-		if r.Method == http.MethodGet {
-			if eventID == "" {
-				http.Error(w, "event_id is required for GET listing", http.StatusBadRequest)
-				return
-			}
-			sessionData, authed := baseHandler.RequireAuthentication(w, r)
-			if !authed {
-				return
-			}
-
-			var currentUser models.User
-			if errUser := currentUser.FindByEmail(appCtx.Database, sessionData.UserEmail); errUser != nil {
-				baseHandler.HandleError(w, errUser, utils.DatabaseError, "User not found in DB")
-				return
-			}
-
-			// Ensure ownership
-			findOwner := func(eid string) (string, error) {
-				var evt models.Event
-				if loadErr := evt.FindByID(appCtx.Database, eid); loadErr != nil {
-					return "", loadErr
-				}
-				return evt.UserID, nil
-			}
-			if !baseHandler.VerifyResourceOwnership(w, eventID, findOwner, currentUser.ID) {
-				return
-			}
-
-			var eventRec models.Event
-			if errEvt := eventRec.FindByID(appCtx.Database, eventID); errEvt != nil {
-				baseHandler.HandleError(w, errEvt, utils.NotFoundError, "Event not found")
-				return
-			}
-
-			var rsvps []models.RSVP
-			if qErr := appCtx.Database.Where("event_id = ?", eventID).Find(&rsvps).Error; qErr != nil {
-				baseHandler.HandleError(w, qErr, utils.DatabaseError, "Could not retrieve RSVPs")
-				return
-			}
-			for i, rec := range rsvps {
-				if rec.Response == "" {
-					rsvps[i].Response = "Pending"
-				}
-			}
-
-			data := struct {
-				RSVPRecords  []models.RSVP
-				SelectedRSVP *models.RSVP
-				Event        models.Event
-				UserPicture  string
-				UserName     string
-			}{
-				RSVPRecords:  rsvps,
-				SelectedRSVP: nil,
-				Event:        eventRec,
-				UserPicture:  sessionData.UserPicture,
-				UserName:     sessionData.UserName,
-			}
-			baseHandler.RenderTemplate(w, config.TemplateRSVPs, data)
+		userSessionData, isAuthenticated := baseHandler.RequireAuthentication(httpResponseWriter, httpRequest)
+		if !isAuthenticated {
 			return
 		}
 
-		// CASE 2: PUT => merges event’s RSVP list with an edit form for ?rsvp_id=
-		if r.Method == http.MethodPut {
-			if rsvpID == "" {
-				http.Error(w, "rsvp_id required for PUT editing", http.StatusBadRequest)
-				return
-			}
-			sessionData, authed := baseHandler.RequireAuthentication(w, r)
-			if !authed {
-				return
-			}
-
-			var currentUser models.User
-			if errUser := currentUser.FindByEmail(appCtx.Database, sessionData.UserEmail); errUser != nil {
-				baseHandler.HandleError(w, errUser, utils.DatabaseError, "User not found")
-				return
-			}
-
-			var rsvpRec models.RSVP
-			if loadErr := rsvpRec.FindByCode(appCtx.Database, rsvpID); loadErr != nil {
-				baseHandler.HandleError(w, loadErr, utils.NotFoundError, "RSVP not found")
-				return
-			}
-			var eventRec models.Event
-			if evtErr := eventRec.FindByID(appCtx.Database, rsvpRec.EventID); evtErr != nil {
-				baseHandler.HandleError(w, evtErr, utils.NotFoundError, "Event not found")
-				return
-			}
-			if eventRec.UserID != currentUser.ID {
-				http.Error(w, "Forbidden", http.StatusForbidden)
-				return
-			}
-
-			var allRSVPs []models.RSVP
-			if qErr := appCtx.Database.Where("event_id = ?", eventRec.ID).Find(&allRSVPs).Error; qErr != nil {
-				baseHandler.HandleError(w, qErr, utils.DatabaseError, "Could not load RSVPs")
-				return
-			}
-			for i, rec := range allRSVPs {
-				if rec.Response == "" {
-					allRSVPs[i].Response = "Pending"
+		var currentUser models.User
+		userFindErr := currentUser.FindByEmail(applicationContext.Database, userSessionData.UserEmail)
+		if userFindErr != nil {
+			if errors.Is(userFindErr, gorm.ErrRecordNotFound) {
+				newUser, upsertErr := models.UpsertUser(applicationContext.Database, userSessionData.UserEmail, userSessionData.UserName, userSessionData.UserPicture)
+				if upsertErr != nil {
+					baseHandler.HandleError(httpResponseWriter, upsertErr, utils.DatabaseError, "Failed to create user record.")
+					return
 				}
+				currentUser = *newUser
+			} else {
+				baseHandler.HandleError(httpResponseWriter, userFindErr, utils.DatabaseError, "Could not retrieve user info.")
+				return
+			}
+		}
+
+		eventID := baseHandler.GetParam(httpRequest, config.EventIDParam)
+		rsvpID := baseHandler.GetParam(httpRequest, config.RSVPIDParam)
+
+		var parentEvent models.Event
+		var selectedRsvpForEdit *models.RSVP
+
+		if rsvpID != "" {
+			var rsvpToEdit models.RSVP
+			rsvpFindErr := rsvpToEdit.FindByCode(applicationContext.Database, rsvpID)
+			if rsvpFindErr != nil {
+				if errors.Is(rsvpFindErr, gorm.ErrRecordNotFound) {
+					baseHandler.HandleError(httpResponseWriter, rsvpFindErr, utils.NotFoundError, "The specified RSVP was not found.")
+				} else {
+					baseHandler.HandleError(httpResponseWriter, rsvpFindErr, utils.DatabaseError, "Error retrieving RSVP details for editing.")
+				}
+				return
 			}
 
-			data := struct {
-				RSVPRecords  []models.RSVP
-				SelectedRSVP *models.RSVP
-				Event        models.Event
-				UserPicture  string
-				UserName     string
-			}{
-				RSVPRecords:  allRSVPs,
-				SelectedRSVP: &rsvpRec,
-				Event:        eventRec,
-				UserPicture:  sessionData.UserPicture,
-				UserName:     sessionData.UserName,
+			eventFindErr := parentEvent.FindByID(applicationContext.Database, rsvpToEdit.EventID)
+			if eventFindErr != nil {
+				applicationContext.Logger.Printf("ERROR: Could not find parent event %s for RSVP %s during edit", rsvpToEdit.EventID, rsvpID)
+				baseHandler.HandleError(httpResponseWriter, eventFindErr, utils.NotFoundError, "Could not find the parent event for this RSVP.")
+				return
 			}
-			baseHandler.RenderTemplate(w, config.TemplateRSVPs, data)
+
+			if parentEvent.UserID != currentUser.ID {
+				baseHandler.HandleError(httpResponseWriter, nil, utils.ForbiddenError, "You do not have permission to edit RSVPs for this event.")
+				return
+			}
+
+			if rsvpToEdit.Response == "" {
+				rsvpToEdit.Response = "Pending"
+			}
+			selectedRsvpForEdit = &rsvpToEdit
+			eventID = parentEvent.ID
+
+		} else if eventID != "" {
+			eventFindErr := parentEvent.FindByID(applicationContext.Database, eventID)
+			if eventFindErr != nil {
+				if errors.Is(eventFindErr, gorm.ErrRecordNotFound) {
+					baseHandler.HandleError(httpResponseWriter, eventFindErr, utils.NotFoundError, "The specified event was not found.")
+				} else {
+					baseHandler.HandleError(httpResponseWriter, eventFindErr, utils.DatabaseError, "Error retrieving event details.")
+				}
+				return
+			}
+
+			if parentEvent.UserID != currentUser.ID {
+				baseHandler.HandleError(httpResponseWriter, nil, utils.ForbiddenError, "You do not have permission to view RSVPs for this event.")
+				return
+			}
+
+		} else {
+			baseHandler.HandleError(httpResponseWriter, nil, utils.ValidationError, "An event ID or RSVP ID must be specified to view RSVPs.")
 			return
 		}
+
+		rsvpRecords, rsvpRetrievalError := models.FindRSVPsByEventID(applicationContext.Database, eventID)
+		if rsvpRetrievalError != nil {
+			baseHandler.HandleError(httpResponseWriter, rsvpRetrievalError, utils.DatabaseError, "Could not retrieve the list of RSVPs for this event.")
+			return
+		}
+
+		for index := range rsvpRecords {
+			if rsvpRecords[index].Response == "" {
+				rsvpRecords[index].Response = "Pending"
+			}
+		}
+
+		// Prepare data payload, including config values
+		viewData := rsvpListViewData{
+			RsvpList:            rsvpRecords,
+			SelectedItemForEdit: selectedRsvpForEdit,
+			Event:               parentEvent,
+			// Populate config values
+			URLForRSVPActions:       config.WebRSVPs,
+			URLForRSVPQRBase:        config.WebRSVPQR,
+			URLForEventList:         config.WebEvents,
+			ParamNameEventID:        config.EventIDParam,
+			ParamNameRSVPID:         config.RSVPIDParam,
+			ParamNameName:           config.NameParam,           // Populate
+			ParamNameResponse:       config.ResponseParam,       // Populate
+			ParamNameMethodOverride: config.MethodOverrideParam, // Populate
+		}
+
+		baseHandler.RenderView(httpResponseWriter, httpRequest, config.TemplateRSVPs, viewData)
 	}
 }

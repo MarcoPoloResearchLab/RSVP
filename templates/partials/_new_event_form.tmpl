@@ -1,0 +1,45 @@
+<!-- File: templates/partials/_new_event_form.tmpl -->
+{{ define "partials/_new_event_form.tmpl" }}
+    {{/* Context is eventListViewData */}}
+    {{ $viewData := . }}
+    <div class="card" id="newEventCard">
+        <div class="card-header">
+            <h4 class="mb-0">Create New Event</h4>
+        </div>
+        <form id="newEventForm" action="{{ $viewData.URLForEventActions }}" method="POST">
+            <div class="card-body">
+                <div class="form-group mb-3">
+                    <label for="titleInput">Event Title:</label>
+                    <input type="text" class="form-control" id="titleInput" name="{{ $viewData.ParamNameTitle }}"
+                           required>
+                </div>
+                <div class="form-group mb-3">
+                    <label for="descriptionInput">Description:</label>
+                    <textarea class="form-control" id="descriptionInput" name="{{ $viewData.ParamNameDescription }}"
+                              rows="3"></textarea>
+                </div>
+                <div class="row mb-3">
+                    <div class="form-group col-md-6">
+                        <label for="startTimeInput">Start Time:</label>
+                        <input type="datetime-local" class="form-control" id="startTimeInput"
+                               name="{{ $viewData.ParamNameStartTime }}" required>
+                    </div>
+                    <div class="form-group col-md-6">
+                        <label for="durationSelect">Duration (hours):</label>
+                        <select class="form-select" id="durationSelect" name="{{ $viewData.ParamNameDuration }}"
+                                required>
+                            <option value="1" selected>1 hour</option>
+                            <option value="2">2 hours</option>
+                            <option value="3">3 hours</option>
+                            <option value="4">4 hours</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="form-footer-row mt-0">
+                <span></span>
+                <button type="submit" class="btn btn-primary">Create Event</button>
+            </div>
+        </form>
+    </div>
+{{ end }}

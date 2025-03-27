@@ -1,0 +1,45 @@
+<!-- File: templates/rsvp.tmpl -->
+{{ define "title" }}QR Code for {{ .RSVP.Name }}{{ end }}
+
+{{ define "content" }}
+    {{ $viewData := . }}
+    <div class="card rsvp-container text-center">
+        <div class="card-body">
+            <h2 class="card-title h3 mb-3">QR Code for {{ $viewData.RSVP.Name }}</h2>
+            <h4 class="card-subtitle h6 mb-4 text-muted">Event: {{ $viewData.Event.Title }}</h4>
+
+            <div class="event-details text-start mb-4 pb-4 border-bottom">
+                <p class="mb-1"><strong>Date:</strong> {{ $viewData.Event.StartTime.Format "Monday, January 2, 2006" }}
+                </p>
+                <p class="mb-1"><strong>Time:</strong> {{ $viewData.Event.StartTime.Format "3:04 PM" }}
+                    - {{ $viewData.Event.EndTime.Format "3:04 PM" }}</p>
+                {{ if $viewData.Event.Description }}
+                    <p class="mt-2 mb-0 fst-italic">{{ $viewData.Event.Description }}</p>
+                {{ end }}
+            </div>
+
+            {{ if $viewData.QRCode }}
+                <img src="data:image/png;base64,{{ $viewData.QRCode }}" alt="RSVP QR Code"
+                     class="qr-code img-fluid mb-3">
+            {{ else }}
+                <p class="text-danger">Error generating QR code.</p>
+            {{ end }}
+
+            <p class="mb-2">Scan the code above or use the link below:</p>
+            <p class="mb-4">
+                <a href="{{ $viewData.PublicURL }}" target="_blank" class="fs-6 fw-bold">{{ $viewData.PublicURL }}</a>
+            </p>
+
+            <div class="button-group print-hide mt-5 justify-content-center">
+                {{/* Use values from viewData */}}
+                <a href="{{ $viewData.URLForRSVPList }}?{{ $viewData.ParamEventID }}={{ $viewData.Event.ID }}"
+                   class="btn btn-outline-secondary">Back to RSVPs List</a>
+                <button onclick="window.print();" class="btn btn-primary">Print This Page</button>
+            </div>
+        </div>
+    </div>
+{{ end }}
+
+{{ define "scripts" }}{{ end }}
+
+{{ template "layout" . }}

@@ -1,0 +1,105 @@
+<!-- File: templates/response.tmpl -->
+{{ define "title" }}RSVP Response for {{ .Event.Title }}{{ end }}
+
+{{ define "content" }}
+    {{ $viewData := . }}
+    <div class="card rsvp-container">
+        <div class="card-body">
+            <h1 class="card-title h3 mb-3">You're Invited!</h1>
+
+            <div class="event-details mb-4 pb-4 border-bottom text-start">
+                <h2 class="h5">{{ $viewData.Event.Title }}</h2>
+                <p class="mb-1"><strong>Date:</strong> {{ $viewData.Event.StartTime.Format "Monday, January 2, 2006" }}
+                </p>
+                <p class="mb-1"><strong>Time:</strong> {{ $viewData.Event.StartTime.Format "3:04 PM" }}
+                    - {{ $viewData.Event.EndTime.Format "3:04 PM" }}</p>
+                {{ if $viewData.Event.Description }}
+                    <p class="mt-2 mb-0 fst-italic">{{ $viewData.Event.Description }}</p>
+                {{ end }}
+            </div>
+
+            <h3 class="h5 mt-4">Please RSVP{{ if $viewData.RSVP.Name }} for {{ $viewData.RSVP.Name }}{{ end }}</h3>
+
+            {{/* Use URL from viewData */}}
+            <form action="{{ $viewData.URLForResponseSubmit }}" method="POST" id="rsvpResponseForm" class="mt-4">
+                {{/* Use param names from viewData */}}
+                <input type="hidden" name="{{ $viewData.ParamMethodOverride }}" value="PUT">
+                <input type="hidden" name="{{ $viewData.ParamResponse }}" id="responseHidden"
+                       value="{{ $viewData.RSVP.Response }}">
+
+                <div class="response-buttons mt-4 d-flex flex-column flex-md-row justify-content-center gap-3">
+                    <button type="button" class="btn btn-lg btn-danger response-button" data-response="No,0">
+                        No, Cannot Attend
+                    </button>
+                    <div class="btn-group dropend">
+                        <button type="button" class="btn btn-lg btn-success dropdown-toggle" data-bs-toggle="dropdown"
+                                aria-expanded="false">
+                            Yes, I'll Be There!
+                        </button>
+                        <ul class="dropdown-menu">
+                            <li>
+                                <button class="dropdown-item response-button" type="button" data-response="Yes,0">Just
+                                    Me
+                                </button>
+                            </li>
+                            <li>
+                                <button class="dropdown-item response-button" type="button" data-response="Yes,1">+1
+                                    Guest
+                                </button>
+                            </li>
+                            <li>
+                                <button class="dropdown-item response-button" type="button" data-response="Yes,2">+2
+                                    Guests
+                                </button>
+                            </li>
+                            <li>
+                                <button class="dropdown-item response-button" type="button" data-response="Yes,3">+3
+                                    Guests
+                                </button>
+                            </li>
+                            <li>
+                                <button class="dropdown-item response-button" type="button" data-response="Yes,4">+4
+                                    Guests
+                                </button>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="mt-4 text-center">
+                    <p class="text-muted small">Select an option above to submit your response.</p>
+                </div>
+            </form>
+        </div>
+    </div>
+{{ end }}
+
+
+{{ define "scripts" }}
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            const form = document.getElementById('rsvpResponseForm');
+            const hiddenInput = document.getElementById('responseHidden');
+            const responseButtons = document.querySelectorAll('.response-button');
+
+            responseButtons.forEach(button => {
+                button.addEventListener('click', function () {
+                    const responseValue = this.getAttribute('data-response');
+                    if (hiddenInput && responseValue) {
+                        hiddenInput.value = responseValue;
+                        if (form) {
+                            form.submit();
+                        } else {
+                            console.error('RSVP form not found');
+                        }
+                    } else {
+                        console.error('Hidden input or response value missing');
+                    }
+                });
+            });
+        });
+    </script>
+{{ end }}
+
+
+{{ template "layout" . }}

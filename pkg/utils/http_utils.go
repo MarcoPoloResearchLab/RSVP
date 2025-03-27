@@ -65,9 +65,10 @@ type ErrorType int
 const (
 	DatabaseError ErrorType = iota
 	ValidationError
-	AuthenticationError
+	AuthenticationError // For "Unauthorized"
 	NotFoundError
 	ServerError
+	ForbiddenError
 )
 
 // HandleError handles common HTTP errors with appropriate status codes and logging.
@@ -76,24 +77,43 @@ func HandleError(
 	err error,
 	errorType ErrorType,
 	logger *log.Logger,
-	message string,
+	userMessage string, // Renamed from 'message' for clarity
 ) {
 	if logger != nil {
-		logger.Printf("%s: %v", message, err)
+		// Log the underlying error if it exists, along with the user message
+		if err != nil {
+			logger.Printf("%s: %v", userMessage, err)
+		} else {
+			logger.Printf("%s", userMessage)
+		}
 	}
 
+	// Determine HTTP status code based on error type
+	var statusCode int
 	switch errorType {
 	case ValidationError:
-		http.Error(httpResponseWriter, message, http.StatusBadRequest)
+		statusCode = http.StatusBadRequest
 	case AuthenticationError:
-		http.Error(httpResponseWriter, message, http.StatusUnauthorized)
+		statusCode = http.StatusUnauthorized
+	case ForbiddenError: // Handle the new type
+		statusCode = http.StatusForbidden
 	case NotFoundError:
-		http.Error(httpResponseWriter, message, http.StatusNotFound)
+		statusCode = http.StatusNotFound
 	case DatabaseError, ServerError:
-		http.Error(httpResponseWriter, message, http.StatusInternalServerError)
+		statusCode = http.StatusInternalServerError
 	default:
-		http.Error(httpResponseWriter, message, http.StatusInternalServerError)
+		// Log unexpected error type
+		if logger != nil {
+			logger.Printf("WARN: Unknown error type (%d) used in HandleError", errorType)
+		}
+		statusCode = http.StatusInternalServerError
+		if userMessage == "" { // Provide a default message if none was given for unknown type
+			userMessage = "An unexpected error occurred."
+		}
 	}
+
+	// Send the HTTP error response
+	http.Error(httpResponseWriter, userMessage, statusCode)
 }
 
 // RedirectWithParams redirects to a URL with the given parameters.

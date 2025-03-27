@@ -41,6 +41,26 @@ func (event *Event) FindByID(databaseConnection *gorm.DB, eventIdentifier string
 	return databaseConnection.Where("id = ?", eventIdentifier).First(event).Error
 }
 
+// FindByIDAndOwner loads a single Event by its ID, ensuring it belongs to the specified UserID.
+// Populates the 'event' receiver if found and owned.
+func (event *Event) FindByIDAndOwner(databaseConnection *gorm.DB, eventIdentifier string, ownerUserID string) error {
+	return databaseConnection.Where("id = ? AND user_id = ?", eventIdentifier, ownerUserID).First(event).Error
+}
+
+// FindEventsByUserID retrieves all events belonging to a specific user.
+// Optionally preloads associated RSVPs if preloadRSVPs is true.
+func FindEventsByUserID(databaseConnection *gorm.DB, ownerUserID string, preloadRSVPs bool) ([]Event, error) {
+	var userEvents []Event
+	query := databaseConnection.Where("user_id = ?", ownerUserID).Order("start_time DESC") // Order descending by default
+
+	if preloadRSVPs {
+		query = query.Preload("RSVPs")
+	}
+
+	result := query.Find(&userEvents)
+	return userEvents, result.Error
+}
+
 // Create inserts a new Event into the database.
 func (event *Event) Create(databaseConnection *gorm.DB) error {
 	return databaseConnection.Create(event).Error
@@ -52,6 +72,7 @@ func (event *Event) Save(databaseConnection *gorm.DB) error {
 }
 
 // LoadWithRSVPs loads an Event and its associated RSVPs.
+// Note: This doesn't check ownership. Use FindByIDAndOwner first if needed.
 func (event *Event) LoadWithRSVPs(databaseConnection *gorm.DB, eventIdentifier string) error {
 	return databaseConnection.Preload("RSVPs").Where("id = ?", eventIdentifier).First(event).Error
 }

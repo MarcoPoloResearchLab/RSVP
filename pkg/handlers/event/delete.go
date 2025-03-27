@@ -11,33 +11,31 @@ import (
 
 // DeleteHandler handles DELETE requests to delete an event.
 func DeleteHandler(applicationContext *config.ApplicationContext) http.HandlerFunc {
-	baseHandler := handlers.NewBaseHandler(applicationContext, "Event", config.WebEvents)
+	baseHandler := handlers.NewBaseHttpHandler(applicationContext, "Event", config.WebEvents)
 
 	return func(httpResponseWriter http.ResponseWriter, httpRequest *http.Request) {
-		if !baseHandler.ValidateMethod(httpResponseWriter, httpRequest, http.MethodDelete, http.MethodPost) {
+		if !baseHandler.ValidateHttpMethod(httpResponseWriter, httpRequest, http.MethodDelete, http.MethodPost) {
 			return
 		}
 
-		parameterMap, validParameters := baseHandler.RequireParams(httpResponseWriter, httpRequest, config.EventIDParam)
-		if !validParameters {
+		params, ok := baseHandler.RequireParams(httpResponseWriter, httpRequest, config.EventIDParam)
+		if !ok {
 			return
 		}
-		targetEventID := parameterMap[config.EventIDParam]
+		targetEventID := params[config.EventIDParam]
 
 		sessionData, _ := baseHandler.RequireAuthentication(httpResponseWriter, httpRequest)
 
 		var currentUser models.User
-		findUserError := currentUser.FindByEmail(applicationContext.Database, sessionData.UserEmail)
-		if findUserError != nil {
-			baseHandler.HandleError(httpResponseWriter, findUserError, utils.DatabaseError, "User not found in database")
+		if err := currentUser.FindByEmail(applicationContext.Database, sessionData.UserEmail); err != nil {
+			baseHandler.HandleError(httpResponseWriter, err, utils.DatabaseError, "User not found in database")
 			return
 		}
 
 		findEventOwnerID := func(eventID string) (string, error) {
 			var eventInstance models.Event
-			loadError := eventInstance.FindByID(applicationContext.Database, eventID)
-			if loadError != nil {
-				return "", loadError
+			if err := eventInstance.FindByID(applicationContext.Database, eventID); err != nil {
+				return "", err
 			}
 			return eventInstance.UserID, nil
 		}
@@ -47,21 +45,18 @@ func DeleteHandler(applicationContext *config.ApplicationContext) http.HandlerFu
 		}
 
 		var eventRecord models.Event
-		findEventError := eventRecord.FindByID(applicationContext.Database, targetEventID)
-		if findEventError != nil {
-			baseHandler.HandleError(httpResponseWriter, findEventError, utils.NotFoundError, "Event not found")
+		if err := eventRecord.FindByID(applicationContext.Database, targetEventID); err != nil {
+			baseHandler.HandleError(httpResponseWriter, err, utils.NotFoundError, "Event not found")
 			return
 		}
 
-		deleteRSVPsError := applicationContext.Database.Where("event_id = ?", targetEventID).Delete(&models.RSVP{}).Error
-		if deleteRSVPsError != nil {
-			baseHandler.HandleError(httpResponseWriter, deleteRSVPsError, utils.DatabaseError, "Failed to delete associated RSVPs")
+		if err := applicationContext.Database.Where("event_id = ?", targetEventID).Delete(&models.RSVP{}).Error; err != nil {
+			baseHandler.HandleError(httpResponseWriter, err, utils.DatabaseError, "Failed to delete associated RSVPs")
 			return
 		}
 
-		deletionError := applicationContext.Database.Delete(&eventRecord).Error
-		if deletionError != nil {
-			baseHandler.HandleError(httpResponseWriter, deletionError, utils.DatabaseError, "Failed to delete event")
+		if err := applicationContext.Database.Delete(&eventRecord).Error; err != nil {
+			baseHandler.HandleError(httpResponseWriter, err, utils.DatabaseError, "Failed to delete event")
 			return
 		}
 

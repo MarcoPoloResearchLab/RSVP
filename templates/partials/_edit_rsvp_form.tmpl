@@ -1,0 +1,74 @@
+<!-- File: templates/partials/_edit_rsvp_form.tmpl -->
+{{ define "partials/_edit_rsvp_form.tmpl" }}
+    {{/* Context is the parent viewData, e.g., rsvpListViewData */}}
+    {{ $viewData := . }}
+    {{ $rsvpData := $viewData.SelectedItemForEdit }}
+    {{ $eventData := $viewData.Event }}
+    <div class="card" id="editRsvpCard">
+        <div class="card-header">
+            <h4 class="mb-0">Edit RSVP: {{ $rsvpData.Name }} (Event: {{ $eventData.Title }})</h4>
+            {{/* Use URL and param name from viewData */}}
+            <a href="{{ $viewData.URLForRSVPActions }}?{{ $viewData.ParamNameEventID }}={{ $eventData.ID }}"
+               class="btn btn-sm btn-outline-secondary">Cancel Edit</a>
+        </div>
+        {{/* Use URL from viewData */}}
+        <form id="editRSVPForm" action="{{ $viewData.URLForRSVPActions }}" method="POST">
+            {{/* Use param names from viewData */}}
+            <input type="hidden" name="{{ $viewData.ParamNameMethodOverride }}" value="PUT">
+            <input type="hidden" name="{{ $viewData.ParamNameRSVPID }}" value="{{ $rsvpData.ID }}">
+            <input type="hidden" name="{{ $viewData.ParamNameEventID }}" value="{{ $eventData.ID }}">
+
+            <div class="card-body">
+                <div class="form-group mb-3">
+                    <label for="editNameInput">Name:</label>
+                    {{/* Use param name from viewData */}}
+                    <input type="text" class="form-control" id="editNameInput" name="{{ $viewData.ParamNameName }}"
+                           required value="{{ $rsvpData.Name }}">
+                </div>
+                <div class="form-group mb-3">
+                    <label for="editResponseSelect">Response:</label>
+                    {{/* Use param name from viewData */}}
+                    <select class="form-select" id="editResponseSelect" name="{{ $viewData.ParamNameResponse }}">
+                        {{ $currentResponse := $rsvpData.Response }}
+                        <option value=""
+                                {{ if or (eq $currentResponse "") (eq $currentResponse "Pending") }}selected{{ end }}>
+                            Pending
+                        </option>
+                        <option value="Yes,0" {{ if eq $currentResponse "Yes,0"}}selected{{ end }}>Yes, just me</option>
+                        <option value="Yes,1" {{ if eq $currentResponse "Yes,1"}}selected{{ end }}>Yes, +1 guest
+                        </option>
+                        <option value="Yes,2" {{ if eq $currentResponse "Yes,2"}}selected{{ end }}>Yes, +2 guests
+                        </option>
+                        <option value="Yes,3" {{ if eq $currentResponse "Yes,3"}}selected{{ end }}>Yes, +3 guests
+                        </option>
+                        <option value="Yes,4" {{ if eq $currentResponse "Yes,4"}}selected{{ end }}>Yes, +4 guests
+                        </option>
+                        <option value="No,0"
+                                {{ if or (eq $currentResponse "No,0") (eq $currentResponse "No") }}selected{{ end }}>No,
+                            cannot attend
+                        </option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-footer-row">
+                <div class="button-group">
+                    {{/* Use URL and param names from viewData */}}
+                    <form id="deleteRSVPForm_{{ $rsvpData.ID }}" action="{{ $viewData.URLForRSVPActions }}"
+                          method="POST" class="d-inline">
+                        <input type="hidden" name="{{ $viewData.ParamNameMethodOverride }}" value="DELETE">
+                        <input type="hidden" name="{{ $viewData.ParamNameRSVPID }}" value="{{ $rsvpData.ID }}">
+                        <input type="hidden" name="{{ $viewData.ParamNameEventID }}" value="{{ $eventData.ID }}">
+                        <button type="submit" class="btn btn-delete">Delete RSVP</button>
+                    </form>
+                </div>
+                <div class="button-group">
+                    {{/* Use URL and param name from viewData */}}
+                    <a href="{{ $viewData.URLForRSVPQRBase }}?{{ $viewData.ParamNameRSVPID }}={{ $rsvpData.ID }}"
+                       class="btn btn-outline-info qr-button">View QR Code</a>
+                    <button form="editRSVPForm" type="submit" class="btn btn-primary">Update RSVP</button>
+                </div>
+            </div>
+        </form>
+    </div>
+{{ end }}

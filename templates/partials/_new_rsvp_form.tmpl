@@ -1,0 +1,25 @@
+<!-- File: templates/partials/_new_rsvp_form.tmpl -->
+{{ define "partials/_new_rsvp_form.tmpl" }}
+    {{/* Context is rsvpListViewData */}}
+    {{ $viewData := . }}
+    {{ $eventData := $viewData.Event }}
+    <div class="card" id="newRsvpCard">
+        <div class="card-header">
+            <h4 class="mb-0">Create New RSVP for {{ $eventData.Title }}</h4>
+        </div>
+        <form id="newRSVPForm" action="{{ $viewData.URLForRSVPActions }}" method="POST">
+            <input type="hidden" name="{{ $viewData.ParamNameEventID }}" value="{{ $eventData.ID }}">
+            <div class="card-body">
+                <div class="form-group mb-3">
+                    <label for="nameInput">Invitee Name:</label>
+                    <input type="text" class="form-control" id="nameInput" name="{{ $viewData.ParamNameName }}" required
+                           placeholder="Enter guest's name">
+                </div>
+            </div>
+            <div class="form-footer-row mt-0">
+                <span></span>
+                <button type="submit" class="btn btn-primary">Create RSVP</button>
+            </div>
+        </form>
+    </div>
+{{ end }}
