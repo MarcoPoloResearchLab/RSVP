@@ -1,4 +1,4 @@
-// File: pkg/config/config.go
+// Package config holds application-wide configuration, constants, and context structures.
 package config
 
 import (
@@ -13,26 +13,31 @@ type DatabaseConfig struct {
 	Name string
 }
 
-// Common web paths.
+// Constants defining common web paths used throughout the application.
 const (
 	WebRoot             = "/"
 	WebEvents           = "/events/"
 	WebRSVPs            = "/rsvps/"
-	WebRSVPQR           = "/rsvps/qr/" // Added constant for QR code path
+	WebRSVPQR           = "/rsvps/qr/"
 	WebResponse         = "/response/"
 	WebResponseThankYou = "/response/thankyou"
 )
 
-// Template name constants (base names used for lookup in PrecompiledTemplatesMap).
+// Constants defining template base names used for looking up precompiled templates
+// by the main template loader (excluding standalone pages like landing).
 const (
-	TemplateEvents   = "events"
-	TemplateRSVP     = "rsvp" // QR Code page view name
-	TemplateRSVPs    = "rsvps"
-	TemplateResponse = "response"
-	TemplateThankYou = "thankyou"
+	TemplateEvents    = "events"
+	TemplateRSVP      = "rsvp"
+	TemplateRSVPs     = "rsvps"
+	TemplateResponse  = "response"
+	TemplateThankYou  = "thankyou"
+	TemplateExtension = ".tmpl"
 )
 
-// Parameter name constants for consistent use throughout the application.
+// TemplatesDir is the directory where application templates are stored.
+const TemplatesDir = "templates"
+
+// Constants defining parameter names used in HTTP requests (query and form values).
 const (
 	EventIDParam        = "event_id"
 	RSVPIDParam         = "rsvp_id"
@@ -45,17 +50,16 @@ const (
 	MethodOverrideParam = "_method"
 )
 
-// DefaultDBName is the default name for the database.
+// DefaultDBName is the default filename for the SQLite database.
 const DefaultDBName = "rsvps.db"
 
-// ApplicationContext holds the shared context for the application.
+// ApplicationContext holds shared dependencies accessible across handlers.
 type ApplicationContext struct {
 	Database *gorm.DB
-	// Templates field removed - PrecompiledTemplatesMap in templates pkg is used directly
-	Logger *log.Logger
+	Logger   *log.Logger
 }
 
-// EnvConfig holds environment configuration.
+// EnvConfig holds configuration values sourced from environment variables.
 type EnvConfig struct {
 	SessionSecret       string
 	GoogleClientID      string
@@ -63,18 +67,19 @@ type EnvConfig struct {
 	GoogleOauth2Base    string
 	CertificateFilePath string
 	KeyFilePath         string
-	AppBaseURL          string // Added for constructing full public URLs
+	AppBaseURL          string
 	Database            DatabaseConfig
 }
 
-// NewEnvConfig creates a new environment configuration based on environment variables.
+// NewEnvConfig creates a new EnvConfig instance, populating it with values
+// from environment variables and applying default settings where necessary.
+// It ensures required environment variables are set, logging a fatal error if not.
 func NewEnvConfig(appLogger *log.Logger) *EnvConfig {
 	dbName := DefaultDBName
 	if envDB := os.Getenv("DB_NAME"); envDB != "" {
 		dbName = envDB
 	}
 
-	// Ensure APP_BASE_URL ends with a slash if set
 	appBaseURL := os.Getenv("APP_BASE_URL")
 	if appBaseURL != "" && appBaseURL[len(appBaseURL)-1:] != "/" {
 		appBaseURL += "/"
@@ -87,10 +92,8 @@ func NewEnvConfig(appLogger *log.Logger) *EnvConfig {
 		GoogleOauth2Base:    os.Getenv("GOOGLE_OAUTH2_BASE"),
 		CertificateFilePath: os.Getenv("TLS_CERT_PATH"),
 		KeyFilePath:         os.Getenv("TLS_KEY_PATH"),
-		AppBaseURL:          appBaseURL, // Use the processed base URL
-		Database: DatabaseConfig{
-			Name: dbName,
-		},
+		AppBaseURL:          appBaseURL,
+		Database:            DatabaseConfig{Name: dbName},
 	}
 
 	required := map[string]string{
@@ -98,7 +101,7 @@ func NewEnvConfig(appLogger *log.Logger) *EnvConfig {
 		"GOOGLE_CLIENT_ID":     cfg.GoogleClientID,
 		"GOOGLE_CLIENT_SECRET": cfg.GoogleClientSecret,
 		"GOOGLE_OAUTH2_BASE":   cfg.GoogleOauth2Base,
-		"APP_BASE_URL":         cfg.AppBaseURL, // Make AppBaseURL required
+		"APP_BASE_URL":         cfg.AppBaseURL,
 	}
 	for envVar, val := range required {
 		if val == "" {
