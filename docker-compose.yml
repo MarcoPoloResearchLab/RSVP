@@ -1,0 +1,28 @@
+volumes:
+  rsvp-data: # Define the named volume for persistent database storage
+
+services:
+  rsvp-app:
+    image: ghcr.io/temirov/rsvp:latest # The Docker image to use
+    container_name: rsvp-app          # Name of the running container
+    pull_policy: always               # Always attempt to pull the latest image on startup
+    restart: unless-stopped           # Restart policy for the container
+
+    env_file:
+      - .env.docker                   # Load environment variables from this file
+
+    ports:
+      # Map host port (dynamic via HOST_PORT env var) to container port 8080
+      # Docker Compose will look for HOST_PORT in the host environment first,
+      # then fall back to the value in the .env file (see below).
+      - "${HOST_PORT}:8080"
+
+
+    volumes:
+      # Mount the local 'certs' directory into '/app/certs' in the container (read-only)
+      - ./certs:/app/certs:ro
+
+      # Mount the named volume 'rsvp-data' to '/app/data' inside the container
+      # The application's database file should be configured (via DB_NAME env var)
+      # to reside within this '/app/data' directory for persistence.
+      - rsvp-data:/app/data

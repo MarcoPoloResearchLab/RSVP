@@ -22,6 +22,7 @@ const (
 	serverHttpPort                      = 8080
 	serverHttpIpAddress                 = "0.0.0.0"
 	serverGracefulShutdownTimeoutPeriod = 10 * time.Second
+	templatesFolder                     = "templates/"
 )
 
 func main() {
@@ -35,7 +36,7 @@ func main() {
 	databaseConnection := services.InitDatabase(environmentConfiguration.Database.Name, applicationLogger)
 
 	// Pre-parse all template sets exactly once at startup.
-	templates.LoadAllPrecompiledTemplates("templates")
+	templates.LoadAllPrecompiledTemplates(templatesFolder)
 
 	// Build the application context; handlers will reference the precompiled templates via the templates package.
 	applicationContext := &config.ApplicationContext{

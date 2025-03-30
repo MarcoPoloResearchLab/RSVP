@@ -3,7 +3,6 @@ package rsvp
 
 import (
 	"errors"
-	// "fmt" // No longer needed
 	"net/http"
 
 	"gorm.io/gorm"
@@ -25,9 +24,9 @@ type rsvpListViewData struct {
 	URLForEventList         string
 	ParamNameEventID        string
 	ParamNameRSVPID         string
-	ParamNameName           string // Added
-	ParamNameResponse       string // Added
-	ParamNameMethodOverride string // Added
+	ParamNameName           string
+	ParamNameResponse       string
+	ParamNameMethodOverride string
 }
 
 // ListHandler handles GET requests for the RSVP list page for a specific event.
