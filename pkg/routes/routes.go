@@ -3,19 +3,23 @@
 package routes
 
 import (
+	"html/template" // Import html/template
 	"net/http"
+	"path/filepath"
 
 	gconstants "github.com/temirov/GAuss/pkg/constants"
 	"github.com/temirov/GAuss/pkg/gauss"
 	"github.com/temirov/GAuss/pkg/session"
 
 	"github.com/temirov/RSVP/pkg/config"
+	// base handlers no longer needed by LandingPageHandler
 	"github.com/temirov/RSVP/pkg/handlers/event"
 	"github.com/temirov/RSVP/pkg/handlers/response"
 	"github.com/temirov/RSVP/pkg/handlers/rsvp"
+	"github.com/temirov/RSVP/pkg/utils" // Keep for HandleError
 )
 
-// Routes holds shared application context and configuration necessary for routing.
+// Routes holds shared application context and configuration necessary for defining routes.
 type Routes struct {
 	ApplicationContext *config.ApplicationContext
 	EnvConfig          *config.EnvConfig
@@ -26,9 +30,10 @@ func New(applicationContext *config.ApplicationContext, envConfig config.EnvConf
 	return &Routes{ApplicationContext: applicationContext, EnvConfig: &envConfig}
 }
 
-// RootRedirectHandler directs traffic from the root path ("/") based on user authentication status.
-// Authenticated users are sent to the events dashboard, while unauthenticated users are redirected to the login flow.
-func (routes *Routes) RootRedirectHandler(responseWriter http.ResponseWriter, request *http.Request) {
+// LandingPageHandler handles requests to the root path ("/").
+// If the user is logged in (session exists), it redirects to the events dashboard (config.WebEvents).
+// If the user is logged out, it parses and executes the standalone landing page template directly.
+func (routes *Routes) LandingPageHandler(responseWriter http.ResponseWriter, request *http.Request) {
 	if request.URL.Path != config.WebRoot {
 		http.NotFound(responseWriter, request)
 		return
@@ -37,21 +42,36 @@ func (routes *Routes) RootRedirectHandler(responseWriter http.ResponseWriter, re
 	webSession, sessionError := session.Store().Get(request, gconstants.SessionName)
 	if sessionError != nil {
 		routes.ApplicationContext.Logger.Printf("ERROR: Session error on root access: %v", sessionError)
-		http.Error(responseWriter, "Session error", http.StatusInternalServerError)
-		return
 	}
 
 	userEmail, _ := webSession.Values[gconstants.SessionKeyUserEmail].(string)
 
 	if userEmail != "" {
 		http.Redirect(responseWriter, request, config.WebEvents, http.StatusFound)
-	} else {
-		http.Redirect(responseWriter, request, gconstants.GoogleAuthPath, http.StatusFound)
+		return
+	}
+
+	// Logged out: Render the standalone landing page directly
+	landingTemplatePath := filepath.Join(config.TemplatesDir, "landing"+config.TemplateExtension)
+
+	tmpl, err := template.ParseFiles(landingTemplatePath)
+	if err != nil {
+		routes.ApplicationContext.Logger.Printf("CRITICAL: Failed to parse standalone landing template '%s': %v", landingTemplatePath, err)
+		utils.HandleError(responseWriter, err, utils.ServerError, routes.ApplicationContext.Logger, "Could not display page.")
+		return
+	}
+
+	// Pass potential error from query param (though less likely to hit '/' with error)
+	templateData := map[string]interface{}{
+		"error": request.URL.Query().Get("error"),
+	}
+	err = tmpl.Execute(responseWriter, templateData)
+	if err != nil {
+		routes.ApplicationContext.Logger.Printf("ERROR: Failed to execute standalone landing template '%s': %v", landingTemplatePath, err)
 	}
 }
 
-// ApplyOverrides is middleware that inspects POST requests for a `_method` form value
-// and modifies the request method accordingly (e.g., to PUT or DELETE) before passing it to the next handler.
+// ApplyOverrides middleware... (remains the same)
 func (routes *Routes) ApplyOverrides(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
 		if request.Method == http.MethodPost {
@@ -61,7 +81,6 @@ func (routes *Routes) ApplyOverrides(next http.Handler) http.Handler {
 					routes.ApplicationContext.Logger.Printf("WARN: Failed to parse form data in ApplyOverrides for %s: %v", request.URL.Path, err)
 				}
 			}
-
 			methodOverride := request.FormValue(config.MethodOverrideParam)
 			if methodOverride != "" {
 				switch methodOverride {
@@ -78,39 +97,42 @@ func (routes *Routes) ApplyOverrides(next http.Handler) http.Handler {
 	})
 }
 
-// RegisterMiddleware configures and registers authentication-related middleware and routes provided by the GAuss library.
-// It initializes the session store and sets up Google OAuth2 authentication endpoints.
+// RegisterMiddleware configures GAuss service and registers its routes.
+// GAuss is configured to use the standalone landing.tmpl for its /login route.
 func (routes *Routes) RegisterMiddleware(mux *http.ServeMux) {
 	session.NewSession([]byte(routes.EnvConfig.SessionSecret))
+
+	landingTemplatePath := filepath.Join(config.TemplatesDir, "landing"+config.TemplateExtension)
 
 	authenticationService, authServiceError := gauss.NewService(
 		routes.EnvConfig.GoogleClientID,
 		routes.EnvConfig.GoogleClientSecret,
 		routes.EnvConfig.GoogleOauth2Base,
-		routes.EnvConfig.AppBaseURL,
-		"",
+		config.WebEvents,    // Redirect here after successful Google login
+		landingTemplatePath, // GAuss uses the standalone landing page for /login
 	)
 	if authServiceError != nil {
-		routes.ApplicationContext.Logger.Fatal("FATAL: Failed to initialize authentication service:", authServiceError)
+		routes.ApplicationContext.Logger.Fatal("FATAL: Failed to initialize auth service:", authServiceError)
 	}
 
 	gaussHandlers, gaussHandlersError := gauss.NewHandlers(authenticationService)
 	if gaussHandlersError != nil {
-		routes.ApplicationContext.Logger.Fatal("FATAL: Failed to initialize authentication handlers:", gaussHandlersError)
+		routes.ApplicationContext.Logger.Fatal("FATAL: Failed to initialize auth handlers:", gaussHandlersError)
 	}
 
-	gaussHandlers.RegisterRoutes(mux)
+	gaussHandlers.RegisterRoutes(mux) // Let GAuss register /login, /logout, /auth/*
+
 	routes.ApplicationContext.Logger.Println("GAuss authentication middleware registered.")
 }
 
-// RegisterRoutes defines all application-specific URL path to handler mappings.
-// It applies necessary middleware like authentication checks and method overrides to the appropriate routes.
+// RegisterRoutes defines RSVP's application-specific routes.
 func (routes *Routes) RegisterRoutes(mux *http.ServeMux) {
 	authRequired := gauss.AuthMiddleware
 	overrideHandler := routes.ApplyOverrides
 
-	mux.HandleFunc(config.WebRoot, routes.RootRedirectHandler)
+	mux.HandleFunc(config.WebRoot, routes.LandingPageHandler) // Handles '/'
 
+	// Protected routes... (remain the same)
 	eventBaseDispatcher := http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
 		routes.ApplicationContext.Logger.Printf("Router: /events/ effective method: %s, path: %s", request.Method, request.URL.Path)
 		switch request.Method {
@@ -127,9 +149,7 @@ func (routes *Routes) RegisterRoutes(mux *http.ServeMux) {
 		}
 	})
 	mux.Handle(config.WebEvents, authRequired(overrideHandler(eventBaseDispatcher)))
-
 	mux.Handle(config.WebRSVPQR, authRequired(http.HandlerFunc(rsvp.ShowHandler(routes.ApplicationContext))))
-
 	rsvpBaseDispatcher := http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
 		routes.ApplicationContext.Logger.Printf("Router: /rsvps/ effective method: %s, path: %s", request.Method, request.URL.Path)
 		switch request.Method {
@@ -152,7 +172,6 @@ func (routes *Routes) RegisterRoutes(mux *http.ServeMux) {
 		response.Handler(routes.ApplicationContext).ServeHTTP(responseWriter, request)
 	})
 	mux.Handle(config.WebResponse, overrideHandler(responseBaseDispatcher))
-
 	mux.HandleFunc(config.WebResponseThankYou, response.ThankYouHandler(routes.ApplicationContext))
 
 	routes.ApplicationContext.Logger.Println("Application routes registered successfully.")

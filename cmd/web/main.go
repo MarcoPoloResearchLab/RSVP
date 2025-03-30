@@ -22,36 +22,28 @@ const (
 	serverHttpPort                      = 8080
 	serverHttpIpAddress                 = "0.0.0.0"
 	serverGracefulShutdownTimeoutPeriod = 10 * time.Second
-	templatesFolder                     = "templates/"
 )
 
 func main() {
 	applicationLogger := utils.NewLogger()
 	environmentConfiguration := config.NewEnvConfig(applicationLogger)
 
-	// Initialize session using the secret key.
 	session.NewSession([]byte(environmentConfiguration.SessionSecret))
 
-	// Initialize the SQLite database and run auto-migrations.
 	databaseConnection := services.InitDatabase(environmentConfiguration.Database.Name, applicationLogger)
 
-	// Pre-parse all template sets exactly once at startup.
-	templates.LoadAllPrecompiledTemplates(templatesFolder)
+	templates.LoadAllPrecompiledTemplates(config.TemplatesDir)
 
-	// Build the application context; handlers will reference the precompiled templates via the templates package.
 	applicationContext := &config.ApplicationContext{
 		Database: databaseConnection,
 		Logger:   applicationLogger,
-		// Note: Template rendering in handlers now retrieves from templates.PrecompiledTemplatesMap.
 	}
 
-	// Set up the HTTP router and register middleware and routes.
 	httpServeMuxRouter := http.NewServeMux()
 	routesInstance := routes.New(applicationContext, *environmentConfiguration)
 	routesInstance.RegisterMiddleware(httpServeMuxRouter)
 	routesInstance.RegisterRoutes(httpServeMuxRouter)
 
-	// Configure and start the HTTP server.
 	serverAddress := fmt.Sprintf("%s:%d", serverHttpIpAddress, serverHttpPort)
 	httpServerInstance := &http.Server{
 		Addr:    serverAddress,
@@ -79,7 +71,6 @@ func main() {
 		}()
 	}
 
-	// Wait for termination signal for graceful shutdown.
 	shutdownSignalChannel := make(chan os.Signal, 1)
 	signal.Notify(shutdownSignalChannel, os.Interrupt, syscall.SIGTERM)
 	<-shutdownSignalChannel
