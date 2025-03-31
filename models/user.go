@@ -1,26 +1,37 @@
-// Package models contains the database models for the RSVP system.
+// Package models contains the database models (structs corresponding to tables)
+// and related database interaction logic for the RSVP system.
 package models
 
 import (
 	"errors"
-	"log"
+	"log" // Keep log for UpsertUser specific logging
 
+	"github.com/temirov/RSVP/pkg/config"
 	"gorm.io/gorm"
 )
 
-// User is the persistent record for an authenticated user.
+// User represents an authenticated user in the system, typically identified via Google OAuth.
+// It stores basic profile information and links to the events they have created.
 type User struct {
 	BaseModel
-	Email   string  `gorm:"uniqueIndex;size:255;not null"`
-	Name    string  `gorm:"size:255"`
-	Picture string  `gorm:"size:512"`
-	Events  []Event `gorm:"foreignKey:UserID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
+	// Email is the user's unique email address (used as the primary identifier from OAuth).
+	// Must be unique and is indexed for fast lookups.
+	Email string `gorm:"uniqueIndex;size:255;not null"`
+	// Name is the user's full name, as provided by the authentication provider.
+	Name string `gorm:"size:255"`
+	// Picture is the URL to the user's profile picture, provided by the authentication provider.
+	Picture string `gorm:"size:512"`
+	// Events is a slice containing all Event records created by this user.
+	// GORM automatically handles the foreign key relationship (UserID on Event model).
+	// Cascade constraints ensure Events (and their RSVPs) are deleted if the User is deleted.
+	Events []Event `gorm:"foreignKey:UserID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
 }
 
-// BeforeCreate is a GORM hook that generates a unique base62 ID for this User.
-func (userRecord *User) BeforeCreate(databaseTransaction *gorm.DB) error {
+// BeforeCreate is a GORM hook executed before a new User record is inserted.
+// It ensures that the User has a unique base62 ID generated if one is not already set.
+func (userRecord *User) BeforeCreate(dbTransaction *gorm.DB) error {
 	if userRecord.ID == "" {
-		generatedID, generateIDError := EnsureUniqueID(databaseTransaction, "users", GenerateBase62ID)
+		generatedID, generateIDError := EnsureUniqueID(dbTransaction, config.TableUsers, GenerateBase62ID)
 		if generateIDError != nil {
 			return generateIDError
 		}
@@ -29,27 +40,39 @@ func (userRecord *User) BeforeCreate(databaseTransaction *gorm.DB) error {
 	return nil
 }
 
-// FindByEmail searches for a user by their email.
+// FindByEmail retrieves a single User from the database based on their unique email address.
+// It populates the receiver 'userRecord' struct with the found data.
+// Returns gorm.ErrRecordNotFound if no user with that email exists, or other errors for database issues.
 func (userRecord *User) FindByEmail(databaseConnection *gorm.DB, emailAddress string) error {
 	return databaseConnection.Where("email = ?", emailAddress).First(userRecord).Error
 }
 
-// FindByID searches for a user by their ID.
+// FindByID retrieves a single User from the database based on their primary key (ID).
+// It populates the receiver 'userRecord' struct with the found data.
+// Returns gorm.ErrRecordNotFound if no user with that ID exists, or other errors for database issues.
 func (userRecord *User) FindByID(databaseConnection *gorm.DB, userIdentifier string) error {
 	return databaseConnection.Where("id = ?", userIdentifier).First(userRecord).Error
 }
 
-// Create inserts a new user into the database.
+// Create inserts the current User struct instance (the receiver 'userRecord') as a new record into the database.
+// Triggers the BeforeCreate hook to generate an ID if necessary.
+// Returns an error if the database insertion fails.
 func (userRecord *User) Create(databaseConnection *gorm.DB) error {
 	return databaseConnection.Create(userRecord).Error
 }
 
-// Save updates an existing user in the database.
+// Save updates the existing User record in the database corresponding to the receiver 'userRecord' struct's ID.
+// Updates all fields based on the current values in the struct.
+// Returns an error if the database update fails.
 func (userRecord *User) Save(databaseConnection *gorm.DB) error {
 	return databaseConnection.Save(userRecord).Error
 }
 
-// UpsertUser creates or updates a user record based on the email.
+// UpsertUser finds a user by email or creates a new one if not found.
+// If the user exists, it updates their Name and Picture if the provided values differ.
+// This is typically called after successful authentication to ensure the local user record
+// is present and up-to-date with information from the identity provider.
+// It uses local logging for detailed tracing of the upsert process.
 func UpsertUser(
 	databaseConnection *gorm.DB,
 	emailAddress string,
@@ -58,53 +81,43 @@ func UpsertUser(
 ) (*User, error) {
 	var existingUser User
 
-	// Try to find the user by email
 	findResult := databaseConnection.First(&existingUser, "email = ?", emailAddress)
+
 	if findResult.Error != nil {
 		if errors.Is(findResult.Error, gorm.ErrRecordNotFound) {
-			// User not found, create a new one
 			log.Printf("User with email %s not found, creating new user", emailAddress)
-			existingUser = User{
+			newUser := User{
 				Email:   emailAddress,
 				Name:    fullName,
 				Picture: pictureURL,
 			}
 
-			if createError := databaseConnection.Create(&existingUser).Error; createError != nil {
+			if createError := databaseConnection.Create(&newUser).Error; createError != nil {
 				log.Printf("Error creating user: %v", createError)
 				return nil, createError
 			}
+			log.Printf("User created successfully with ID: %s", newUser.ID)
+			return &newUser, nil
+		}
+		log.Printf("Database error when finding user: %v", findResult.Error)
+		return nil, findResult.Error
+	}
+	log.Printf("Found existing user with ID: %s", existingUser.ID)
+	fieldsUpdated := false
+	if existingUser.Name != fullName {
+		existingUser.Name = fullName
+		fieldsUpdated = true
+	}
+	if existingUser.Picture != pictureURL {
+		existingUser.Picture = pictureURL
+		fieldsUpdated = true
+	}
 
-			// Verify the user was created by fetching it again
-			var verificationUser User
-			if verifyError := databaseConnection.First(&verificationUser, "email = ?", emailAddress).Error; verifyError != nil {
-				log.Printf("Warning: User was created but could not be verified: %v", verifyError)
-			} else {
-				log.Printf("User created successfully with ID: %s", verificationUser.ID)
-			}
-		} else {
-			// Some other database error
-			log.Printf("Database error when finding user: %v", findResult.Error)
-			return nil, findResult.Error
-		}
-	} else {
-		// Existing user, update fields if changed
-		log.Printf("Found existing user with ID: %s", existingUser.ID)
-		fieldsUpdated := false
-		if existingUser.Name != fullName {
-			existingUser.Name = fullName
-			fieldsUpdated = true
-		}
-		if existingUser.Picture != pictureURL {
-			existingUser.Picture = pictureURL
-			fieldsUpdated = true
-		}
-		if fieldsUpdated {
-			log.Printf("Updating user details for ID: %s", existingUser.ID)
-			if saveError := databaseConnection.Save(&existingUser).Error; saveError != nil {
-				log.Printf("Error updating user: %v", saveError)
-				return nil, saveError
-			}
+	if fieldsUpdated {
+		log.Printf("Updating user details for ID: %s", existingUser.ID)
+		if saveError := databaseConnection.Save(&existingUser).Error; saveError != nil {
+			log.Printf("Error updating user: %v", saveError)
+			return nil, saveError
 		}
 	}
 

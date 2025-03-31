@@ -2,7 +2,6 @@
 
 {{ define "content" }}
     {{ $viewData := . }}
-
     {{ if $viewData.SelectedItemForEdit }}
         {{ template "partials/_edit_event_form.tmpl" $viewData }}
     {{ else }}
@@ -10,7 +9,6 @@
             {{ template "partials/_new_event_form.tmpl" $viewData }}
         </div>
     {{ end }}
-
     <div class="card card-events mt-4">
         <div class="card-header d-flex justify-content-between align-items-center">
             <h4 class="mb-0">Your Events</h4>
@@ -19,7 +17,6 @@
                 + New Event
             </button>
         </div>
-
         {{ if $viewData.EventList }}
             <div class="table-responsive mt-0">
                 <table class="table table-striped table-hover mb-0">
@@ -84,15 +81,6 @@
                     });
                 }
             }
-
-            const deleteForms = document.querySelectorAll('form[id^="deleteEventForm_"]');
-            deleteForms.forEach(form => {
-                form.addEventListener('submit', function (event) {
-                    if (!confirm('Are you sure you want to delete this event and all its RSVPs? This cannot be undone.')) {
-                        event.preventDefault();
-                    }
-                });
-            });
         });
     </script>
 {{ end }}

@@ -1,9 +1,7 @@
-// File: pkg/handlers/event/list.go
 package event
 
 import (
 	"errors"
-	// "fmt" // No longer needed after removing fmt.Sprintf
 	"net/http"
 	"time"
 
@@ -12,11 +10,12 @@ import (
 	"github.com/temirov/RSVP/models"
 	"github.com/temirov/RSVP/pkg/config"
 	"github.com/temirov/RSVP/pkg/handlers"
+	"github.com/temirov/RSVP/pkg/middleware"
 	"github.com/temirov/RSVP/pkg/utils"
 )
 
-// EventStatisticsData holds calculated statistics for display in the event list.
-type EventStatisticsData struct {
+// StatisticsData holds calculated statistics for a single event, used for display in the list view.
+type StatisticsData struct {
 	ID                string
 	Title             string
 	StartTime         time.Time
@@ -25,57 +24,36 @@ type EventStatisticsData struct {
 	RSVPAnsweredCount int
 }
 
-// EnhancedEventData extends models.Event with calculated fields needed for the edit form.
+// EnhancedEventData extends models.Event with calculated fields needed specifically for the edit form view.
 type EnhancedEventData struct {
 	models.Event
 	CalculatedDurationInHours int
 }
 
-// eventListViewData structure for the events.tmpl view.
-// This is the struct passed as `PageData.Data` when calling RenderView.
+// eventListViewData is the structure passed as PageData.Data to the events.tmpl template.
 type eventListViewData struct {
-	EventList           []EventStatisticsData
-	SelectedItemForEdit *EnhancedEventData
-	// Config values passed to templates
+	EventList               []StatisticsData
+	SelectedItemForEdit     *EnhancedEventData
 	URLForEventActions      string
 	URLForRSVPListBase      string
 	ParamNameEventID        string
-	ParamNameTitle          string // Added
-	ParamNameDescription    string // Added
-	ParamNameStartTime      string // Added
-	ParamNameDuration       string // Added
-	ParamNameMethodOverride string // Added
+	ParamNameTitle          string
+	ParamNameDescription    string
+	ParamNameStartTime      string
+	ParamNameDuration       string
+	ParamNameMethodOverride string
 }
 
-// ListEventsHandler handles GET requests for the events list page.
+// ListEventsHandler handles GET requests for the events list page (/events/).
 func ListEventsHandler(applicationContext *config.ApplicationContext) http.HandlerFunc {
-	baseHandler := handlers.NewBaseHttpHandler(applicationContext, "Event", config.WebEvents)
+	baseHandler := handlers.NewBaseHttpHandler(applicationContext, config.ResourceNameEvent, config.WebEvents)
 
 	return func(httpResponseWriter http.ResponseWriter, httpRequest *http.Request) {
 		if !baseHandler.ValidateHttpMethod(httpResponseWriter, httpRequest, http.MethodGet) {
 			return
 		}
 
-		userSessionData, isAuthenticated := baseHandler.RequireAuthentication(httpResponseWriter, httpRequest)
-		if !isAuthenticated {
-			return
-		}
-
-		var currentUser models.User
-		userFindError := currentUser.FindByEmail(applicationContext.Database, userSessionData.UserEmail)
-		if userFindError != nil {
-			if errors.Is(userFindError, gorm.ErrRecordNotFound) {
-				newUser, upsertErr := models.UpsertUser(applicationContext.Database, userSessionData.UserEmail, userSessionData.UserName, userSessionData.UserPicture)
-				if upsertErr != nil {
-					baseHandler.HandleError(httpResponseWriter, upsertErr, utils.DatabaseError, "Failed to create user record during login.")
-					return
-				}
-				currentUser = *newUser
-			} else {
-				baseHandler.HandleError(httpResponseWriter, userFindError, utils.DatabaseError, "Failed to retrieve user data.")
-				return
-			}
-		}
+		currentUser := httpRequest.Context().Value(middleware.ContextKeyUser).(*models.User)
 
 		userEvents, eventsRetrievalError := models.FindEventsByUserID(applicationContext.Database, currentUser.ID, true)
 		if eventsRetrievalError != nil {
@@ -83,16 +61,16 @@ func ListEventsHandler(applicationContext *config.ApplicationContext) http.Handl
 			return
 		}
 
-		eventStatistics := make([]EventStatisticsData, 0, len(userEvents))
+		eventStatistics := make([]StatisticsData, 0, len(userEvents))
 		for _, event := range userEvents {
 			totalRSVPCount := len(event.RSVPs)
 			answeredRSVPCount := 0
 			for _, rsvp := range event.RSVPs {
-				if rsvp.Response != "" && rsvp.Response != "Pending" {
+				if rsvp.Response != "" && rsvp.Response != config.RSVPResponsePending {
 					answeredRSVPCount++
 				}
 			}
-			eventStatistics = append(eventStatistics, EventStatisticsData{
+			eventStatistics = append(eventStatistics, StatisticsData{
 				ID:                event.ID,
 				Title:             event.Title,
 				StartTime:         event.StartTime,
@@ -103,39 +81,36 @@ func ListEventsHandler(applicationContext *config.ApplicationContext) http.Handl
 		}
 
 		var selectedEventForEdit *EnhancedEventData
-		requestedEventID := baseHandler.GetParam(httpRequest, config.EventIDParam)
+		requestedEventIDForEdit := baseHandler.GetParam(httpRequest, config.EventIDParam)
 
-		if requestedEventID != "" {
+		if requestedEventIDForEdit != "" {
 			var eventToEdit models.Event
-			findErr := eventToEdit.FindByIDAndOwner(applicationContext.Database, requestedEventID, currentUser.ID)
-			if findErr == nil {
-				duration := eventToEdit.EndTime.Sub(eventToEdit.StartTime)
+			findError := eventToEdit.FindByIDAndOwner(applicationContext.Database, requestedEventIDForEdit, currentUser.ID)
+			if findError == nil {
 				selectedEventForEdit = &EnhancedEventData{
 					Event:                     eventToEdit,
-					CalculatedDurationInHours: int(duration.Hours()),
+					CalculatedDurationInHours: eventToEdit.DurationHours(),
 				}
-			} else if errors.Is(findErr, gorm.ErrRecordNotFound) {
-				baseHandler.HandleError(httpResponseWriter, findErr, utils.NotFoundError, "Event not found or you do not have permission to edit it.")
+			} else if errors.Is(findError, gorm.ErrRecordNotFound) {
+				baseHandler.HandleError(httpResponseWriter, findError, utils.NotFoundError, "Event not found or you do not have permission to edit it.")
 				return
 			} else {
-				baseHandler.HandleError(httpResponseWriter, findErr, utils.DatabaseError, "Error retrieving event details for editing.")
+				baseHandler.HandleError(httpResponseWriter, findError, utils.DatabaseError, "Error retrieving event details for editing.")
 				return
 			}
 		}
 
-		// Prepare the data payload, including the config values needed by templates
 		viewData := eventListViewData{
-			EventList:           eventStatistics,
-			SelectedItemForEdit: selectedEventForEdit,
-			// Populate config values
+			EventList:               eventStatistics,
+			SelectedItemForEdit:     selectedEventForEdit,
 			URLForEventActions:      config.WebEvents,
 			URLForRSVPListBase:      config.WebRSVPs,
 			ParamNameEventID:        config.EventIDParam,
-			ParamNameTitle:          config.TitleParam,          // Populate
-			ParamNameDescription:    config.DescriptionParam,    // Populate
-			ParamNameStartTime:      config.StartTimeParam,      // Populate
-			ParamNameDuration:       config.DurationParam,       // Populate
-			ParamNameMethodOverride: config.MethodOverrideParam, // Populate
+			ParamNameTitle:          config.TitleParam,
+			ParamNameDescription:    config.DescriptionParam,
+			ParamNameStartTime:      config.StartTimeParam,
+			ParamNameDuration:       config.DurationParam,
+			ParamNameMethodOverride: config.MethodOverrideParam,
 		}
 
 		baseHandler.RenderView(httpResponseWriter, httpRequest, config.TemplateEvents, viewData)

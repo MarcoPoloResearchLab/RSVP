@@ -30,8 +30,8 @@
             </p>
 
             <div class="button-group print-hide mt-5 justify-content-center">
-                {{/* Use values from viewData */}}
-                <a href="{{ $viewData.URLForRSVPList }}?{{ $viewData.ParamEventID }}={{ $viewData.Event.ID }}"
+                {{/* Use the pre-built URL directly */}}
+                <a href="{{ $viewData.URLForRSVPList }}"
                    class="btn btn-outline-secondary">Back to RSVPs List</a>
                 <button onclick="window.print();" class="btn btn-primary">Print This Page</button>
             </div>
