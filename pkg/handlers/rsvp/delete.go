@@ -1,60 +1,68 @@
 package rsvp
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/temirov/RSVP/models"
 	"github.com/temirov/RSVP/pkg/config"
 	"github.com/temirov/RSVP/pkg/handlers"
+	"github.com/temirov/RSVP/pkg/middleware"
 	"github.com/temirov/RSVP/pkg/utils"
+	"gorm.io/gorm"
 )
 
-// DeleteHandler handles DELETE requests to delete an RSVP.
-func DeleteHandler(appCtx *config.ApplicationContext) http.HandlerFunc {
-	baseHandler := handlers.NewBaseHttpHandler(appCtx, "RSVP", config.WebRSVPs)
+// DeleteHandler handles DELETE requests (or POST with _method=DELETE override) to delete an RSVP.
+func DeleteHandler(applicationContext *config.ApplicationContext) http.HandlerFunc {
+	baseHandler := handlers.NewBaseHttpHandler(applicationContext, config.ResourceNameRSVP, config.WebRSVPs)
 
-	return func(w http.ResponseWriter, r *http.Request) {
-		if !baseHandler.ValidateHttpMethod(w, r, http.MethodDelete, http.MethodPost) {
+	return func(httpResponseWriter http.ResponseWriter, httpRequest *http.Request) {
+		if !baseHandler.ValidateHttpMethod(httpResponseWriter, httpRequest, http.MethodDelete) {
 			return
 		}
 
-		rsvpID := baseHandler.GetParam(r, config.RSVPIDParam)
-		if rsvpID == "" {
-			http.Error(w, "RSVP ID is required", http.StatusBadRequest)
+		currentUser := httpRequest.Context().Value(middleware.ContextKeyUser).(*models.User)
+
+		params, paramsOk := baseHandler.RequireParams(httpResponseWriter, httpRequest, config.RSVPIDParam)
+		if !paramsOk {
 			return
 		}
+		targetRsvpID := params[config.RSVPIDParam]
 
 		var rsvpRecord models.RSVP
-		if err := rsvpRecord.FindByCode(appCtx.Database, rsvpID); err != nil {
-			baseHandler.HandleError(w, err, utils.NotFoundError, "RSVP not found")
-			return
-		}
-
-		sessionData, _ := baseHandler.RequireAuthentication(w, r)
-		var currentUser models.User
-		if err := currentUser.FindByEmail(appCtx.Database, sessionData.UserEmail); err != nil {
-			baseHandler.HandleError(w, err, utils.DatabaseError, "User not found in database")
-			return
-		}
-
-		findEventOwnerID := func(eid string) (string, error) {
-			var ev models.Event
-			if err := ev.FindByID(appCtx.Database, eid); err != nil {
-				return "", err
+		if findError := applicationContext.Database.First(&rsvpRecord, "id = ?", targetRsvpID).Error; findError != nil {
+			if errors.Is(findError, gorm.ErrRecordNotFound) {
+				baseHandler.HandleError(httpResponseWriter, findError, utils.NotFoundError, "RSVP not found.")
+			} else {
+				baseHandler.HandleError(httpResponseWriter, findError, utils.DatabaseError, "Error retrieving RSVP details.")
 			}
-			return ev.UserID, nil
+			return
 		}
-		if !baseHandler.VerifyResourceOwnership(w, rsvpRecord.EventID, findEventOwnerID, currentUser.ID) {
+		parentEventID := rsvpRecord.EventID
+
+		var parentEvent models.Event
+		eventFindError := applicationContext.Database.First(&parentEvent, "id = ?", parentEventID).Error
+		if eventFindError != nil {
+			if errors.Is(eventFindError, gorm.ErrRecordNotFound) {
+				baseHandler.HandleError(httpResponseWriter, eventFindError, utils.NotFoundError, "Parent event not found for RSVP.")
+			} else {
+				baseHandler.HandleError(httpResponseWriter, eventFindError, utils.DatabaseError, "Error retrieving parent event.")
+			}
 			return
 		}
 
-		if err := appCtx.Database.Delete(&rsvpRecord).Error; err != nil {
-			baseHandler.HandleError(w, err, utils.DatabaseError, "Failed to delete RSVP")
+		if !baseHandler.VerifyResourceOwnership(httpResponseWriter, httpRequest, parentEvent.UserID, currentUser.ID) {
 			return
 		}
 
-		baseHandler.RedirectWithParams(w, r, map[string]string{
-			config.EventIDParam: rsvpRecord.EventID,
-		})
+		if deleteError := applicationContext.Database.Delete(&rsvpRecord).Error; deleteError != nil {
+			baseHandler.HandleError(httpResponseWriter, deleteError, utils.DatabaseError, "Failed to delete the RSVP.")
+			return
+		}
+
+		redirectParams := map[string]string{
+			config.EventIDParam: parentEventID,
+		}
+		baseHandler.RedirectWithParams(httpResponseWriter, httpRequest, redirectParams)
 	}
 }

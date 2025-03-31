@@ -4,109 +4,90 @@ package config
 import (
 	"log"
 	"os"
+	"strings" // Import strings package
 
 	"gorm.io/gorm"
 )
 
 // DatabaseConfig holds database configuration.
 type DatabaseConfig struct {
+	// Name specifies the filename or connection string for the database.
 	Name string
 }
 
-// Constants defining common web paths used throughout the application.
-const (
-	WebRoot             = "/"
-	WebEvents           = "/events/"
-	WebRSVPs            = "/rsvps/"
-	WebRSVPQR           = "/rsvps/qr/"
-	WebResponse         = "/response/"
-	WebResponseThankYou = "/response/thankyou"
-)
-
-// Constants defining template base names used for looking up precompiled templates
-// by the main template loader (excluding standalone pages like landing).
-const (
-	TemplateEvents    = "events"
-	TemplateRSVP      = "rsvp"
-	TemplateRSVPs     = "rsvps"
-	TemplateResponse  = "response"
-	TemplateThankYou  = "thankyou"
-	TemplateExtension = ".tmpl"
-)
-
-// TemplatesDir is the directory where application templates are stored.
-const TemplatesDir = "templates"
-
-// Constants defining parameter names used in HTTP requests (query and form values).
-const (
-	EventIDParam        = "event_id"
-	RSVPIDParam         = "rsvp_id"
-	NameParam           = "name"
-	TitleParam          = "title"
-	DescriptionParam    = "description"
-	StartTimeParam      = "start_time"
-	DurationParam       = "duration"
-	ResponseParam       = "response"
-	MethodOverrideParam = "_method"
-)
-
-// DefaultDBName is the default filename for the SQLite database.
-const DefaultDBName = "rsvps.db"
-
 // ApplicationContext holds shared dependencies accessible across handlers.
 type ApplicationContext struct {
+	// Database is the active GORM database connection instance.
 	Database *gorm.DB
-	Logger   *log.Logger
+	// Logger is the application-wide logger instance.
+	Logger *log.Logger
+	// AppBaseURL is the public base URL of the application, including trailing slash.
+	AppBaseURL string // Added to centralize access
 }
 
 // EnvConfig holds configuration values sourced from environment variables.
 type EnvConfig struct {
-	SessionSecret       string
-	GoogleClientID      string
-	GoogleClientSecret  string
-	GoogleOauth2Base    string
+	// SessionSecret is the secret key used for securing user sessions.
+	SessionSecret string
+	// GoogleClientID is the Client ID obtained from Google Cloud Console for OAuth.
+	GoogleClientID string
+	// GoogleClientSecret is the Client Secret obtained from Google Cloud Console for OAuth.
+	GoogleClientSecret string
+	// GoogleOauth2Base is the base URL for Google OAuth2 endpoints.
+	GoogleOauth2Base string
+	// CertificateFilePath is the path to the TLS certificate file (optional).
 	CertificateFilePath string
-	KeyFilePath         string
-	AppBaseURL          string
-	Database            DatabaseConfig
+	// KeyFilePath is the path to the TLS private key file (optional).
+	KeyFilePath string
+	// AppBaseURL is the public base URL of the application (e.g., "https://example.com/"). Must include trailing slash.
+	AppBaseURL string
+	// Database contains database-specific configuration.
+	Database DatabaseConfig
 }
 
 // NewEnvConfig creates a new EnvConfig instance, populating it with values
 // from environment variables and applying default settings where necessary.
 // It ensures required environment variables are set, logging a fatal error if not.
-func NewEnvConfig(appLogger *log.Logger) *EnvConfig {
-	dbName := DefaultDBName
-	if envDB := os.Getenv("DB_NAME"); envDB != "" {
-		dbName = envDB
+func NewEnvConfig(applicationLogger *log.Logger) *EnvConfig {
+	databaseName := DefaultDBName
+	if envDatabaseName := os.Getenv("DB_NAME"); envDatabaseName != "" {
+		databaseName = envDatabaseName
 	}
 
+	// Ensure APP_BASE_URL ends with a slash if set
 	appBaseURL := os.Getenv("APP_BASE_URL")
-	if appBaseURL != "" && appBaseURL[len(appBaseURL)-1:] != "/" {
+	if appBaseURL != "" && !strings.HasSuffix(appBaseURL, "/") {
 		appBaseURL += "/"
 	}
 
-	cfg := &EnvConfig{
+	envConfigData := &EnvConfig{
 		SessionSecret:       os.Getenv("SESSION_SECRET"),
 		GoogleClientID:      os.Getenv("GOOGLE_CLIENT_ID"),
 		GoogleClientSecret:  os.Getenv("GOOGLE_CLIENT_SECRET"),
 		GoogleOauth2Base:    os.Getenv("GOOGLE_OAUTH2_BASE"),
 		CertificateFilePath: os.Getenv("TLS_CERT_PATH"),
 		KeyFilePath:         os.Getenv("TLS_KEY_PATH"),
-		AppBaseURL:          appBaseURL,
-		Database:            DatabaseConfig{Name: dbName},
+		AppBaseURL:          appBaseURL, // Use the processed base URL
+		Database: DatabaseConfig{
+			Name: databaseName,
+		},
 	}
 
-	required := map[string]string{
-		"SESSION_SECRET":       cfg.SessionSecret,
-		"GOOGLE_CLIENT_ID":     cfg.GoogleClientID,
-		"GOOGLE_CLIENT_SECRET": cfg.GoogleClientSecret,
-		"GOOGLE_OAUTH2_BASE":   cfg.GoogleOauth2Base,
-		"APP_BASE_URL":         cfg.AppBaseURL,
+	// Define required environment variables and their corresponding values from the config struct.
+	requiredEnvVars := map[string]string{
+		"SESSION_SECRET":       envConfigData.SessionSecret,
+		"GOOGLE_CLIENT_ID":     envConfigData.GoogleClientID,
+		"GOOGLE_CLIENT_SECRET": envConfigData.GoogleClientSecret,
+		"GOOGLE_OAUTH2_BASE":   envConfigData.GoogleOauth2Base,
+		"APP_BASE_URL":         envConfigData.AppBaseURL, // Make AppBaseURL required
 	}
-	for envVar, val := range required {
-		if val == "" {
-			appLogger.Fatalf(envVar + " environment variable is not set")
+
+	// Check if all required environment variables are set.
+	for envVarName, value := range requiredEnvVars {
+		if value == "" {
+			// Log a fatal error and exit if a required variable is missing.
+			applicationLogger.Fatalf("%s environment variable is not set", envVarName)
 		}
 	}
-	return cfg
+	return envConfigData
 }

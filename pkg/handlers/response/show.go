@@ -1,4 +1,4 @@
-// File: pkg/handlers/response/show.go
+// Package response handles the public-facing RSVP response submission workflow.
 package response
 
 import (
@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
-	"strings"
 
 	"gorm.io/gorm"
 
@@ -16,30 +15,33 @@ import (
 	"github.com/temirov/RSVP/pkg/utils"
 )
 
-// ResponseViewData is the data structure passed to the response.tmpl template.
-type ResponseViewData struct {
-	RSVP  models.RSVP
-	Event models.Event
-	// Config values
+// ViewData is the data structure passed to the response.tmpl template (the RSVP form).
+type ViewData struct {
+	RSVP                 models.RSVP
+	Event                models.Event
 	URLForResponseSubmit string
-	ParamRSVPID          string // Added
+	ParamRSVPID          string
 	ParamMethodOverride  string
 	ParamResponse        string
+	ParamExtraGuests     string // Ensure this is present
+	MaxGuestCount        int    // Ensure this is present if used directly (though not needed for original design template)
 }
 
 // ThankYouViewData is the data structure passed to the thankyou.tmpl template.
 type ThankYouViewData struct {
-	Name            string
-	ThankYouMessage string
-	Code            string
-	// Config values
+	Name                 string
+	ThankYouMessage      string
+	Code                 string
 	URLForResponseChange string
-	ParamRSVPID          string // Added
+	ParamRSVPID          string
 }
 
-// Handler handles GET requests to show the RSVP form and PUT requests to submit it.
+// Handler processes requests for the public RSVP response page.
+// It handles GET requests to display the form and PUT requests (via POST override) to submit the response.
+// It requires a valid RSVP ID (code) in the query parameters.
+// Assumes backend expects separate 'response' ('Yes'/'No') and 'extra_guests' parameters.
 func Handler(applicationContext *config.ApplicationContext) http.HandlerFunc {
-	baseHandler := handlers.NewBaseHttpHandler(applicationContext, "Response", config.WebResponse)
+	baseHandler := handlers.NewBaseHttpHandler(applicationContext, config.ResourceNameResponse, config.WebResponse)
 
 	return func(httpResponseWriter http.ResponseWriter, httpRequest *http.Request) {
 		rsvpCode := httpRequest.URL.Query().Get(config.RSVPIDParam)
@@ -53,98 +55,105 @@ func Handler(applicationContext *config.ApplicationContext) http.HandlerFunc {
 		}
 
 		var rsvpRecord models.RSVP
-		findRsvpErr := rsvpRecord.FindByCode(applicationContext.Database, rsvpCode)
-		if findRsvpErr != nil {
-			if errors.Is(findRsvpErr, gorm.ErrRecordNotFound) {
-				baseHandler.HandleError(httpResponseWriter, findRsvpErr, utils.NotFoundError, "Invalid or expired RSVP identifier.")
+		findRsvpError := rsvpRecord.FindByCode(applicationContext.Database, rsvpCode)
+		if findRsvpError != nil {
+			if errors.Is(findRsvpError, gorm.ErrRecordNotFound) {
+				baseHandler.HandleError(httpResponseWriter, findRsvpError, utils.NotFoundError, "Invalid or expired RSVP identifier.")
 			} else {
-				baseHandler.HandleError(httpResponseWriter, findRsvpErr, utils.DatabaseError, "Sorry, we encountered an error retrieving the RSVP details.")
+				baseHandler.HandleError(httpResponseWriter, findRsvpError, utils.DatabaseError, "Sorry, we encountered an error retrieving the RSVP details.")
 			}
 			return
 		}
 
 		var eventRecord models.Event
-		eventErr := eventRecord.FindByID(applicationContext.Database, rsvpRecord.EventID)
-		if eventErr != nil {
-			applicationContext.Logger.Printf("ERROR: Could not find event %s associated with RSVP %s: %v", rsvpRecord.EventID, rsvpCode, eventErr)
-			if errors.Is(eventErr, gorm.ErrRecordNotFound) {
-				baseHandler.HandleError(httpResponseWriter, eventErr, utils.ServerError, "Could not load event details: The associated event seems to be missing.")
-			} else {
-				baseHandler.HandleError(httpResponseWriter, eventErr, utils.DatabaseError, "Sorry, we encountered an error loading event details.")
+		eventError := eventRecord.FindByID(applicationContext.Database, rsvpRecord.EventID)
+		if eventError != nil {
+			applicationContext.Logger.Printf("ERROR: Could not find event %s associated with RSVP %s: %v", rsvpRecord.EventID, rsvpCode, eventError)
+			errorType := utils.DatabaseError
+			userMessage := "Sorry, we encountered an error loading event details."
+			if errors.Is(eventError, gorm.ErrRecordNotFound) {
+				errorType = utils.ServerError
+				userMessage = "Could not load event details: The associated event seems to be missing."
 			}
+			baseHandler.HandleError(httpResponseWriter, eventError, errorType, userMessage)
 			return
-		}
-
-		submitURL := fmt.Sprintf("%s?%s=%s", config.WebResponse, config.RSVPIDParam, rsvpCode)
-
-		// Prepare view data including config values
-		viewData := ResponseViewData{
-			RSVP:                 rsvpRecord,
-			Event:                eventRecord,
-			URLForResponseSubmit: submitURL,
-			ParamRSVPID:          config.RSVPIDParam,         // Populate
-			ParamMethodOverride:  config.MethodOverrideParam, // Populate
-			ParamResponse:        config.ResponseParam,       // Populate
 		}
 
 		switch httpRequest.Method {
 		case http.MethodGet:
+			submitURL := utils.BuildRelativeURL(config.WebResponse, map[string]string{config.RSVPIDParam: rsvpCode})
+
+			viewData := ViewData{
+				RSVP:                 rsvpRecord,
+				Event:                eventRecord,
+				URLForResponseSubmit: submitURL,
+				ParamRSVPID:          config.RSVPIDParam,
+				ParamMethodOverride:  config.MethodOverrideParam,
+				ParamResponse:        config.ResponseParam,    // For hidden input 1
+				ParamExtraGuests:     config.ExtraGuestsParam, // For hidden input 2
+				MaxGuestCount:        config.MaxGuestCount,    // Still needed for Thank You logic? No.
+			}
 			baseHandler.RenderView(httpResponseWriter, httpRequest, config.TemplateResponse, viewData)
 
 		case http.MethodPut:
-			if err := httpRequest.ParseForm(); err != nil && !errors.Is(err, http.ErrNotMultipart) {
-				baseHandler.HandleError(httpResponseWriter, err, utils.ValidationError, "Invalid form submission data.")
-				return
-			}
-
-			userResponseValue := httpRequest.FormValue(config.ResponseParam) // Use constant from config
-			if userResponseValue == "" {
-				baseHandler.HandleError(httpResponseWriter, nil, utils.ValidationError, "Please select a response option (Yes/No).")
-				return
-			}
-			if validationErr := utils.ValidateRSVPResponse(userResponseValue); validationErr != nil {
-				baseHandler.HandleError(httpResponseWriter, validationErr, utils.ValidationError, validationErr.Error())
-				return
-			}
-
-			rsvpRecord.Response = userResponseValue
-			if strings.HasPrefix(userResponseValue, "Yes") {
-				parts := strings.Split(userResponseValue, ",")
-				if len(parts) == 2 {
-					guestCount, convErr := strconv.Atoi(parts[1])
-					if convErr == nil {
-						rsvpRecord.ExtraGuests = guestCount
-					} else {
-						applicationContext.Logger.Printf("WARN: Could not parse guest count from valid response '%s' for RSVP %s", userResponseValue, rsvpCode)
-						rsvpRecord.ExtraGuests = 0
-					}
-				} else {
-					applicationContext.Logger.Printf("WARN: Invalid 'Yes' response format '%s' after validation for RSVP %s", userResponseValue, rsvpCode)
-					rsvpRecord.ExtraGuests = 0
+			if parseError := httpRequest.ParseForm(); parseError != nil {
+				if !errors.Is(parseError, http.ErrNotMultipart) {
+					baseHandler.HandleError(httpResponseWriter, parseError, utils.ValidationError, "Invalid form submission data.")
+					return
 				}
-			} else {
-				rsvpRecord.ExtraGuests = 0
-				rsvpRecord.Response = "No,0"
 			}
 
-			if saveErr := rsvpRecord.Save(applicationContext.Database); saveErr != nil {
-				baseHandler.HandleError(httpResponseWriter, saveErr, utils.DatabaseError, "Failed to save your RSVP response. Please try again.")
+			// Expecting separate parameters now due to JS modification on submit
+			responseStatus := httpRequest.FormValue(config.ResponseParam)    // Should be "Yes" or "No"
+			extraGuestsStr := httpRequest.FormValue(config.ExtraGuestsParam) // Should be "0" to "4"
+			var extraGuests int = 0
+
+			if validationError := utils.ValidateRSVPResponseStatus(responseStatus); validationError != nil {
+				baseHandler.HandleError(httpResponseWriter, validationError, utils.ValidationError, validationError.Error())
 				return
 			}
 
-			redirectURL := fmt.Sprintf("%s?%s=%s", config.WebResponseThankYou, config.RSVPIDParam, rsvpCode)
+			if responseStatus == config.RSVPResponseYesPrefix { // Check is against "Yes"
+				var parseErr error
+				extraGuests, parseErr = strconv.Atoi(extraGuestsStr)
+				if parseErr != nil {
+					// This indicates an issue with JS setting the hidden field or bad submission
+					baseHandler.HandleError(httpResponseWriter, parseErr, utils.ValidationError, "Invalid value provided for extra guests.")
+					return
+				}
+				if validationError := utils.ValidateExtraGuests(extraGuests); validationError != nil {
+					baseHandler.HandleError(httpResponseWriter, validationError, utils.ValidationError, validationError.Error())
+					return
+				}
+				rsvpRecord.Response = config.RSVPResponseYesPrefix // Store "Yes"
+				rsvpRecord.ExtraGuests = extraGuests
+			} else if responseStatus == config.RSVPResponseNo {
+				rsvpRecord.Response = config.RSVPResponseNoCommaZero // Store "No,0"
+				rsvpRecord.ExtraGuests = 0
+			} else {
+				// Should not happen if validation passes
+				baseHandler.HandleError(httpResponseWriter, nil, utils.ValidationError, "Invalid response status submitted.")
+				return
+			}
+
+			if saveError := rsvpRecord.Save(applicationContext.Database); saveError != nil {
+				baseHandler.HandleError(httpResponseWriter, saveError, utils.DatabaseError, "Failed to save your RSVP response. Please try again.")
+				return
+			}
+
+			redirectURL := utils.BuildRelativeURL(config.WebResponseThankYou, map[string]string{config.RSVPIDParam: rsvpCode})
 			http.Redirect(httpResponseWriter, httpRequest, redirectURL, http.StatusSeeOther)
 
 		default:
-			baseHandler.ApplicationContext.Logger.Printf("Method Not Allowed for %s: Received %s", config.WebResponse, httpRequest.Method)
-			http.Error(httpResponseWriter, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+			baseHandler.ValidateHttpMethod(httpResponseWriter, httpRequest, http.MethodGet, http.MethodPut)
 		}
 	}
 }
 
-// ThankYouHandler handles GET requests for the public thank you page.
+// ThankYouHandler handles GET requests for the public "Thank You" page displayed after RSVP submission.
+// It requires a valid RSVP ID (code) in the query parameters.
 func ThankYouHandler(applicationContext *config.ApplicationContext) http.HandlerFunc {
-	baseHandler := handlers.NewBaseHttpHandler(applicationContext, "ThankYou", config.WebResponseThankYou)
+	baseHandler := handlers.NewBaseHttpHandler(applicationContext, config.ResourceNameThankYou, config.WebResponseThankYou)
 
 	return func(httpResponseWriter http.ResponseWriter, httpRequest *http.Request) {
 		if !baseHandler.ValidateHttpMethod(httpResponseWriter, httpRequest, http.MethodGet) {
@@ -162,18 +171,19 @@ func ThankYouHandler(applicationContext *config.ApplicationContext) http.Handler
 		}
 
 		var rsvpRecord models.RSVP
-		findRsvpErr := rsvpRecord.FindByCode(applicationContext.Database, rsvpCode)
-		if findRsvpErr != nil {
-			if errors.Is(findRsvpErr, gorm.ErrRecordNotFound) {
-				baseHandler.HandleError(httpResponseWriter, findRsvpErr, utils.NotFoundError, "Invalid or expired RSVP identifier.")
+		findRsvpError := rsvpRecord.FindByCode(applicationContext.Database, rsvpCode)
+		if findRsvpError != nil {
+			if errors.Is(findRsvpError, gorm.ErrRecordNotFound) {
+				baseHandler.HandleError(httpResponseWriter, findRsvpError, utils.NotFoundError, "Invalid or expired RSVP identifier.")
 			} else {
-				baseHandler.HandleError(httpResponseWriter, findRsvpErr, utils.DatabaseError, "Error retrieving RSVP details.")
+				baseHandler.HandleError(httpResponseWriter, findRsvpError, utils.DatabaseError, "Error retrieving RSVP details.")
 			}
 			return
 		}
 
 		var thankYouMessageText string
-		if strings.HasPrefix(rsvpRecord.Response, "Yes") {
+		// Check based on the stored response value ("Yes" or "No,0")
+		if rsvpRecord.Response == config.RSVPResponseYesPrefix {
 			guests := rsvpRecord.ExtraGuests
 			if guests == 0 {
 				thankYouMessageText = "Your response is confirmed. We look forward to seeing you!"
@@ -186,15 +196,14 @@ func ThankYouHandler(applicationContext *config.ApplicationContext) http.Handler
 			thankYouMessageText = "Thank you for letting us know you can't make it."
 		}
 
-		changeURL := fmt.Sprintf("%s?%s=%s", config.WebResponse, config.RSVPIDParam, rsvpCode)
+		changeResponseURL := utils.BuildRelativeURL(config.WebResponse, map[string]string{config.RSVPIDParam: rsvpCode})
 
-		// Prepare view data including config values
 		viewData := ThankYouViewData{
 			Name:                 rsvpRecord.Name,
 			ThankYouMessage:      thankYouMessageText,
 			Code:                 rsvpRecord.ID,
-			URLForResponseChange: changeURL,
-			ParamRSVPID:          config.RSVPIDParam, // Populate
+			URLForResponseChange: changeResponseURL,
+			ParamRSVPID:          config.RSVPIDParam,
 		}
 
 		baseHandler.RenderView(httpResponseWriter, httpRequest, config.TemplateThankYou, viewData)

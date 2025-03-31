@@ -1,58 +1,61 @@
+// Package rsvp contains HTTP handlers related to RSVP resource management.
 package rsvp
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/temirov/RSVP/models"
 	"github.com/temirov/RSVP/pkg/config"
 	"github.com/temirov/RSVP/pkg/handlers"
+	"github.com/temirov/RSVP/pkg/middleware"
 	"github.com/temirov/RSVP/pkg/utils"
+	"gorm.io/gorm"
 )
 
-// CreateHandler handles POST requests to create a new RSVP.
-func CreateHandler(appCtx *config.ApplicationContext) http.HandlerFunc {
-	baseHandler := handlers.NewBaseHttpHandler(appCtx, "RSVP", config.WebRSVPs)
+// CreateHandler handles POST requests to create a new RSVP for a specific event.
+func CreateHandler(applicationContext *config.ApplicationContext) http.HandlerFunc {
+	baseHandler := handlers.NewBaseHttpHandler(applicationContext, config.ResourceNameRSVP, config.WebRSVPs)
 
-	return func(w http.ResponseWriter, r *http.Request) {
-		if !baseHandler.ValidateHttpMethod(w, r, http.MethodPost) {
+	return func(httpResponseWriter http.ResponseWriter, httpRequest *http.Request) {
+		if !baseHandler.ValidateHttpMethod(httpResponseWriter, httpRequest, http.MethodPost) {
 			return
 		}
 
-		eventID := baseHandler.GetParam(r, config.EventIDParam)
+		currentUser := httpRequest.Context().Value(middleware.ContextKeyUser).(*models.User)
+
+		if err := httpRequest.ParseForm(); err != nil {
+			baseHandler.HandleError(httpResponseWriter, err, utils.ValidationError, utils.ErrMsgInvalidFormData)
+			return
+		}
+
+		eventID := httpRequest.FormValue(config.EventIDParam)
 		if eventID == "" {
-			http.Error(w, "Event ID is required", http.StatusBadRequest)
-			return
-		}
-
-		sessionData, _ := baseHandler.RequireAuthentication(w, r)
-		var currentUser models.User
-		if err := currentUser.FindByEmail(appCtx.Database, sessionData.UserEmail); err != nil {
-			baseHandler.HandleError(w, err, utils.DatabaseError, "User not found in database")
-			return
-		}
-
-		findEventOwnerID := func(eid string) (string, error) {
-			var ev models.Event
-			if err := ev.FindByID(appCtx.Database, eid); err != nil {
-				return "", err
+			eventID = httpRequest.URL.Query().Get(config.EventIDParam)
+			if eventID == "" {
+				baseHandler.HandleError(httpResponseWriter, nil, utils.ValidationError, "Event ID is required to create an RSVP.")
+				return
 			}
-			return ev.UserID, nil
 		}
-		if !baseHandler.VerifyResourceOwnership(w, eventID, findEventOwnerID, currentUser.ID) {
+
+		var parentEvent models.Event
+		eventFindError := applicationContext.Database.First(&parentEvent, "id = ?", eventID).Error
+		if eventFindError != nil {
+			if errors.Is(eventFindError, gorm.ErrRecordNotFound) {
+				baseHandler.HandleError(httpResponseWriter, eventFindError, utils.NotFoundError, "Parent event not found.")
+			} else {
+				baseHandler.HandleError(httpResponseWriter, eventFindError, utils.DatabaseError, "Error retrieving parent event.")
+			}
 			return
 		}
 
-		rsvpName := r.FormValue(config.NameParam)
-		if rsvpName == "" {
-			rsvpName = baseHandler.GetParam(r, config.NameParam)
-		}
-		if rsvpName == "" {
-			baseHandler.HandleError(w, nil, utils.ValidationError, "RSVP name is required")
+		if !baseHandler.VerifyResourceOwnership(httpResponseWriter, httpRequest, parentEvent.UserID, currentUser.ID) {
 			return
 		}
 
-		if err := utils.ValidateRSVPName(rsvpName); err != nil {
-			baseHandler.HandleError(w, err, utils.ValidationError, err.Error())
+		rsvpName := httpRequest.FormValue(config.NameParam)
+		if validationError := utils.ValidateRSVPName(rsvpName); validationError != nil {
+			baseHandler.HandleError(httpResponseWriter, validationError, utils.ValidationError, validationError.Error())
 			return
 		}
 
@@ -60,13 +63,15 @@ func CreateHandler(appCtx *config.ApplicationContext) http.HandlerFunc {
 			Name:    rsvpName,
 			EventID: eventID,
 		}
-		if err := newRSVP.Create(appCtx.Database); err != nil {
-			baseHandler.HandleError(w, err, utils.DatabaseError, "Failed to create RSVP")
+
+		if createError := newRSVP.Create(applicationContext.Database); createError != nil {
+			baseHandler.HandleError(httpResponseWriter, createError, utils.DatabaseError, "Failed to create the RSVP.")
 			return
 		}
 
-		baseHandler.RedirectWithParams(w, r, map[string]string{
+		redirectParams := map[string]string{
 			config.EventIDParam: eventID,
-		})
+		}
+		baseHandler.RedirectWithParams(httpResponseWriter, httpRequest, redirectParams)
 	}
 }

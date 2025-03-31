@@ -1,9 +1,18 @@
 package handlers
 
-import "regexp"
+import (
+	"regexp"
 
-// ValidateRSVPCode ensures that the RSVP code is alphanumeric and up to 8 characters long.
+	"github.com/temirov/RSVP/pkg/config" // Import config for constant
+)
+
+// rsvpCodeValidationRegex is the compiled regular expression for validating RSVP codes.
+var rsvpCodeValidationRegex = regexp.MustCompile(config.RSVPCodeValidationRegexPattern)
+
+// ValidateRSVPCode checks if the provided string is a valid RSVP code format.
+// A valid code consists of 1 to 8 alphanumeric characters (0-9, a-z, A-Z).
+// Returns true if the code is valid, false otherwise.
 func ValidateRSVPCode(rsvpCode string) bool {
-	validCodePattern := regexp.MustCompile(`^[0-9a-zA-Z]{1,8}$`)
-	return validCodePattern.MatchString(rsvpCode)
+	// Use the precompiled regex to match the input string.
+	return rsvpCodeValidationRegex.MatchString(rsvpCode)
 }

@@ -1,4 +1,5 @@
-// Package templates handles the loading and management of HTML templates integrated with the layout.
+// Package templates handles the loading, parsing, and caching of HTML templates
+// used by the RSVP application, integrating view templates with a common layout.
 package templates
 
 import (
@@ -9,21 +10,23 @@ import (
 	"strings"
 	"time"
 
-	"github.com/temirov/RSVP/pkg/config"
+	"github.com/temirov/RSVP/pkg/config" // Import config for constants
 )
 
-var customFunctions = template.FuncMap{"currentYear": func() int { return time.Now().Year() }}
+// customFunctions defines custom functions accessible within templates.
+// Currently only includes currentYear.
+var customFunctions = template.FuncMap{
+	// currentYear returns the current year as an integer.
+	"currentYear": func() int { return time.Now().Year() },
+}
 
-// PrecompiledTemplatesMap stores precompiled template sets (layout + partials + main view),
-// keyed by the main view's base name. Standalone templates are not stored here.
+// PrecompiledTemplatesMap stores the fully parsed and ready-to-use template sets.
 var PrecompiledTemplatesMap map[string]*template.Template
 
-// LoadAllPrecompiledTemplates walks the specified directory, identifies layout, partials,
-// and main view templates (excluding standalone ones like landing.tmpl), and parses them into distinct template sets.
+// LoadAllPrecompiledTemplates discovers and parses all application templates...
 func LoadAllPrecompiledTemplates(templatesDirectoryPath string) {
 	PrecompiledTemplatesMap = make(map[string]*template.Template)
 
-	// Main views that integrate with the layout system
 	mainViewTemplateBaseNames := []string{
 		config.TemplateEvents,
 		config.TemplateRSVPs,
@@ -38,63 +41,72 @@ func LoadAllPrecompiledTemplates(templatesDirectoryPath string) {
 	var partialFiles []string
 	var mainViewFiles = make(map[string]string)
 
-	err := filepath.WalkDir(templatesDirectoryPath, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
+	walkError := filepath.WalkDir(templatesDirectoryPath, func(path string, dirEntry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			log.Printf("Warning: Error accessing path %q during template walk: %v", path, walkErr)
+			return walkErr
 		}
-		if d.IsDir() {
+		if dirEntry.IsDir() {
 			return nil
 		}
-		isTmplFile := strings.HasSuffix(d.Name(), config.TemplateExtension)
-		if !isTmplFile {
+		isTemplateFile := strings.HasSuffix(dirEntry.Name(), config.TemplateExtension)
+		if !isTemplateFile {
 			return nil
 		}
 
-		baseName := strings.TrimSuffix(d.Name(), config.TemplateExtension)
+		baseName := strings.TrimSuffix(dirEntry.Name(), config.TemplateExtension)
 		relativePath, _ := filepath.Rel(templatesDirectoryPath, path)
 
-		// Explicitly skip the standalone landing page from this loader
-		if d.Name() == "landing"+config.TemplateExtension {
+		if baseName == config.TemplateLanding {
 			log.Printf("  Skipping standalone template: %s", relativePath)
 			return nil
 		}
 
-		if d.Name() == "layout"+config.TemplateExtension {
-			layoutFile = path
-			log.Printf("  Found layout: %s", relativePath)
-		} else if strings.HasPrefix(relativePath, "partials"+string(filepath.Separator)) || strings.HasPrefix(d.Name(), "_") {
+		if baseName == config.TemplateLayout {
+			if layoutFile != "" {
+				log.Printf("WARN: Multiple layout files found? Using '%s', ignoring '%s'", layoutFile, path)
+			} else {
+				layoutFile = path
+				log.Printf("  Found layout: %s", relativePath)
+			}
+		} else if strings.HasPrefix(relativePath, config.PartialsDir+string(filepath.Separator)) || strings.HasPrefix(baseName, "_") {
 			partialFiles = append(partialFiles, path)
 			log.Printf("  Found partial: %s", relativePath)
 		} else {
 			isMainView := false
-			for _, mainName := range mainViewTemplateBaseNames {
-				if baseName == mainName {
-					mainViewFiles[mainName] = path
-					isMainView = true
-					log.Printf("  Found main view: %s (for %s)", relativePath, mainName)
+			for _, mainViewBaseName := range mainViewTemplateBaseNames {
+				if baseName == mainViewBaseName {
+					if existingPath, found := mainViewFiles[mainViewBaseName]; found {
+						log.Printf("WARN: Multiple files found for main view '%s'? Using '%s', ignoring '%s'", mainViewBaseName, existingPath, path)
+					} else {
+						mainViewFiles[mainViewBaseName] = path
+						isMainView = true
+						log.Printf("  Found main view: %s (for %s)", relativePath, mainViewBaseName)
+					}
 					break
 				}
 			}
-			if !isMainView {
-				log.Printf("  WARN: Found template file '%s' not identified as layout, partial, or known main view. Ignoring.", relativePath)
+			if !isMainView && baseName != config.TemplateLayout && !strings.HasPrefix(relativePath, config.PartialsDir+string(filepath.Separator)) && !strings.HasPrefix(baseName, "_") {
+				log.Printf("  WARN: Found template file '%s' not identified as layout, partial, or known main view. Ignoring in layout system.", relativePath)
 			}
 		}
 		return nil
 	})
 
-	if err != nil {
-		log.Fatalf("FATAL: Error walking template directory '%s': %v", templatesDirectoryPath, err)
+	if walkError != nil {
+		log.Fatalf("FATAL: Error walking template directory '%s': %v", templatesDirectoryPath, walkError)
 	}
 	if layoutFile == "" {
-		log.Fatalf("FATAL: Layout file 'layout.tmpl' not found in directory '%s'", templatesDirectoryPath)
+		log.Fatalf("FATAL: Layout file '%s%s' not found in directory '%s'", config.TemplateLayout, config.TemplateExtension, templatesDirectoryPath)
 	}
-	log.Printf("Found %d partial files.", len(partialFiles))
+	log.Printf("Found %d partial template files.", len(partialFiles))
 
+	parsedCount := 0
 	for _, mainViewName := range mainViewTemplateBaseNames {
 		log.Printf("Parsing template set for entry point: %s", mainViewName)
-		mainViewFilePath, ok := mainViewFiles[mainViewName]
-		if !ok {
-			log.Printf("WARN: Main view file for '%s' not found. Skipping.", mainViewName)
+		mainViewFilePath, found := mainViewFiles[mainViewName]
+		if !found {
+			log.Printf("WARN: Main view file for '%s' not found. Skipping parsing for this view.", mainViewName)
 			continue
 		}
 
@@ -102,18 +114,23 @@ func LoadAllPrecompiledTemplates(templatesDirectoryPath string) {
 		filesForThisSet = append(filesForThisSet, partialFiles...)
 		filesForThisSet = append(filesForThisSet, mainViewFilePath)
 
-		ts, parseErr := template.New(filepath.Base(mainViewFilePath)).Funcs(customFunctions).ParseFiles(filesForThisSet...)
-		if parseErr != nil {
-			log.Fatalf("FATAL: Failed to parse template set for view '%s'. Error: %v", mainViewName, parseErr)
+		// Use Funcs() *before* ParseFiles()
+		templateSet, parseError := template.New(filepath.Base(mainViewFilePath)).Funcs(customFunctions).ParseFiles(filesForThisSet...)
+		if parseError != nil {
+			log.Fatalf("FATAL: Failed to parse template set for view '%s'. Error: %v. Files: %v", mainViewName, parseError, filesForThisSet)
 		}
-		if ts.Lookup("layout") == nil {
-			log.Fatalf("FATAL: Template set for '%s' parsed, but 'layout' template missing.", mainViewName)
+
+		if templateSet.Lookup(config.TemplateLayout) == nil {
+			log.Fatalf("FATAL: Template set for '%s' parsed, but '%s' template definition missing.", mainViewName, config.TemplateLayout)
 		}
-		PrecompiledTemplatesMap[mainViewName] = ts
-		log.Printf("Successfully parsed template set for: %s", mainViewName)
+
+		PrecompiledTemplatesMap[mainViewName] = templateSet
+		log.Printf("Successfully parsed and cached template set for: %s", mainViewName)
+		parsedCount++
 	}
-	if len(PrecompiledTemplatesMap) != len(mainViewTemplateBaseNames) {
-		log.Printf("WARN: Some expected main views were not found or failed to parse.")
+
+	if parsedCount != len(mainViewTemplateBaseNames) {
+		log.Printf("WARN: Processed %d template sets, but expected %d based on mainViewTemplateBaseNames list. Check for missing files or previous warnings.", parsedCount, len(mainViewTemplateBaseNames))
 	}
 	log.Println("Layout-integrated template loading complete.")
 }
