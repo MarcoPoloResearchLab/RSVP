@@ -7,6 +7,7 @@ on:
     paths:
       - '**/*.go'
       - '**/*.html'
+      - '**/*.tmpl'
 
 jobs:
   build:
