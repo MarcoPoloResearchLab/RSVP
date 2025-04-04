@@ -18,6 +18,13 @@ import (
 var customFunctions = template.FuncMap{
 	// currentYear returns the current year as an integer.
 	"currentYear": func() int { return time.Now().Year() },
+
+	// Simple function that converts all newlines to <br>
+	"nl2br": func(text string) template.HTML {
+		safe := template.HTMLEscapeString(text)       // escape any HTML
+		safe = strings.ReplaceAll(safe, "\n", "<br>") // replace line breaks
+		return template.HTML(safe)
+	},
 }
 
 // PrecompiledTemplatesMap stores the fully parsed and ready-to-use template sets.
