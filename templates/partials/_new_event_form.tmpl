@@ -1,5 +1,4 @@
 {{ define "partials/_new_event_form.tmpl" }}
-    {{/* Context is eventListViewData */}}
     {{ $viewData := . }}
     <div class="card" id="newEventCard">
         <div class="card-header">
@@ -13,9 +12,9 @@
                            required>
                 </div>
                 <div class="form-group mb-3">
-                    <label for="descriptionInput">Description:</label>
+                    <label for="descriptionInput">Description (Markdown Supported):</label>
                     <textarea class="form-control" id="descriptionInput" name="{{ $viewData.ParamNameDescription }}"
-                              rows="3"></textarea>
+                              rows="5"></textarea>
                 </div>
                 <div class="row mb-3">
                     <div class="form-group col-md-6">

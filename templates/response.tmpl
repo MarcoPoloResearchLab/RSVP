@@ -13,7 +13,7 @@
                 <p class="mb-1"><strong>Time:</strong> {{ $viewData.Event.StartTime.Format "3:04 PM" }}
                     - {{ $viewData.Event.EndTime.Format "3:04 PM" }}</p>
                 {{ if $viewData.Event.Description }}
-                    <p class="mt-2 mb-0 fst-italic">{{ $viewData.Event.Description | nl2br }}</p>
+                    <p class="mt-2 mb-0 fst-italic">{{ $viewData.Event.Description | renderMarkdown }}</p>
                 {{ end }}
             </div>
 

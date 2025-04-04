@@ -5,6 +5,7 @@ go 1.23.6
 require (
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	github.com/temirov/GAuss v0.0.6
+	github.com/yuin/goldmark v1.7.8
 	gorm.io/driver/sqlite v1.5.7
 	gorm.io/gorm v1.25.12
 )
