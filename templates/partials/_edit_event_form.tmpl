@@ -12,20 +12,26 @@
             <div class="card-body">
                 <div class="form-group mb-3">
                     <label for="editTitleInput">Event Title:</label>
-                    <input type="text" class="form-control" id="editTitleInput" name="{{ $eventDataView.ParamNameTitle }}" required value="{{ $selectedEvent.Title }}">
+                    <input type="text" class="form-control" id="editTitleInput"
+                           name="{{ $eventDataView.ParamNameTitle }}" required value="{{ $selectedEvent.Title }}">
                 </div>
                 <div class="form-group mb-3">
-                    <label for="editDescriptionInput">Description:</label>
-                    <textarea class="form-control" id="editDescriptionInput" name="{{ $eventDataView.ParamNameDescription }}" rows="3">{{ $selectedEvent.Description }}</textarea>
+                    <label for="editDescriptionInput">Description (Markdown Supported):</label>
+                    <textarea class="form-control" id="editDescriptionInput"
+                              name="{{ $eventDataView.ParamNameDescription }}"
+                              rows="5">{{ $selectedEvent.Description }}</textarea>
                 </div>
                 <div class="row mb-3">
                     <div class="form-group col-md-6">
                         <label for="editStartTimeInput">Start Time:</label>
-                        <input type="datetime-local" class="form-control" id="editStartTimeInput" name="{{ $eventDataView.ParamNameStartTime }}" required value="{{ $selectedEvent.StartTime.Format "2006-01-02T15:04" }}">
+                        <input type="datetime-local" class="form-control" id="editStartTimeInput"
+                               name="{{ $eventDataView.ParamNameStartTime }}" required
+                               value="{{ $selectedEvent.StartTime.Format "2006-01-02T15:04" }}">
                     </div>
                     <div class="form-group col-md-6">
                         <label for="editDurationSelect">Duration (hours):</label>
-                        <select class="form-select" id="editDurationSelect" name="{{ $eventDataView.ParamNameDuration }}" required>
+                        <select class="form-select" id="editDurationSelect"
+                                name="{{ $eventDataView.ParamNameDuration }}" required>
                             {{ $currentDuration := $selectedEvent.CalculatedDurationInHours }}
                             <option value="1" {{ if eq $currentDuration 1 }}selected{{ end }}>1 hour</option>
                             <option value="2" {{ if eq $currentDuration 2 }}selected{{ end }}>2 hours</option>
@@ -38,7 +44,8 @@
         </form>
         <div class="d-flex justify-content-between align-items-center p-3">
             <div>
-                <form id="deleteEventForm_{{ $selectedEvent.ID }}" action="{{ $eventDataView.URLForEventActions }}" method="POST" class="d-inline">
+                <form id="deleteEventForm_{{ $selectedEvent.ID }}" action="{{ $eventDataView.URLForEventActions }}"
+                      method="POST" class="d-inline">
                     <input type="hidden" name="{{ $eventDataView.ParamNameMethodOverride }}" value="DELETE">
                     <input type="hidden" name="{{ $eventDataView.ParamNameEventID }}" value="{{ $selectedEvent.ID }}">
                     <button type="submit" class="btn btn-delete">Delete Event</button>
@@ -46,7 +53,8 @@
             </div>
             <div>
                 <button type="submit" form="editEventForm" class="btn btn-primary">Update Event</button>
-                <a href="{{ $eventDataView.URLForRSVPListBase }}?{{ $eventDataView.ParamNameEventID }}={{ $selectedEvent.ID }}" class="btn btn-outline-primary">Manage RSVPs ></a>
+                <a href="{{ $eventDataView.URLForRSVPListBase }}?{{ $eventDataView.ParamNameEventID }}={{ $selectedEvent.ID }}"
+                   class="btn btn-outline-primary">Manage RSVPs ></a>
             </div>
         </div>
     </div>

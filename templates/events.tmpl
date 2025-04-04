@@ -13,8 +13,7 @@
         <div class="card-header d-flex justify-content-between align-items-center">
             <h4 class="mb-0">Your Events</h4>
             <button id="globalNewEventButton" class="btn btn-primary"
-                    {{ if $viewData.SelectedItemForEdit }}disabled{{ end }}>
-                + New Event
+                    {{ if $viewData.SelectedItemForEdit }}disabled{{ end }}>+ New Event
             </button>
         </div>
         {{ if $viewData.EventList }}
@@ -56,27 +55,72 @@
 {{ end }}
 
 {{ define "scripts" }}
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/easymde/dist/easymde.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/easymde/dist/easymde.min.js"></script>
     <script>
-        document.addEventListener('DOMContentLoaded', function () {
-            const newEventButton = document.getElementById('globalNewEventButton');
-            const newEventContainer = document.getElementById('newEventContainer');
-            const editEventCard = document.getElementById('editEventCard');
-
-            if (newEventButton && newEventContainer) {
-                if (editEventCard) {
+        document.addEventListener("DOMContentLoaded", function () {
+            var newEventDescriptionElement = document.getElementById("descriptionInput");
+            if (newEventDescriptionElement !== null) {
+                new EasyMDE({
+                    element: newEventDescriptionElement,
+                    spellChecker: false,
+                    toolbar: [
+                        "bold",
+                        "italic",
+                        "heading",
+                        "|",
+                        "quote",
+                        "unordered-list",
+                        "ordered-list",
+                        "|",
+                        "link",
+                        "image",
+                        "|",
+                        "preview"
+                    ],
+                    forceSync: true
+                });
+            }
+            var editEventDescriptionElement = document.getElementById("editDescriptionInput");
+            if (editEventDescriptionElement !== null) {
+                new EasyMDE({
+                    element: editEventDescriptionElement,
+                    spellChecker: false,
+                    toolbar: [
+                        "bold",
+                        "italic",
+                        "heading",
+                        "|",
+                        "quote",
+                        "unordered-list",
+                        "ordered-list",
+                        "|",
+                        "link",
+                        "image",
+                        "|",
+                        "preview"
+                    ],
+                    forceSync: true
+                });
+            }
+            var newEventButton = document.getElementById("globalNewEventButton");
+            var newEventContainer = document.getElementById("newEventContainer");
+            var editEventCard = document.getElementById("editEventCard");
+            if (newEventButton !== null && newEventContainer !== null) {
+                if (editEventCard !== null) {
                     newEventButton.disabled = true;
                 } else {
-                    newEventButton.addEventListener('click', function () {
-                        if (newEventContainer.style.display === 'none' || newEventContainer.style.display === '') {
-                            newEventContainer.style.display = 'block';
-                            newEventButton.textContent = 'Cancel New Event';
-                            newEventButton.classList.remove('btn-primary');
-                            newEventButton.classList.add('btn-secondary');
+                    newEventButton.addEventListener("click", function () {
+                        if (newEventContainer.style.display === "none" || newEventContainer.style.display === "") {
+                            newEventContainer.style.display = "block";
+                            newEventButton.textContent = "Cancel New Event";
+                            newEventButton.classList.remove("btn-primary");
+                            newEventButton.classList.add("btn-secondary");
                         } else {
-                            newEventContainer.style.display = 'none';
-                            newEventButton.textContent = '+ New Event';
-                            newEventButton.classList.remove('btn-secondary');
-                            newEventButton.classList.add('btn-primary');
+                            newEventContainer.style.display = "none";
+                            newEventButton.textContent = "+ New Event";
+                            newEventButton.classList.remove("btn-secondary");
+                            newEventButton.classList.add("btn-primary");
                         }
                     });
                 }
