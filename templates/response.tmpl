@@ -2,10 +2,15 @@
 
 {{ define "content" }}
     {{ $viewData := . }}
+    {{ $selectedResponse := "" }}
+    {{ if eq $viewData.RSVP.Response "Yes" }}
+        {{ $selectedResponse = (print "Yes," $viewData.RSVP.ExtraGuests) }}
+    {{ else }}
+        {{ $selectedResponse = "No,0" }}
+    {{ end }}
     <div class="card rsvp-container">
         <div class="card-body">
             <h1 class="card-title h3 mb-3">You're Invited!</h1>
-
             <div class="event-details mb-4 pb-4 border-bottom text-start">
                 <h2 class="h5">{{ $viewData.Event.Title }}</h2>
                 <p class="mb-1"><strong>Date:</strong> {{ $viewData.Event.StartTime.Format "Monday, January 2, 2006" }}
@@ -16,58 +21,55 @@
                     <p class="mt-2 mb-0 fst-italic">{{ $viewData.Event.Description | renderMarkdown }}</p>
                 {{ end }}
             </div>
-
             <h3 class="h5 mt-4">Please RSVP{{ if $viewData.RSVP.Name }} for {{ $viewData.RSVP.Name }}{{ end }}</h3>
-
             <form action="{{ $viewData.URLForResponseSubmit }}" method="POST" id="rsvpResponseForm" class="mt-4">
                 <input type="hidden" name="{{ $viewData.ParamMethodOverride }}" value="PUT">
-                {{/* Hidden field for the 'Yes'/'No' status */}}
                 <input type="hidden" name="{{ $viewData.ParamResponse }}" id="responseHidden" value="">
-                {{/* Hidden field for the extra guest count */}}
                 <input type="hidden" name="{{ $viewData.ParamExtraGuests }}" id="extraGuestsHidden" value="0">
-
-                <div class="response-buttons mt-4 d-flex flex-column flex-md-row justify-content-center gap-3">
-                    {{/* "No" button sets status=No, guests=0 */}}
-                    <button type="button" class="btn btn-lg btn-danger response-button" data-response="No,0">
-                        No, Cannot Attend
-                    </button>
-                    {{/* "Yes" dropdown button */}}
-                    <div class="btn-group dropend">
-                        <button type="button" class="btn btn-lg btn-success dropdown-toggle" data-bs-toggle="dropdown"
-                                aria-expanded="false">
-                            Yes, I'll Be There!
+                <div class="row row-cols-3 g-3 mt-4">
+                    <div class="col">
+                        <button type="button"
+                                class="btn btn-lg {{ if eq "No,0" $selectedResponse }}btn-danger{{ else }}btn-outline-danger{{ end }} w-100"
+                                data-response="No,0">
+                            No
                         </button>
-                        <ul class="dropdown-menu">
-                            {{/* Dropdown items set status=Yes and specific guest count */}}
-                            <li>
-                                <button class="dropdown-item response-button" type="button" data-response="Yes,0">Just
-                                    Me
-                                </button>
-                            </li>
-                            <li>
-                                <button class="dropdown-item response-button" type="button" data-response="Yes,1">+1
-                                    Guest
-                                </button>
-                            </li>
-                            <li>
-                                <button class="dropdown-item response-button" type="button" data-response="Yes,2">+2
-                                    Guests
-                                </button>
-                            </li>
-                            <li>
-                                <button class="dropdown-item response-button" type="button" data-response="Yes,3">+3
-                                    Guests
-                                </button>
-                            </li>
-                            <li>
-                                <button class="dropdown-item response-button" type="button" data-response="Yes,4">+4
-                                    Guests
-                                </button>
-                            </li>
-                        </ul>
+                    </div>
+                    <div class="col">
+                        <button type="button"
+                                class="btn btn-lg btn-success w-100 {{ if eq (print "Yes," 0) $selectedResponse }}active{{ end }}"
+                                data-response="Yes,0">
+                            Just Me
+                        </button>
+                    </div>
+                    <div class="col">
+                        <button type="button"
+                                class="btn btn-lg btn-success w-100 {{ if eq (print "Yes," 1) $selectedResponse }}active{{ end }}"
+                                data-response="Yes,1">
+                            +1 Guest
+                        </button>
+                    </div>
+                    <div class="col">
+                        <button type="button"
+                                class="btn btn-lg btn-success w-100 {{ if eq (print "Yes," 2) $selectedResponse }}active{{ end }}"
+                                data-response="Yes,2">
+                            +2 Guests
+                        </button>
+                    </div>
+                    <div class="col">
+                        <button type="button"
+                                class="btn btn-lg btn-success w-100 {{ if eq (print "Yes," 3) $selectedResponse }}active{{ end }}"
+                                data-response="Yes,3">
+                            +3 Guests
+                        </button>
+                    </div>
+                    <div class="col">
+                        <button type="button"
+                                class="btn btn-lg btn-success w-100 {{ if eq (print "Yes," 4) $selectedResponse }}active{{ end }}"
+                                data-response="Yes,4">
+                            +4 Guests
+                        </button>
                     </div>
                 </div>
-
                 <div class="mt-4 text-center">
                     <p class="text-muted small">Select an option above to submit your response.</p>
                 </div>
@@ -79,50 +81,34 @@
 {{ define "scripts" }}
     <script>
         document.addEventListener('DOMContentLoaded', function () {
-            const form = document.getElementById('rsvpResponseForm');
-            const responseHiddenInput = document.getElementById('responseHidden');
-            const extraGuestsHiddenInput = document.getElementById('extraGuestsHidden');
-            const responseButtons = document.querySelectorAll('.response-button'); // Select all buttons/items
-
-            if (!form || !responseHiddenInput || !extraGuestsHiddenInput) {
+            const rsvpResponseFormElement = document.getElementById('rsvpResponseForm');
+            const hiddenResponseInputElement = document.getElementById('responseHidden');
+            const hiddenExtraGuestsInputElement = document.getElementById('extraGuestsHidden');
+            const rsvpResponseButtonElements = document.querySelectorAll('.btn-outline-danger[data-response], .btn-success[data-response]');
+            if (!rsvpResponseFormElement || !hiddenResponseInputElement || !hiddenExtraGuestsInputElement) {
                 console.error('RSVP form or hidden inputs not found');
                 return;
             }
-
-            responseButtons.forEach(button => {
-                button.addEventListener('click', function () {
-                    const combinedResponseValue = this.getAttribute('data-response'); // e.g., "Yes,1" or "No,0"
-                    if (!combinedResponseValue) {
+            rsvpResponseButtonElements.forEach(function (responseButtonElement) {
+                responseButtonElement.addEventListener('click', function () {
+                    const combinedResponseStringValue = this.getAttribute('data-response');
+                    if (!combinedResponseStringValue) {
                         console.error('Button missing data-response attribute');
                         return;
                     }
-
-                    let responseStatus = '';
-                    let extraGuests = '0'; // Default guests to 0
-
-                    if (combinedResponseValue.startsWith('Yes,')) {
-                        responseStatus = 'Yes';
-                        const parts = combinedResponseValue.split(',');
-                        if (parts.length === 2) {
-                            extraGuests = parts[1]; // Get the number part
-                        } else {
-                            console.error('Invalid Yes response format:', combinedResponseValue);
-                            return; // Don't submit if format is wrong
-                        }
-                    } else if (combinedResponseValue === 'No,0') {
-                        responseStatus = 'No';
-                        extraGuests = '0';
+                    let responseStatusStringValue = '';
+                    let extraGuestsStringValue = '0';
+                    if (combinedResponseStringValue.startsWith('Yes,')) {
+                        responseStatusStringValue = 'Yes';
+                        const responsePartsArray = combinedResponseStringValue.split(',');
+                        extraGuestsStringValue = responsePartsArray[1];
                     } else {
-                        console.error('Unknown response format:', combinedResponseValue);
-                        return; // Don't submit unknown format
+                        responseStatusStringValue = 'No';
+                        extraGuestsStringValue = '0';
                     }
-
-                    // Set values on hidden inputs
-                    responseHiddenInput.value = responseStatus;
-                    extraGuestsHiddenInput.value = extraGuests;
-
-                    // Submit the form
-                    form.submit();
+                    hiddenResponseInputElement.value = responseStatusStringValue;
+                    hiddenExtraGuestsInputElement.value = extraGuestsStringValue;
+                    rsvpResponseFormElement.submit();
                 });
             });
         });
