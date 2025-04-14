@@ -1,33 +1,35 @@
 {{ define "partials/header" }}
-    {{/* Context is PageData { UserName, UserPicture, URLForRoot, URLForLogout } */}}
     <nav class="navbar navbar-expand-lg navbar-custom">
         <div class="container">
-            {{/* Use URLForRoot from context */}}
-            <a class="navbar-brand" href="{{ .URLForRoot }}">RSVP Manager</a>
-            {{ if .UserName }}
-                <div class="ms-auto">
-                    {{/* Use URLForLogout from context */}}
-                    <form action="{{ .URLForLogout }}" method="POST" class="d-flex align-items-center">
-                    <span class="navbar-text me-3">
-                        Welcome, {{ .UserName }}
-                    </span>
-                        <button type="submit" class="btn btn-sm btn-outline-secondary d-flex align-items-center">
-                            {{ if .UserPicture }}
-                                <img src="{{ .UserPicture }}" alt="{{ .UserName }}" class="rounded-circle"
-                                     style="width:24px; height:24px; margin-right:5px;">
-                            {{ end }}
-                            Sign out
-                        </button>
-                    </form>
-                </div>
-            {{ else }}
-                <div class="ms-auto">
-                    {{/* Cannot access constants.GoogleAuthPath here, need to pass if required */}}
-                    {{/* However, GAuss middleware should handle redirect, so login button might be redundant */}}
-                    {{/* <a href="{{ ??? }}" class="btn btn-sm btn-primary">Sign In</a> */}}
-                    <span class="navbar-text">Not signed in</span>
-                </div>
-            {{ end }}
+            <a class="navbar-brand" href="{{ .URLForRoot }}">{{ .AppTitle }}</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse"
+                    data-bs-target="#navbarSupportedContent">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarSupportedContent">
+                <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ .URLForVenueManager }}">{{ .VenueManagerLabel }}</a>
+                    </li>
+                </ul>
+                {{ if .UserName }}
+                    <div class="d-flex">
+                        <form action="{{ .URLForLogout }}" method="POST" class="d-flex align-items-center">
+                            <button type="submit" class="btn btn-sm btn-outline-secondary d-flex align-items-center">
+                                {{ if .UserPicture }}
+                                    <img src="{{ .UserPicture }}" alt="{{ .UserName }}" class="rounded-circle"
+                                         style="width:24px; height:24px; margin-right:5px;">
+                                {{ end }}
+                                {{ .LabelSignOut }}
+                            </button>
+                        </form>
+                    </div>
+                {{ else }}
+                    <div class="d-flex">
+                        <span class="navbar-text">{{ .LabelNotSignedIn }}</span>
+                    </div>
+                {{ end }}
+            </div>
         </div>
     </nav>
 {{ end }}

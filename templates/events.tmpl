@@ -1,56 +1,69 @@
-{{ define "title" }}Events Dashboard{{ end }}
+{{ define "title" }}{{ .RSVPManagerLabel }}{{ end }}
 
 {{ define "content" }}
     {{ $viewData := . }}
-    {{ if $viewData.SelectedItemForEdit }}
-        {{ template "partials/_edit_event_form.tmpl" $viewData }}
-    {{ else }}
-        <div id="newEventContainer" style="display: none;">
-            {{ template "partials/_new_event_form.tmpl" $viewData }}
-        </div>
-    {{ end }}
-    <div class="card card-events mt-4">
-        <div class="card-header d-flex justify-content-between align-items-center">
-            <h4 class="mb-0">Your Events</h4>
-            <button id="globalNewEventButton" class="btn btn-primary"
-                    {{ if $viewData.SelectedItemForEdit }}disabled{{ end }}>+ New Event
-            </button>
-        </div>
-        {{ if $viewData.EventList }}
-            <div class="table-responsive mt-0">
-                <table class="table table-striped table-hover mb-0">
-                    <thead class="table-light">
-                    <tr>
-                        <th scope="col">Title</th>
-                        <th scope="col">Start Time</th>
-                        <th scope="col">Duration</th>
-                        <th scope="col">RSVPs</th>
-                        <th scope="col">Actions</th>
-                    </tr>
-                    </thead>
-                    <tbody>
-                    {{ range $viewData.EventList }}
-                        <tr>
-                            <td>{{ .Title }}</td>
-                            <td>{{ .StartTime.Format "Jan 2, 2006 3:04 PM" }}</td>
-                            <td>{{ .EndTime.Sub .StartTime }}</td>
-                            <td>{{ .RSVPAnsweredCount }} / {{ .RSVPCount }}</td>
-                            <td>
-                                <div class="btn-group btn-group-sm" role="group">
-                                    <a href="{{ $viewData.URLForEventActions }}?{{ $viewData.ParamNameEventID }}={{ .ID }}"
-                                       class="btn btn-outline-secondary">Edit</a>
-                                    <a href="{{ $viewData.URLForRSVPListBase }}?{{ $viewData.ParamNameEventID }}={{ .ID }}"
-                                       class="btn btn-outline-primary">Manage RSVPs</a>
-                                </div>
-                            </td>
-                        </tr>
-                    {{ end }}
-                    </tbody>
-                </table>
-            </div>
+    <div class="container mt-4">
+        <h1>{{ .RSVPManagerLabel }}</h1>
+        {{ if $viewData.SelectedItemForEdit }}
+            {{ template "partials/_edit_event_form.tmpl" $viewData }}
         {{ else }}
-            <p class="text-center mt-3 mb-3">You haven't created any events yet. Click "+ New Event" to get started!</p>
+            <div id="newEventContainer" style="display: none;">
+                {{ template "partials/_new_event_form.tmpl" $viewData }}
+            </div>
         {{ end }}
+        <div class="card mt-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h4 class="mb-0">All {{ .RSVPManagerLabel }}</h4>
+                <button id="globalNewEventButton" class="btn btn-primary"
+                        {{ if $viewData.SelectedItemForEdit }}disabled{{ end }}>
+                    + New {{ .RSVPManagerLabel }}
+                </button>
+            </div>
+            {{ if .EventList }}
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover mb-0">
+                        <thead class="table-light">
+                        <tr>
+                            <th scope="col">Title</th>
+                            <th scope="col">Start Time</th>
+                            <th scope="col">Duration</th>
+                            <th scope="col">Venue</th>
+                            <th scope="col">RSVPs (Answered/Total)</th>
+                            <th scope="col" class="text-end">Actions</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        {{ range .EventList }}
+                            <tr>
+                                <td class="align-middle">{{ .Title }}</td>
+                                <td class="align-middle">{{ .StartTime.Format "Jan 2, 2006 3:04 PM" }}</td>
+                                <td class="align-middle">{{ .EndTime.Sub .StartTime }}</td>
+                                <td class="align-middle">{{ .VenueName }}</td>
+                                <td class="align-middle">{{ .RSVPAnsweredCount }} / {{ .RSVPCount }}</td>
+                                <td class="text-end align-middle">
+                                    <div class="btn-group btn-group-sm" role="group">
+                                        <a href="{{ $viewData.URLForEventActions }}?{{ $viewData.ParamNameEventID }}={{ .ID }}"
+                                           class="btn btn-outline-secondary">
+                                            Edit
+                                        </a>
+                                        <a href="{{ $viewData.URLForRSVPListBase }}?{{ $viewData.ParamNameEventID }}={{ .ID }}"
+                                           class="btn btn-outline-primary">
+                                            Manage RSVPs
+                                        </a>
+                                    </div>
+                                </td>
+                            </tr>
+                        {{ end }}
+                        </tbody>
+                    </table>
+                </div>
+            {{ else }}
+                <div class="card-body text-center">
+                    <p class="mb-0">No {{ .RSVPManagerLabel }} found. Click "+ New {{ .RSVPManagerLabel }}" to create
+                        your first {{ .RSVPManagerLabel }}!</p>
+                </div>
+            {{ end }}
+        </div>
     </div>
 {{ end }}
 
@@ -60,73 +73,35 @@
     <script>
         document.addEventListener("DOMContentLoaded", function () {
             var newEventDescriptionElement = document.getElementById("descriptionInput");
-            if (newEventDescriptionElement !== null) {
+            if (newEventDescriptionElement) {
                 new EasyMDE({
                     element: newEventDescriptionElement,
                     spellChecker: false,
-                    toolbar: [
-                        "bold",
-                        "italic",
-                        "heading",
-                        "|",
-                        "quote",
-                        "unordered-list",
-                        "ordered-list",
-                        "|",
-                        "link",
-                        "image",
-                        "|",
-                        "preview"
-                    ],
-                    forceSync: true
+                    toolbar: ["bold", "italic", "heading", "|", "quote", "unordered-list", "ordered-list", "|", "link", "|", "preview"],
+                    forceSync: true,
+                    minHeight: "100px"
                 });
             }
             var editEventDescriptionElement = document.getElementById("editDescriptionInput");
-            if (editEventDescriptionElement !== null) {
+            if (editEventDescriptionElement) {
                 new EasyMDE({
                     element: editEventDescriptionElement,
                     spellChecker: false,
-                    toolbar: [
-                        "bold",
-                        "italic",
-                        "heading",
-                        "|",
-                        "quote",
-                        "unordered-list",
-                        "ordered-list",
-                        "|",
-                        "link",
-                        "image",
-                        "|",
-                        "preview"
-                    ],
-                    forceSync: true
+                    toolbar: ["bold", "italic", "heading", "|", "quote", "unordered-list", "ordered-list", "|", "link", "|", "preview"],
+                    forceSync: true,
+                    minHeight: "100px"
                 });
             }
-            var newEventButton = document.getElementById("globalNewEventButton");
-            var newEventContainer = document.getElementById("newEventContainer");
-            var editEventCard = document.getElementById("editEventCard");
-            if (newEventButton !== null && newEventContainer !== null) {
-                if (editEventCard !== null) {
-                    newEventButton.disabled = true;
-                } else {
-                    newEventButton.addEventListener("click", function () {
-                        if (newEventContainer.style.display === "none" || newEventContainer.style.display === "") {
-                            newEventContainer.style.display = "block";
-                            newEventButton.textContent = "Cancel New Event";
-                            newEventButton.classList.remove("btn-primary");
-                            newEventButton.classList.add("btn-secondary");
-                        } else {
-                            newEventContainer.style.display = "none";
-                            newEventButton.textContent = "+ New Event";
-                            newEventButton.classList.remove("btn-secondary");
-                            newEventButton.classList.add("btn-primary");
-                        }
-                    });
-                }
+            var globalNewEventButtonElement = document.getElementById("globalNewEventButton");
+            var newEventContainerElement = document.getElementById("newEventContainer");
+            var editEventCardElement = document.getElementById("editEventCard");
+            if (globalNewEventButtonElement && newEventContainerElement && !editEventCardElement) {
+                globalNewEventButtonElement.addEventListener("click", function () {
+                    newEventContainerElement.style.display = "block";
+                    globalNewEventButtonElement.style.display = "none";
+                });
             }
         });
     </script>
 {{ end }}
-
 {{ template "layout" . }}

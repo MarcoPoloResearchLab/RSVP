@@ -1,4 +1,3 @@
-// FILE: pkg/utils/http_utils.go
 // Package utils provides miscellaneous utility functions used across the application,
 // including HTTP parameter handling, URL building, error handling, and validation logic.
 package utils

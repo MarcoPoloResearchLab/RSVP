@@ -1,61 +1,120 @@
 {{ define "partials/_edit_event_form.tmpl" }}
     <div class="card" id="editEventCard">
-        {{ $eventDataView := . }}
-        {{ $selectedEvent := $eventDataView.SelectedItemForEdit }}
+
+        <!-- Card header with only the title; removed the Cancel Edit button here -->
         <div class="card-header">
-            <h4 class="mb-0">Edit Event: {{ $selectedEvent.Title }}</h4>
-            <a href="{{ $eventDataView.URLForEventActions }}" class="btn btn-sm btn-outline-secondary">Cancel Edit</a>
+            <h4 class="mb-0">Edit Event: {{ .SelectedItemForEdit.Event.Title }}</h4>
         </div>
-        <form id="editEventForm" action="{{ $eventDataView.URLForEventActions }}" method="POST">
-            <input type="hidden" name="{{ $eventDataView.ParamNameEventID }}" value="{{ $selectedEvent.ID }}">
-            <input type="hidden" name="{{ $eventDataView.ParamNameMethodOverride }}" value="PUT">
+
+        <!-- Primary form for updating the event -->
+        <form id="updateEventForm" action="{{ .URLForEventActions }}" method="POST">
+            <input type="hidden" name="{{ .ParamNameMethodOverride }}" value="PUT">
+            <input type="hidden" name="{{ .ParamNameEventID }}" value="{{ .SelectedItemForEdit.Event.ID }}">
+
             <div class="card-body">
-                <div class="form-group mb-3">
-                    <label for="editTitleInput">Event Title:</label>
-                    <input type="text" class="form-control" id="editTitleInput"
-                           name="{{ $eventDataView.ParamNameTitle }}" required value="{{ $selectedEvent.Title }}">
+                <div class="mb-3">
+                    <label for="editTitleInput" class="form-label">{{ .LabelEventTitle }}</label>
+                    <input type="text" class="form-control" id="editTitleInput" name="{{ .ParamNameTitle }}" required
+                           value="{{ .SelectedItemForEdit.Event.Title }}">
                 </div>
-                <div class="form-group mb-3">
-                    <label for="editDescriptionInput">Description (Markdown Supported):</label>
-                    <textarea class="form-control" id="editDescriptionInput"
-                              name="{{ $eventDataView.ParamNameDescription }}"
-                              rows="5">{{ $selectedEvent.Description }}</textarea>
+                <div class="mb-3">
+                    <label for="editDescriptionInput" class="form-label">{{ .LabelEventDescription }}</label>
+                    <textarea class="form-control" id="editDescriptionInput" name="{{ .ParamNameDescription }}"
+                              rows="3">{{ .SelectedItemForEdit.Event.Description }}</textarea>
                 </div>
                 <div class="row mb-3">
-                    <div class="form-group col-md-6">
-                        <label for="editStartTimeInput">Start Time:</label>
+                    <div class="col-md-6">
+                        <label for="editStartTimeInput" class="form-label">{{ .LabelStartTime }}</label>
                         <input type="datetime-local" class="form-control" id="editStartTimeInput"
-                               name="{{ $eventDataView.ParamNameStartTime }}" required
-                               value="{{ $selectedEvent.StartTime.Format "2006-01-02T15:04" }}">
+                               name="{{ .ParamNameStartTime }}" required
+                               value="{{ .SelectedItemForEdit.Event.StartTime.Format "2006-01-02T15:04" }}">
                     </div>
-                    <div class="form-group col-md-6">
-                        <label for="editDurationSelect">Duration (hours):</label>
-                        <select class="form-select" id="editDurationSelect"
-                                name="{{ $eventDataView.ParamNameDuration }}" required>
-                            {{ $currentDuration := $selectedEvent.CalculatedDurationInHours }}
-                            <option value="1" {{ if eq $currentDuration 1 }}selected{{ end }}>1 hour</option>
-                            <option value="2" {{ if eq $currentDuration 2 }}selected{{ end }}>2 hours</option>
-                            <option value="3" {{ if eq $currentDuration 3 }}selected{{ end }}>3 hours</option>
-                            <option value="4" {{ if eq $currentDuration 4 }}selected{{ end }}>4 hours</option>
+                    <div class="col-md-6">
+                        <label for="editDurationSelect" class="form-label">{{ .LabelDuration }}</label>
+                        <select class="form-select" id="editDurationSelect" name="{{ .ParamNameDuration }}" required>
+                            <option value="1" {{ if eq .CurrentDuration "1" }}selected{{ end }}>1</option>
+                            <option value="2" {{ if eq .CurrentDuration "2" }}selected{{ end }}>2</option>
+                            <option value="3" {{ if eq .CurrentDuration "3" }}selected{{ end }}>3</option>
+                            <option value="4" {{ if eq .CurrentDuration "4" }}selected{{ end }}>4</option>
                         </select>
                     </div>
                 </div>
             </div>
         </form>
-        <div class="d-flex justify-content-between align-items-center p-3">
+
+        <!-- Bottom row for buttons: left = Cancel Edit, right = [Delete/Add Venue, Update Event] -->
+        <div class="d-flex justify-content-between align-items-center px-3 pb-3">
+            <!-- Left: Cancel Edit -->
             <div>
-                <form id="deleteEventForm_{{ $selectedEvent.ID }}" action="{{ $eventDataView.URLForEventActions }}"
-                      method="POST" class="d-inline">
-                    <input type="hidden" name="{{ $eventDataView.ParamNameMethodOverride }}" value="DELETE">
-                    <input type="hidden" name="{{ $eventDataView.ParamNameEventID }}" value="{{ $selectedEvent.ID }}">
-                    <button type="submit" class="btn btn-delete">Delete Event</button>
-                </form>
+                <a href="{{ .URLForEventActions }}" class="btn btn-outline-secondary">
+                    {{ .ButtonCancelEdit }}
+                </a>
             </div>
-            <div>
-                <button type="submit" form="editEventForm" class="btn btn-primary">Update Event</button>
-                <a href="{{ $eventDataView.URLForRSVPListBase }}?{{ $eventDataView.ParamNameEventID }}={{ $selectedEvent.ID }}"
-                   class="btn btn-outline-primary">Manage RSVPs ></a>
+            <!-- Right: conditionally show Delete Venue or Add Venue, then Update Event -->
+            <div class="d-flex gap-2">
+
+                {{ if .SelectedItemForEdit.Event.Venue }}
+                    <!-- Separate form for deleting the existing venue -->
+                    <form id="deleteVenueForm" action="{{ .URLForVenues }}" method="POST" style="display: inline;">
+                        <input type="hidden" name="{{ .ParamNameMethodOverride }}" value="DELETE">
+                        <input type="hidden" name="{{ .ParamNameVenueID }}"
+                               value="{{ .SelectedItemForEdit.Event.Venue.ID }}">
+                        <button type="submit" class="btn btn-outline-danger">Delete Venue</button>
+                    </form>
+                {{ else }}
+                    <!-- If no venue, show an Add Venue button that you can wire up via JS -->
+                    <button type="button" id="showNewVenueFormButton" class="btn btn-outline-secondary">
+                        {{ .ButtonAddVenue }}
+                    </button>
+                {{ end }}
+
+                <!-- Submit the update form by referencing form="updateEventForm" -->
+                <button type="submit" class="btn btn-primary" form="updateEventForm">
+                    {{ .ButtonUpdateEvent }}
+                </button>
             </div>
         </div>
+
+        <!-- Optional: Show read-only venue details if there is a venue -->
+        {{ if .SelectedItemForEdit.Event.Venue }}
+            <hr class="m-0">
+            <div class="card-body">
+                <h5>{{ .LabelVenueDetails }}</h5>
+                <div class="mb-3">
+                    <label for="editVenueNameInput" class="form-label">{{ .LabelVenueName }}</label>
+                    <input type="text" class="form-control" id="editVenueNameInput"
+                           name="{{ .ParamNameVenueName }}" required
+                           value="{{ .SelectedItemForEdit.Event.Venue.Name }}" disabled>
+                </div>
+                <div class="mb-3">
+                    <label for="editVenueAddressInput" class="form-label">{{ .LabelVenueAddress }}</label>
+                    <input type="text" class="form-control" id="editVenueAddressInput"
+                           name="{{ .ParamNameVenueAddress }}" value="{{ .SelectedItemForEdit.Event.Venue.Address }}"
+                           disabled>
+                </div>
+                <div class="mb-3">
+                    <label for="editVenueDescriptionInput" class="form-label">{{ .LabelVenueDescription }}</label>
+                    <textarea class="form-control" id="editVenueDescriptionInput"
+                              name="{{ .ParamNameVenueDescription }}" rows="2" disabled>
+        {{ .SelectedItemForEdit.Event.Venue.Description }}
+      </textarea>
+                </div>
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <label for="editVenueCapacityInput" class="form-label">{{ .LabelVenueCapacity }}</label>
+                        <input type="number" class="form-control" id="editVenueCapacityInput"
+                               name="{{ .ParamNameVenueCapacity }}"
+                               value="{{ .SelectedItemForEdit.Event.Venue.Capacity }}" disabled>
+                    </div>
+                    <div class="col-md-6">
+                        <label for="editVenuePhoneInput" class="form-label">{{ .LabelVenuePhone }}</label>
+                        <input type="tel" class="form-control" id="editVenuePhoneInput"
+                               name="{{ .ParamNameVenuePhone }}" value="{{ .SelectedItemForEdit.Event.Venue.Phone }}"
+                               disabled>
+                    </div>
+                </div>
+            </div>
+        {{ end }}
+
     </div>
 {{ end }}

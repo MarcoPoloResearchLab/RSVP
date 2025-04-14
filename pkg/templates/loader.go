@@ -1,4 +1,3 @@
-// Package templates handles the loading, parsing, and caching of HTML templates.
 package templates
 
 import (
@@ -27,7 +26,7 @@ var customTemplateFunctions = template.FuncMap{
 		var outputBuffer bytes.Buffer
 		conversionError := goldmarkMarkdownRenderer.Convert([]byte(inputText), &outputBuffer)
 		if conversionError != nil {
-			return template.HTML("")
+			return ""
 		}
 		return template.HTML(outputBuffer.String())
 	},
@@ -44,8 +43,8 @@ func LoadAllPrecompiledTemplates(templatesDirectoryPath string) {
 		config.TemplateRSVP,
 		config.TemplateResponse,
 		config.TemplateThankYou,
+		config.TemplateVenues,
 	}
-	log.Println("Loading application templates integrated with layout...")
 	var layoutFilePath string
 	var partialTemplateFiles []string
 	mainViewFilePaths := make(map[string]string)
@@ -91,7 +90,7 @@ func LoadAllPrecompiledTemplates(templatesDirectoryPath string) {
 					break
 				}
 			}
-			if !mainViewFound && baseTemplateName != config.TemplateLayout && !strings.HasPrefix(relativeFilePath, config.PartialsDir+string(filepath.Separator)) && !strings.HasPrefix(baseTemplateName, "_") {
+			if !mainViewFound {
 				log.Printf("Found template file '%s' not identified as layout, partial, or known main view. Ignoring in layout system.", relativeFilePath)
 			}
 		}
@@ -115,7 +114,9 @@ func LoadAllPrecompiledTemplates(templatesDirectoryPath string) {
 		filesForTemplateSet := []string{layoutFilePath}
 		filesForTemplateSet = append(filesForTemplateSet, partialTemplateFiles...)
 		filesForTemplateSet = append(filesForTemplateSet, mainViewFilePath)
-		templateSet, parseError := template.New(filepath.Base(mainViewFilePath)).Funcs(customTemplateFunctions).ParseFiles(filesForTemplateSet...)
+		templateSet, parseError := template.New(filepath.Base(mainViewFilePath)).
+			Funcs(customTemplateFunctions).
+			ParseFiles(filesForTemplateSet...)
 		if parseError != nil {
 			log.Fatalf("FATAL: Failed to parse template set for view '%s'. Error: %v. Files: %v", mainViewName, parseError, filesForTemplateSet)
 		}

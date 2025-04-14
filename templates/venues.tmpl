@@ -1,0 +1,105 @@
+{{ define "title" }}{{ .VenueManagerLabel }}{{ end }}
+
+{{ define "content" }}
+    {{ $viewData := . }}
+    <div class="container mt-4">
+        <h1>{{ .VenueManagerLabel }}</h1>
+
+        {{ if $viewData.SelectedItemForEdit }}
+            {{ template "partials/_edit_venue_form.tmpl" $viewData }}
+        {{ else }}
+            <div id="newVenueContainer" style="display: none;">
+                {{ template "partials/_new_venue_form.tmpl" $viewData }}
+            </div>
+        {{ end }}
+
+        <div class="card mt-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h4 class="mb-0">All {{ .VenueManagerLabel }}</h4>
+                <button id="globalNewVenueButton" class="btn btn-primary"
+                        {{ if $viewData.SelectedItemForEdit }}disabled{{ end }}>
+                    + New
+                </button>
+            </div>
+
+            {{ if .VenueList }}
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover mb-0">
+                        <thead class="table-light">
+                        <tr>
+                            <th scope="col">Name</th>
+                            <th scope="col">Address</th>
+                            <th scope="col">Capacity</th>
+                            <th scope="col">Phone</th>
+                            <th scope="col">Email</th>
+                            <th scope="col" class="text-end">Actions</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        {{ range .VenueList }}
+                            <tr>
+                                <td class="align-middle">{{ .Name }}</td>
+                                <td class="align-middle">{{ .Address }}</td>
+                                <td class="align-middle">{{ .Capacity }}</td>
+                                <td class="align-middle">{{ .Phone }}</td>
+                                <td class="align-middle">{{ .Email }}</td>
+                                <td class="text-end align-middle">
+                                    <div class="btn-group btn-group-sm" role="group">
+                                        <a href="{{ $viewData.URLForVenueActions }}?{{ $viewData.ParamNameVenueID }}={{ .ID }}"
+                                           class="btn btn-outline-secondary">
+                                            Edit
+                                        </a>
+                                        <form id="deleteVenueForm_{{ .ID }}" action="{{ $viewData.URLForVenueActions }}"
+                                              method="POST" class="d-inline">
+                                            <input type="hidden" name="{{ $viewData.ParamNameMethodOverride }}"
+                                                   value="DELETE">
+                                            <input type="hidden" name="{{ $viewData.ParamNameVenueID }}"
+                                                   value="{{ .ID }}">
+                                            <button type="submit" class="btn btn-outline-danger">Delete</button>
+                                        </form>
+                                    </div>
+                                </td>
+                            </tr>
+                        {{ end }}
+                        </tbody>
+                    </table>
+                </div>
+            {{ else }}
+                <div class="card-body text-center">
+                    <p class="mb-0">No {{ .VenueManagerLabel }} found. Click "+ New {{ .VenueManagerLabel }}" to create
+                        your first {{ .VenueManagerLabel }}!</p>
+                </div>
+            {{ end }}
+        </div>
+    </div>
+{{ end }}
+
+{{ define "scripts" }}
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            const globalNewVenueButtonElement = document.getElementById("globalNewVenueButton");
+            const newVenueContainerElement = document.getElementById("newVenueContainer");
+            const cancelNewVenueButtonElement = document.getElementById("cancelNewVenueButton");
+            const editVenueCardElement = document.getElementById("editVenueCard");
+
+            if (globalNewVenueButtonElement && newVenueContainerElement && !editVenueCardElement) {
+                globalNewVenueButtonElement.addEventListener("click", function () {
+                    newVenueContainerElement.style.display = "block";
+                    globalNewVenueButtonElement.style.display = "none";
+                });
+            }
+
+            if (cancelNewVenueButtonElement && newVenueContainerElement && globalNewVenueButtonElement) {
+                cancelNewVenueButtonElement.addEventListener("click", function () {
+                    newVenueContainerElement.style.display = "none";
+                    globalNewVenueButtonElement.style.display = "block";
+                    const newVenueForm = document.getElementById("newVenueForm");
+                    if (newVenueForm) {
+                        newVenueForm.reset();
+                    }
+                });
+            }
+        });
+    </script>
+{{ end }}
+{{ template "layout" . }}

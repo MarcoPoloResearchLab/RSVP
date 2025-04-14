@@ -1,31 +1,28 @@
 {{ define "partials/_new_event_form.tmpl" }}
-    {{ $viewData := . }}
     <div class="card" id="newEventCard">
         <div class="card-header">
             <h4 class="mb-0">Create New Event</h4>
         </div>
-        <form id="newEventForm" action="{{ $viewData.URLForEventActions }}" method="POST">
+        <form id="newEventForm" action="{{ .URLForEventActions }}" method="POST">
             <div class="card-body">
                 <div class="form-group mb-3">
-                    <label for="titleInput">Event Title:</label>
-                    <input type="text" class="form-control" id="titleInput" name="{{ $viewData.ParamNameTitle }}"
-                           required>
+                    <label for="titleInput" class="form-label">Event Title:</label>
+                    <input type="text" class="form-control" id="titleInput" name="{{ .ParamNameTitle }}" required>
                 </div>
                 <div class="form-group mb-3">
-                    <label for="descriptionInput">Description (Markdown Supported):</label>
-                    <textarea class="form-control" id="descriptionInput" name="{{ $viewData.ParamNameDescription }}"
+                    <label for="descriptionInput" class="form-label">Description (Markdown Supported):</label>
+                    <textarea class="form-control" id="descriptionInput" name="{{ .ParamNameDescription }}"
                               rows="5"></textarea>
                 </div>
                 <div class="row mb-3">
                     <div class="form-group col-md-6">
-                        <label for="startTimeInput">Start Time:</label>
+                        <label for="startTimeInput" class="form-label">Start Time:</label>
                         <input type="datetime-local" class="form-control" id="startTimeInput"
-                               name="{{ $viewData.ParamNameStartTime }}" required>
+                               name="{{ .ParamNameStartTime }}" required>
                     </div>
                     <div class="form-group col-md-6">
-                        <label for="durationSelect">Duration (hours):</label>
-                        <select class="form-select" id="durationSelect" name="{{ $viewData.ParamNameDuration }}"
-                                required>
+                        <label for="durationSelect" class="form-label">Duration (hours):</label>
+                        <select class="form-select" id="durationSelect" name="{{ .ParamNameDuration }}" required>
                             <option value="1" selected>1 hour</option>
                             <option value="2">2 hours</option>
                             <option value="3">3 hours</option>
@@ -34,8 +31,9 @@
                     </div>
                 </div>
             </div>
-            <div class="form-footer-row mt-0">
-                <span></span>
+            <div class="form-footer-row">
+                <button type="button" id="cancelNewEventButton" class="btn btn-outline-secondary">Cancel New Event
+                </button>
                 <button type="submit" class="btn btn-primary">Create Event</button>
             </div>
         </form>

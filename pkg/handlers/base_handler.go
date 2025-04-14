@@ -15,15 +15,23 @@ import (
 
 // PageData is the top-level wrapper struct passed to the layout template execution.
 // It contains common data needed by the layout (like user info, CSRF token, common URLs)
-// and view-specific data (`Data` field).
+// and view-specific data (Data field). It now also includes header navigation fields.
 type PageData struct {
-	IsPublicPage bool
-	UserName     string
-	UserPicture  string
-	CSRFToken    string
-	URLForLogout string
-	URLForRoot   string
-	Data         interface{}
+	IsPublicPage       bool
+	UserName           string
+	UserPicture        string
+	CSRFToken          string
+	URLForLogout       string
+	URLForRoot         string
+	Data               interface{}
+	AppTitle           string
+	RSVPManagerLabel   string
+	URLForRSVPManager  string
+	VenueManagerLabel  string
+	URLForVenueManager string
+	LabelWelcome       string // Added for header template
+	LabelSignOut       string // Added for header template
+	LabelNotSignedIn   string // Added for header template
 }
 
 // LoggedUserData holds essential user information retrieved from the session.
@@ -170,7 +178,7 @@ func (handler *BaseHttpHandler) HandleError(responseWriter http.ResponseWriter, 
 }
 
 // RenderView renders the specified view template using the main application layout.
-// It prepares the PageData struct, including user information for non-public pages,
+// It prepares the PageData struct, including user information for non-public pages and header navigation data,
 // retrieves the precompiled template set from templates.PrecompiledTemplatesMap,
 // and executes the "layout" template, passing PageData as the context.
 func (handler *BaseHttpHandler) RenderView(
@@ -186,12 +194,19 @@ func (handler *BaseHttpHandler) RenderView(
 	isPublicPage := publicViews[viewName]
 
 	pageData := PageData{
-		IsPublicPage: isPublicPage,
-		Data:         viewSpecificData,
-		URLForLogout: gconstants.LogoutPath,
-		URLForRoot:   config.WebRoot,
+		IsPublicPage:       isPublicPage,
+		Data:               viewSpecificData,
+		URLForLogout:       gconstants.LogoutPath,
+		URLForRoot:         config.WebRoot,
+		AppTitle:           config.AppTitle,
+		RSVPManagerLabel:   config.ResourceLabelRSVPManager,
+		URLForRSVPManager:  config.WebRSVPs, // Changed from WebEvents to WebRSVPs based on label
+		VenueManagerLabel:  config.ResourceLabelVenueManager,
+		URLForVenueManager: config.WebVenues,
+		LabelWelcome:       config.LabelWelcome,     // Populate LabelWelcome
+		LabelSignOut:       config.LabelSignOut,     // Populate LabelSignOut
+		LabelNotSignedIn:   config.LabelNotSignedIn, // Populate LabelNotSignedIn
 	}
-
 	if !isPublicPage {
 		loggedUserData := handler.GetUserSessionData(httpRequest)
 		pageData.UserName = loggedUserData.UserName
@@ -200,14 +215,12 @@ func (handler *BaseHttpHandler) RenderView(
 			handler.ApplicationContext.Logger.Printf("WARN: Rendering non-public view '%s' but user session data (Name/Picture) seems incomplete for %s.", viewName, httpRequest.URL.Path)
 		}
 	}
-
 	templateSet, exists := templates.PrecompiledTemplatesMap[viewName]
 	if !exists {
 		handler.ApplicationContext.Logger.Printf("CRITICAL: Template set for view '%s' not found in PrecompiledTemplatesMap.", viewName)
 		handler.HandleError(httpResponseWriter, nil, utils.ServerError, utils.ErrMsgInternalServer)
 		return
 	}
-
 	executionError := templateSet.ExecuteTemplate(httpResponseWriter, config.TemplateLayout, pageData)
 	if executionError != nil {
 		handler.ApplicationContext.Logger.Printf("ERROR: Failed to execute layout template for view '%s' (Resource: %s, Path: %s): %v", viewName, handler.ResourceNameForLogging, httpRequest.URL.Path, executionError)

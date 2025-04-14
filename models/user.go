@@ -61,18 +61,15 @@ func (userRecord *User) Create(databaseConnection *gorm.DB) error {
 	return databaseConnection.Create(userRecord).Error
 }
 
-// Save updates the existing User record in the database corresponding to the receiver 'userRecord' struct's ID.
+// Update updates the existing User record in the database corresponding to the receiver 'userRecord' struct's ID.
 // Updates all fields based on the current values in the struct.
 // Returns an error if the database update fails.
-func (userRecord *User) Save(databaseConnection *gorm.DB) error {
+func (userRecord *User) Update(databaseConnection *gorm.DB) error {
 	return databaseConnection.Save(userRecord).Error
 }
 
 // UpsertUser finds a user by email or creates a new one if not found.
 // If the user exists, it updates their Name and Picture if the provided values differ.
-// This is typically called after successful authentication to ensure the local user record
-// is present and up-to-date with information from the identity provider.
-// It uses local logging for detailed tracing of the upsert process.
 func UpsertUser(
 	databaseConnection *gorm.DB,
 	emailAddress string,
@@ -102,23 +99,29 @@ func UpsertUser(
 		log.Printf("Database error when finding user: %v", findResult.Error)
 		return nil, findResult.Error
 	}
+
 	log.Printf("Found existing user with ID: %s", existingUser.ID)
+
+	// Track if any fields need updating
 	fieldsUpdated := false
+
 	if existingUser.Name != fullName {
 		existingUser.Name = fullName
 		fieldsUpdated = true
 	}
+
 	if existingUser.Picture != pictureURL {
 		existingUser.Picture = pictureURL
 		fieldsUpdated = true
 	}
 
+	// Only update if fields have changed
 	if fieldsUpdated {
-		log.Printf("Updating user details for ID: %s", existingUser.ID)
-		if saveError := databaseConnection.Save(&existingUser).Error; saveError != nil {
-			log.Printf("Error updating user: %v", saveError)
-			return nil, saveError
+		if updateError := databaseConnection.Save(&existingUser).Error; updateError != nil {
+			log.Printf("Error updating user: %v", updateError)
+			return nil, updateError
 		}
+		log.Printf("User updated successfully")
 	}
 
 	return &existingUser, nil
