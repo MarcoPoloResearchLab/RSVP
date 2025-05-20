@@ -63,6 +63,21 @@
                     {{ end }}
                 </select>
             </div>
+
+            {{ if .SelectedItemForEdit.Event.Venue }}
+                <hr>
+                <h5>{{ .LabelVenueDetails }}</h5>
+                <p class="mb-1"><strong>{{ .LabelVenueName }}:</strong>
+                    <a href="{{ .URLForVenues }}?{{ .ParamNameVenueID }}={{ .SelectedItemForEdit.Event.Venue.ID }}">{{ .SelectedItemForEdit.Event.Venue.Name }}</a>
+                </p>
+                <p class="mb-1"><strong>{{ .LabelVenueAddress }}:</strong>
+                    <a href="{{ mapsURL .SelectedItemForEdit.Event.Venue.Address }}" target="_blank" rel="noopener noreferrer">{{ .SelectedItemForEdit.Event.Venue.Address }}</a>
+                </p>
+                <p class="mb-1"><strong>{{ .LabelVenueCapacity }}:</strong> {{ .SelectedItemForEdit.Event.Venue.Capacity }}</p>
+                {{ if .SelectedItemForEdit.Event.Venue.Phone }}
+                    <p class="mb-0"><strong>{{ .LabelVenuePhone }}:</strong> {{ .SelectedItemForEdit.Event.Venue.Phone }}</p>
+                {{ end }}
+            {{ end }}
         </div>
     </form>
 
@@ -81,18 +96,5 @@
                class="btn btn-outline-primary text-nowrap">Manage RSVPs &gt;</a>
         </div>
     </div>
-
-    {{ if .SelectedItemForEdit.Event.Venue }}
-    <hr class="m-0">
-    <div class="card-body">
-        <h5>{{ .LabelVenueDetails }}</h5>
-        <p class="mb-1"><strong>{{ .LabelVenueName }}:</strong> {{ .SelectedItemForEdit.Event.Venue.Name }}</p>
-        <p class="mb-1"><strong>{{ .LabelVenueAddress }}:</strong> {{ .SelectedItemForEdit.Event.Venue.Address }}</p>
-        <p class="mb-1"><strong>{{ .LabelVenueCapacity }}:</strong> {{ .SelectedItemForEdit.Event.Venue.Capacity }}</p>
-        {{ if .SelectedItemForEdit.Event.Venue.Phone }}
-        <p class="mb-0"><strong>{{ .LabelVenuePhone }}:</strong> {{ .SelectedItemForEdit.Event.Venue.Phone }}</p>
-        {{ end }}
-    </div>
-    {{ end }}
 </div>
 {{ end }}

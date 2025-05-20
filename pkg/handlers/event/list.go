@@ -14,11 +14,14 @@ import (
 // ListEventsHandler returns the Events main page (list + optional edit panel).
 func ListEventsHandler(applicationContext *config.ApplicationContext) http.HandlerFunc {
 	baseHttpHandler := handlers.NewBaseHttpHandler(applicationContext, config.ResourceNameEvent, config.WebEvents)
-	return func(responseWriter http.ResponseWriter, request *http.Request) {
-		currentUser := request.Context().Value(middleware.ContextKeyUser).(*models.User)
-		requestedEventIDForEdit := request.URL.Query().Get(config.EventIDParam)
+
+	return func(w http.ResponseWriter, r *http.Request) {
+		currentUser := r.Context().Value(middleware.ContextKeyUser).(*models.User)
+
+		requestedEventIDForEdit := r.URL.Query().Get(config.EventIDParam)
 		var selectedEventForEdit *EnhancedEventData
 
+		/* load user venues (for selector) */
 		userReusedVenues, err := models.FindVenuesByOwner(applicationContext.Database, currentUser.ID)
 		if err != nil {
 			baseHttpHandler.ApplicationContext.Logger.Printf(
@@ -28,18 +31,19 @@ func ListEventsHandler(applicationContext *config.ApplicationContext) http.Handl
 			userReusedVenues = []models.Venue{}
 		}
 
+		/* if an event is selected for editing – load it */
 		if requestedEventIDForEdit != "" {
 			var eventToEdit models.Event
 			err = eventToEdit.FindByIDAndOwner(applicationContext.Database, requestedEventIDForEdit, currentUser.ID)
 			if err == nil {
-				selectedVenueIdentifierString := ""
+				venueID := ""
 				if eventToEdit.VenueID != nil {
-					selectedVenueIdentifierString = *eventToEdit.VenueID
+					venueID = *eventToEdit.VenueID
 				}
 				selectedEventForEdit = &EnhancedEventData{
 					Event:                     eventToEdit,
 					CalculatedDurationInHours: float64(eventToEdit.DurationHours()),
-					SelectedVenueID:           selectedVenueIdentifierString,
+					SelectedVenueID:           venueID,
 				}
 			} else {
 				baseHttpHandler.ApplicationContext.Logger.Printf(
@@ -49,51 +53,62 @@ func ListEventsHandler(applicationContext *config.ApplicationContext) http.Handl
 			}
 		}
 
+		/* gather statistics for list */
 		eventsOwnedByUser, err := models.FindEventsByUserID(applicationContext.Database, currentUser.ID, true, true)
 		if err != nil {
-			baseHttpHandler.HandleError(responseWriter, err, utils.DatabaseError, "Failed to retrieve events list.")
+			baseHttpHandler.HandleError(w, err, utils.DatabaseError, "Failed to retrieve events list.")
 			return
 		}
 
 		eventStatistics := make([]StatisticsData, len(eventsOwnedByUser))
-		for index, eventDetails := range eventsOwnedByUser {
-			totalRSVPCount := len(eventDetails.RSVPs)
-			answeredRSVPCount := 0
-			for _, rsvpDetails := range eventDetails.RSVPs {
-				if rsvpDetails.Response != "" && rsvpDetails.Response != config.RSVPResponsePending {
-					answeredRSVPCount++
+		for i, ev := range eventsOwnedByUser {
+			total := len(ev.RSVPs)
+			answered := 0
+			for _, rsvp := range ev.RSVPs {
+				if rsvp.Response != "" && rsvp.Response != config.RSVPResponsePending {
+					answered++
 				}
 			}
 			venueName := "N/A"
-			if eventDetails.Venue != nil {
-				venueName = eventDetails.Venue.Name
+			if ev.Venue != nil {
+				venueName = ev.Venue.Name
 			}
-			eventStatistics[index] = StatisticsData{
-				ID:                eventDetails.ID,
-				Title:             eventDetails.Title,
-				StartTime:         eventDetails.StartTime,
-				EndTime:           eventDetails.EndTime,
+
+			eventStatistics[i] = StatisticsData{
+				ID:                ev.ID,
+				Title:             ev.Title,
+				StartTime:         ev.StartTime,
+				EndTime:           ev.EndTime,
 				VenueName:         venueName,
-				RSVPCount:         totalRSVPCount,
-				RSVPAnsweredCount: answeredRSVPCount,
+				RSVPCount:         total,
+				RSVPAnsweredCount: answered,
 			}
 		}
 
-		var formattedStartTime string
-		var currentDuration string
+		var formattedStartTime, currentDuration string
 		if selectedEventForEdit != nil {
 			formattedStartTime = selectedEventForEdit.Event.StartTime.Format(config.TimeLayoutHTMLForm)
 			currentDuration = strconv.Itoa(selectedEventForEdit.Event.DurationHours())
 		}
 
 		listViewData := ListViewData{
-			EventList:                 eventStatistics,
-			SelectedItemForEdit:       selectedEventForEdit,
-			UserReusedVenues:          userReusedVenues,
-			URLForEventActions:        config.WebEvents,
-			URLForEventEdit:           config.WebEvents,
-			URLForRSVPListBase:        config.WebRSVPs,
-			URLForVenues:              config.WebVenues,
+			/* navigation */
+			AppTitle:           config.AppTitle,
+			EventsManagerLabel: config.ResourceLabelEventManager,
+			VenueManagerLabel:  config.ResourceLabelVenueManager,
+			RSVPManagerLabel:   "RSVPs",
+
+			URLForEventActions: config.WebEvents,
+			URLForRSVPListBase: config.WebRSVPs,
+			URLForRSVPManager:  config.WebRSVPs,
+			URLForVenues:       config.WebVenues,
+
+			/* data */
+			EventList:           eventStatistics,
+			SelectedItemForEdit: selectedEventForEdit,
+			UserReusedVenues:    userReusedVenues,
+
+			/* helpers */
 			ParamNameEventID:          config.EventIDParam,
 			ParamNameVenueID:          config.VenueIDParam,
 			ParamNameTitle:            config.TitleParam,
@@ -103,40 +118,43 @@ func ListEventsHandler(applicationContext *config.ApplicationContext) http.Handl
 			ParamNameMethodOverride:   config.MethodOverrideParam,
 			ParamNameVenueName:        config.VenueNameParam,
 			ParamNameVenueAddress:     config.VenueAddressParam,
+			ParamNameVenueDescription: config.VenueDescriptionParam,
 			ParamNameVenueCapacity:    config.VenueCapacityParam,
 			ParamNameVenuePhone:       config.VenuePhoneParam,
 			ParamNameVenueEmail:       config.VenueEmailParam,
 			ParamNameVenueWebsite:     config.VenueWebsiteParam,
-			ParamNameVenueDescription: config.VenueDescriptionParam,
-			VenueSelectCreateNewValue: config.VenueSelectCreateNewValue,
-			ButtonCancelEdit:          config.ButtonCancelEdit,
-			LabelEventTitle:           config.LabelEventTitle,
-			LabelEventDescription:     config.LabelEventDescription,
-			LabelStartTime:            config.LabelStartTime,
-			LabelDuration:             config.LabelDuration,
-			LabelVenueDetails:         config.LabelVenueDetails,
-			ButtonDeleteVenue:         config.ButtonDeleteVenue,
-			ButtonAddVenue:            config.ButtonAddVenue,
-			ButtonCreateNewVenue:      config.ButtonCreateVenue,
-			LabelAddVenue:             config.LabelAddVenue,
-			LabelSelectVenue:          config.LabelSelectVenue,
+
+			/* labels / buttons */
+			LabelEventTitle:       config.LabelEventTitle,
+			LabelEventDescription: config.LabelEventDescription,
+			LabelStartTime:        config.LabelStartTime,
+			LabelDuration:         config.LabelDuration,
+			LabelSelectVenue:      config.LabelSelectVenue,
+			LabelAddVenue:         config.LabelAddVenue,
+			LabelVenueDetails:     config.LabelVenueDetails,
+			LabelVenueName:        config.LabelVenueName,
+			LabelVenueAddress:     config.LabelVenueAddress,
+			LabelVenueDescription: config.LabelVenueDescription,
+			LabelVenueCapacity:    config.LabelVenueCapacity,
+			LabelVenuePhone:       config.LabelVenuePhone,
+			LabelVenueEmail:       config.LabelVenueEmail,
+			LabelVenueWebsite:     config.LabelVenueWebsite,
+
+			ButtonCancelEdit:     config.ButtonCancelEdit,
+			ButtonAddVenue:       config.ButtonAddVenue,
+			ButtonCreateNewVenue: config.ButtonCreateVenue,
+			ButtonUpdateEvent:    config.ButtonUpdateEvent,
+			ButtonDeleteEvent:    config.ButtonDeleteEvent,
+			ButtonDeleteVenue:    config.ButtonDeleteVenue,
+
 			OptionNoVenue:             config.OptionNoVenue,
 			OptionCreateNewVenue:      config.OptionCreateNewVenue,
-			LabelVenueFormTitle:       config.LabelVenueFormTitle,
-			LabelVenueName:            config.LabelVenueName,
-			LabelVenueAddress:         config.LabelVenueAddress,
-			LabelVenueDescription:     config.LabelVenueDescription,
-			LabelVenueCapacity:        config.LabelVenueCapacity,
-			LabelVenuePhone:           config.LabelVenuePhone,
-			LabelVenueEmail:           config.LabelVenueEmail,
-			LabelVenueWebsite:         config.LabelVenueWebsite,
-			ButtonUpdateEvent:         config.ButtonUpdateEvent,
-			ButtonDeleteEvent:         config.ButtonDeleteEvent,
-			EventsManagerLabel:        config.ResourceLabelEventManager,
-			FormattedStartTime:        formattedStartTime,
-			CurrentDuration:           currentDuration,
+			VenueSelectCreateNewValue: config.VenueSelectCreateNewValue,
+
+			FormattedStartTime: formattedStartTime,
+			CurrentDuration:    currentDuration,
 		}
 
-		baseHttpHandler.RenderView(responseWriter, request, config.TemplateEvents, listViewData)
+		baseHttpHandler.RenderView(w, r, config.TemplateEvents, listViewData)
 	}
 }

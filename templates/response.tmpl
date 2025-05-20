@@ -17,8 +17,16 @@
                 </p>
                 <p class="mb-1"><strong>Time:</strong> {{ $viewData.Event.StartTime.Format "3:04 PM" }}
                     - {{ $viewData.Event.EndTime.Format "3:04 PM" }}</p>
+                {{ if $viewData.Event.Venue }}
+                    <p class="mb-1">
+                        <strong>Venue:</strong> {{ $viewData.Event.Venue.Name }}
+                        {{ if $viewData.Event.Venue.Address }}
+                            (<a href="{{ mapsURL $viewData.Event.Venue.Address }}" target="_blank" rel="noopener noreferrer" class="event-venue-link">{{ $viewData.Event.Venue.Address }}</a>)
+                        {{ end }}
+                    </p>
+                {{ end }}
                 {{ if $viewData.Event.Description }}
-                    <p class="mt-2 mb-0 fst-italic">{{ $viewData.Event.Description | renderMarkdown }}</p>
+                    <div class="mt-2 mb-0 event-description-markdown">{{ $viewData.Event.Description | renderMarkdown }}</div>
                 {{ end }}
             </div>
             <h3 class="h5 mt-4">Please RSVP{{ if $viewData.RSVP.Name }} for {{ $viewData.RSVP.Name }}{{ end }}</h3>

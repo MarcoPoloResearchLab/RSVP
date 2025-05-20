@@ -18,71 +18,80 @@ type StatisticsData struct {
 	RSVPAnsweredCount int
 }
 
-// EnhancedEventData holds an event along with calculated values.
+// EnhancedEventData holds an event together with derived values.
 type EnhancedEventData struct {
 	Event                     models.Event
 	CalculatedDurationInHours float64
 	SelectedVenueID           string
 }
 
-// ListViewData holds common fields used in event-related views.
+// ListViewData is passed to the main “events” view template.
 type ListViewData struct {
-	AppTitle                  string
-	ButtonAddVenue            string
-	ButtonCancelEdit          string
-	ButtonCreateNewVenue      string
-	ButtonDeleteVenue         string
-	ButtonUpdateEvent         string
-	ButtonDeleteEvent         string
-	CurrentDuration           string
-	EventList                 []StatisticsData
-	EventsManagerLabel        string
-	FormattedStartTime        string
-	LabelAddVenue             string
-	LabelDuration             string
-	LabelEventDescription     string
-	LabelEventTitle           string
-	LabelSelectVenue          string
-	LabelStartTime            string
-	LabelVenueAddress         string
-	LabelVenueCapacity        string
-	LabelVenueDescription     string
-	LabelVenueDetails         string
-	LabelVenueEmail           string
-	LabelVenueFormTitle       string
-	LabelVenueName            string
-	LabelVenuePhone           string
-	LabelVenueWebsite         string
-	OptionCreateNewVenue      string
-	OptionNoVenue             string
-	ParamNameDescription      string
-	ParamNameDuration         string
+	/* view / app chrome */
+	AppTitle           string
+	EventsManagerLabel string
+	VenueManagerLabel  string
+	RSVPManagerLabel   string
+
+	/* navigation URLs */
+	URLForEventActions string
+	URLForRSVPListBase string
+	URLForRSVPManager  string
+	URLForVenues       string
+
+	/* event & venue data */
+	EventList           []StatisticsData
+	SelectedItemForEdit *EnhancedEventData
+	UserReusedVenues    []models.Venue
+
+	/* form/input helpers */
 	ParamNameEventID          string
-	ParamNameMethodOverride   string
-	ParamNameStartTime        string
-	ParamNameTitle            string
-	ParamNameVenueAddress     string
-	ParamNameVenueCapacity    string
-	ParamNameVenueDescription string
-	ParamNameVenueEmail       string
 	ParamNameVenueID          string
+	ParamNameTitle            string
+	ParamNameDescription      string
+	ParamNameStartTime        string
+	ParamNameDuration         string
+	ParamNameMethodOverride   string
 	ParamNameVenueName        string
+	ParamNameVenueAddress     string
+	ParamNameVenueDescription string
+	ParamNameVenueCapacity    string
 	ParamNameVenuePhone       string
+	ParamNameVenueEmail       string
 	ParamNameVenueWebsite     string
-	RSVPManagerLabel          string
-	SelectedItemForEdit       *EnhancedEventData
-	URLForEventActions        string
-	URLForEventEdit           string
-	URLForRSVPListBase        string
-	URLForRSVPManager         string
-	URLForVenueManager        string
-	URLForVenues              string
-	UserReusedVenues          []models.Venue
-	VenueManagerLabel         string
+
+	/* labels / buttons / options */
+	LabelEventTitle       string
+	LabelEventDescription string
+	LabelStartTime        string
+	LabelDuration         string
+	LabelSelectVenue      string
+	LabelAddVenue         string
+	LabelVenueDetails     string
+	LabelVenueName        string
+	LabelVenueAddress     string
+	LabelVenueDescription string
+	LabelVenueCapacity    string
+	LabelVenuePhone       string
+	LabelVenueEmail       string
+	LabelVenueWebsite     string
+
+	ButtonCancelEdit     string
+	ButtonAddVenue       string
+	ButtonCreateNewVenue string
+	ButtonUpdateEvent    string
+	ButtonDeleteEvent    string
+	ButtonDeleteVenue    string
+
+	OptionNoVenue             string
+	OptionCreateNewVenue      string
 	VenueSelectCreateNewValue string
+
+	/* misc */
+	FormattedStartTime string
+	CurrentDuration    string
 }
 
-// EditViewData is used specifically for the event edit view.
 type EditViewData struct {
 	ListViewData
 	ActionAddExistingVenue string

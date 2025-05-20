@@ -1,10 +1,9 @@
-// File: pkg/config/constants.go
 package config
 
 const (
 	WebRoot             = "/"
-	WebEvents           = "/events/" // Correct URL for Events
-	WebRSVPs            = "/rsvps/"  // URL for managing RSVPs *within* an event
+	WebEvents           = "/events/"
+	WebRSVPs            = "/rsvps/"
 	WebRSVPQR           = "/rsvps/qr/"
 	WebResponse         = "/response/"
 	WebResponseThankYou = "/response/thankyou"
@@ -167,10 +166,14 @@ const (
 )
 
 const (
-	ResourceLabelEventManager = "Events" // Changed from RSVP Manager
+	ResourceLabelEventManager = "Events"
 	ResourceLabelVenueManager = "Venues"
-	AppTitle                  = "RSVP Manager" // App title remains the same
+	AppTitle                  = "RSVP Manager"
 	LabelWelcome              = "Welcome,"
 	LabelSignOut              = "Sign Out"
 	LabelNotSignedIn          = "Not signed in"
+)
+
+const (
+	MapsSearchBaseURL = "https://www.google.com/maps/search/?api=1&query="
 )

@@ -6,6 +6,7 @@ import (
 	"html/template"
 	"io/fs"
 	"log"
+	"net/url"
 	"path/filepath"
 	"strings"
 	"time"
@@ -40,11 +41,16 @@ var customTemplateFunctions = template.FuncMap{
 		}
 		return fmt.Sprintf("%dh%dm", hours, minutes)
 	},
+	"mapsURL": func(address string) string {
+		if address == "" {
+			return ""
+		}
+		return config.MapsSearchBaseURL + url.QueryEscape(address)
+	},
 }
 
 var PrecompiledTemplatesMap map[string]*template.Template
 
-// LoadAllPrecompiledTemplates discovers and parses all application templates integrated with layout.
 func LoadAllPrecompiledTemplates(templatesDirectoryPath string) {
 	PrecompiledTemplatesMap = make(map[string]*template.Template)
 	mainViewTemplateNames := []string{
