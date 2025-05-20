@@ -27,58 +27,59 @@ type EnhancedEventData struct {
 
 // ListViewData holds common fields used in event-related views.
 type ListViewData struct {
+	AppTitle                  string
+	ButtonAddVenue            string
+	ButtonCancelEdit          string
+	ButtonCreateNewVenue      string
+	ButtonDeleteVenue         string
+	ButtonUpdateEvent         string
+	ButtonDeleteEvent         string
+	CurrentDuration           string
 	EventList                 []StatisticsData
+	EventsManagerLabel        string
+	FormattedStartTime        string
+	LabelAddVenue             string
+	LabelDuration             string
+	LabelEventDescription     string
+	LabelEventTitle           string
+	LabelSelectVenue          string
+	LabelStartTime            string
+	LabelVenueAddress         string
+	LabelVenueCapacity        string
+	LabelVenueDescription     string
+	LabelVenueDetails         string
+	LabelVenueEmail           string
+	LabelVenueFormTitle       string
+	LabelVenueName            string
+	LabelVenuePhone           string
+	LabelVenueWebsite         string
+	OptionCreateNewVenue      string
+	OptionNoVenue             string
+	ParamNameDescription      string
+	ParamNameDuration         string
+	ParamNameEventID          string
+	ParamNameMethodOverride   string
+	ParamNameStartTime        string
+	ParamNameTitle            string
+	ParamNameVenueAddress     string
+	ParamNameVenueCapacity    string
+	ParamNameVenueDescription string
+	ParamNameVenueEmail       string
+	ParamNameVenueID          string
+	ParamNameVenueName        string
+	ParamNameVenuePhone       string
+	ParamNameVenueWebsite     string
+	RSVPManagerLabel          string
 	SelectedItemForEdit       *EnhancedEventData
-	UserReusedVenues          []models.Venue
 	URLForEventActions        string
 	URLForEventEdit           string
 	URLForRSVPListBase        string
-	URLForVenues              string
-	ParamNameEventID          string
-	ParamNameVenueID          string
-	ParamNameTitle            string
-	ParamNameDescription      string
-	ParamNameStartTime        string
-	ParamNameDuration         string
-	ParamNameMethodOverride   string
-	ParamNameVenueName        string
-	ParamNameVenueAddress     string
-	ParamNameVenueCapacity    string
-	ParamNameVenuePhone       string
-	ParamNameVenueEmail       string
-	ParamNameVenueWebsite     string
-	ParamNameVenueDescription string
-	VenueSelectCreateNewValue string
-	ButtonCancelEdit          string
-	LabelEventTitle           string
-	LabelEventDescription     string
-	LabelStartTime            string
-	LabelDuration             string
-	LabelVenueDetails         string
-	ButtonDeleteVenue         string
-	ButtonAddVenue            string
-	ButtonCreateNewVenue      string
-	LabelAddVenue             string
-	LabelSelectVenue          string
-	OptionNoVenue             string
-	OptionCreateNewVenue      string
-	LabelVenueFormTitle       string
-	LabelVenueName            string
-	LabelVenueAddress         string
-	LabelVenueDescription     string
-	LabelVenueCapacity        string
-	LabelVenuePhone           string
-	LabelVenueEmail           string
-	LabelVenueWebsite         string
-	ButtonUpdateEvent         string
-	FormattedStartTime        string
-	CurrentDuration           string
-	ShowAddVenueSubform       bool
-	AppTitle                  string
-	RSVPManagerLabel          string
 	URLForRSVPManager         string
-	VenueManagerLabel         string
 	URLForVenueManager        string
+	URLForVenues              string
+	UserReusedVenues          []models.Venue
+	VenueManagerLabel         string
+	VenueSelectCreateNewValue string
 }
 
 // EditViewData is used specifically for the event edit view.

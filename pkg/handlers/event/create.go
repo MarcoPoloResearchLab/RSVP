@@ -12,7 +12,6 @@ import (
 	"github.com/temirov/RSVP/pkg/handlers"
 	"github.com/temirov/RSVP/pkg/middleware"
 	"github.com/temirov/RSVP/pkg/utils"
-	"golang.org/x/exp/slices"
 	"gorm.io/gorm"
 )
 
@@ -35,9 +34,10 @@ func CreateHandler(applicationContext *config.ApplicationContext) http.HandlerFu
 		eventDescription := httpRequest.FormValue(config.DescriptionParam)
 		eventStartTimeString := httpRequest.FormValue(config.StartTimeParam)
 		durationHoursString := httpRequest.FormValue(config.DurationParam)
-		selectedVenueIDValue := httpRequest.FormValue(config.VenueIDParam)
-		createNewVenueName := httpRequest.FormValue(createVenuePrefix + config.VenueNameParam)
-		shouldCreateNewVenue := createNewVenueName != ""
+		selectedVenueIdentifierString := httpRequest.FormValue(config.VenueIDParam)
+		newVenueNameString := httpRequest.FormValue(createVenuePrefix + config.VenueNameParam)
+		shouldCreateNewVenue := newVenueNameString != ""
+
 		if validationError := utils.ValidateEventTitle(eventTitle); validationError != nil {
 			baseHttpHandler.HandleError(httpResponseWriter, validationError, utils.ValidationError, validationError.Error())
 			return
@@ -56,50 +56,52 @@ func CreateHandler(applicationContext *config.ApplicationContext) http.HandlerFu
 			baseHttpHandler.HandleError(httpResponseWriter, validationError, utils.ValidationError, validationError.Error())
 			return
 		}
+
 		calculatedEndTime := parsedStartTime.Add(time.Duration(parsedDurationHours) * time.Hour)
-		newEvent := models.Event{
+		currentUserIdentifier := httpRequest.Context().Value(middleware.ContextKeyUser).(*models.User).ID
+
+		newEventRecord := models.Event{
 			Title:       eventTitle,
 			Description: eventDescription,
 			StartTime:   parsedStartTime,
 			EndTime:     calculatedEndTime,
-			UserID:      httpRequest.Context().Value(middleware.ContextKeyUser).(*models.User).ID,
+			UserID:      currentUserIdentifier,
 			VenueID:     nil,
 		}
-		transactionError := applicationContext.Database.Transaction(func(tx *gorm.DB) error {
-			var venueIDToAssociate *string = nil
+
+		transactionError := applicationContext.Database.Transaction(func(activeTransaction *gorm.DB) error {
+			var venueIdentifierToAssociate *string
+
 			if shouldCreateNewVenue {
-				newVenueData := venueFromForm(httpRequest, createVenuePrefix)
-				if err := newVenueData.Create(tx); err != nil {
+				newVenueRecord := venueFromForm(httpRequest, createVenuePrefix)
+				newVenueRecord.UserID = currentUserIdentifier
+				if err := newVenueRecord.Create(activeTransaction); err != nil {
 					return err
 				}
-				venueIDToAssociate = &newVenueData.ID
-			} else if selectedVenueIDValue != "" {
-				allowedVenueIDs, err := models.FindVenueIDsAssociatedWithUserEvents(tx, newEvent.UserID)
-				if err != nil {
+				venueIdentifierToAssociate = &newVenueRecord.ID
+			} else if selectedVenueIdentifierString != "" {
+				var existingVenueRecord models.Venue
+				if err := existingVenueRecord.FindByIDAndOwner(activeTransaction, selectedVenueIdentifierString, currentUserIdentifier); err != nil {
+					if errors.Is(err, gorm.ErrRecordNotFound) {
+						return fmt.Errorf("you do not have permission to use the selected venue")
+					}
 					return fmt.Errorf("could not verify venue permissions")
 				}
-				if !slices.Contains(allowedVenueIDs, selectedVenueIDValue) {
-					return fmt.Errorf("you do not have permission to use the selected venue")
-				}
-				venueIDToAssociate = &selectedVenueIDValue
-			} else {
-				venueIDToAssociate = nil
+				venueIdentifierToAssociate = &selectedVenueIdentifierString
 			}
-			newEvent.VenueID = venueIDToAssociate
-			if err := newEvent.Create(tx); err != nil {
+
+			newEventRecord.VenueID = venueIdentifierToAssociate
+			if err := newEventRecord.Create(activeTransaction); err != nil {
 				return err
 			}
 			return nil
 		})
+
 		if transactionError != nil {
-			permissionErrorMsg := "you do not have permission to use the selected venue"
-			permissionCheckErrorMsg := "could not verify venue permissions"
 			if validationErr := isModelValidationError(transactionError); validationErr != nil {
 				baseHttpHandler.HandleError(httpResponseWriter, validationErr, utils.ValidationError, validationErr.Error())
-			} else if transactionError.Error() == permissionErrorMsg {
-				baseHttpHandler.HandleError(httpResponseWriter, transactionError, utils.ValidationError, permissionErrorMsg)
-			} else if transactionError.Error() == permissionCheckErrorMsg {
-				baseHttpHandler.HandleError(httpResponseWriter, transactionError, utils.ServerError, "Could not verify venue permissions. Please try again.")
+			} else if transactionError.Error() == "you do not have permission to use the selected venue" {
+				baseHttpHandler.HandleError(httpResponseWriter, transactionError, utils.ValidationError, transactionError.Error())
 			} else {
 				baseHttpHandler.HandleError(httpResponseWriter, transactionError, utils.DatabaseError, "Failed to save the event and/or associated venue.")
 			}
@@ -117,13 +119,14 @@ func venueFromForm(httpRequest *http.Request, prefix string) models.Venue {
 	venuePhone := httpRequest.FormValue(prefix + config.VenuePhoneParam)
 	venueEmail := httpRequest.FormValue(prefix + config.VenueEmailParam)
 	venueWebsite := httpRequest.FormValue(prefix + config.VenueWebsiteParam)
+
 	venueCapacity := 0
 	if venueCapacityStr != "" {
-		parsedCapacity, err := strconv.Atoi(venueCapacityStr)
-		if err == nil {
+		if parsedCapacity, err := strconv.Atoi(venueCapacityStr); err == nil {
 			venueCapacity = parsedCapacity
 		}
 	}
+
 	return models.Venue{
 		Name:        venueName,
 		Address:     venueAddress,

@@ -11,27 +11,28 @@ import (
 	"github.com/temirov/RSVP/pkg/utils"
 )
 
+// ListEventsHandler returns the Events main page (list + optional edit panel).
 func ListEventsHandler(applicationContext *config.ApplicationContext) http.HandlerFunc {
 	baseHttpHandler := handlers.NewBaseHttpHandler(applicationContext, config.ResourceNameEvent, config.WebEvents)
 	return func(responseWriter http.ResponseWriter, request *http.Request) {
 		currentUser := request.Context().Value(middleware.ContextKeyUser).(*models.User)
 		requestedEventIDForEdit := request.URL.Query().Get(config.EventIDParam)
 		var selectedEventForEdit *EnhancedEventData
-		selectedVenueIdentifierString := ""
-		allowedVenueIdentifiers, err := models.FindVenueIDsAssociatedWithUserEvents(applicationContext.Database, currentUser.ID)
+
+		userReusedVenues, err := models.FindVenuesByOwner(applicationContext.Database, currentUser.ID)
 		if err != nil {
-			baseHttpHandler.ApplicationContext.Logger.Printf("ERROR: Failed to retrieve reusable venue IDs for user %s: %v", currentUser.ID, err)
-			allowedVenueIdentifiers = []string{}
-		}
-		userReusedVenues, err := models.FindVenuesByIDs(applicationContext.Database, allowedVenueIdentifiers)
-		if err != nil {
-			baseHttpHandler.ApplicationContext.Logger.Printf("ERROR: Failed to retrieve venue details for user %s (IDs: %v): %v", currentUser.ID, allowedVenueIdentifiers, err)
+			baseHttpHandler.ApplicationContext.Logger.Printf(
+				"ERROR: Failed to retrieve venues owned by user %s: %v",
+				currentUser.ID, err,
+			)
 			userReusedVenues = []models.Venue{}
 		}
+
 		if requestedEventIDForEdit != "" {
 			var eventToEdit models.Event
 			err = eventToEdit.FindByIDAndOwner(applicationContext.Database, requestedEventIDForEdit, currentUser.ID)
 			if err == nil {
+				selectedVenueIdentifierString := ""
 				if eventToEdit.VenueID != nil {
 					selectedVenueIdentifierString = *eventToEdit.VenueID
 				}
@@ -41,14 +42,19 @@ func ListEventsHandler(applicationContext *config.ApplicationContext) http.Handl
 					SelectedVenueID:           selectedVenueIdentifierString,
 				}
 			} else {
-				baseHttpHandler.ApplicationContext.Logger.Printf("WARN: Failed to find event %s for edit or user %s does not own it: %v", requestedEventIDForEdit, currentUser.ID, err)
+				baseHttpHandler.ApplicationContext.Logger.Printf(
+					"WARN: Failed to find event %s for edit or user %s does not own it: %v",
+					requestedEventIDForEdit, currentUser.ID, err,
+				)
 			}
 		}
+
 		eventsOwnedByUser, err := models.FindEventsByUserID(applicationContext.Database, currentUser.ID, true, true)
 		if err != nil {
 			baseHttpHandler.HandleError(responseWriter, err, utils.DatabaseError, "Failed to retrieve events list.")
 			return
 		}
+
 		eventStatistics := make([]StatisticsData, len(eventsOwnedByUser))
 		for index, eventDetails := range eventsOwnedByUser {
 			totalRSVPCount := len(eventDetails.RSVPs)
@@ -72,13 +78,15 @@ func ListEventsHandler(applicationContext *config.ApplicationContext) http.Handl
 				RSVPAnsweredCount: answeredRSVPCount,
 			}
 		}
+
 		var formattedStartTime string
 		var currentDuration string
 		if selectedEventForEdit != nil {
 			formattedStartTime = selectedEventForEdit.Event.StartTime.Format(config.TimeLayoutHTMLForm)
 			currentDuration = strconv.Itoa(selectedEventForEdit.Event.DurationHours())
 		}
-		viewData := ListViewData{
+
+		listViewData := ListViewData{
 			EventList:                 eventStatistics,
 			SelectedItemForEdit:       selectedEventForEdit,
 			UserReusedVenues:          userReusedVenues,
@@ -109,7 +117,7 @@ func ListEventsHandler(applicationContext *config.ApplicationContext) http.Handl
 			LabelVenueDetails:         config.LabelVenueDetails,
 			ButtonDeleteVenue:         config.ButtonDeleteVenue,
 			ButtonAddVenue:            config.ButtonAddVenue,
-			ButtonCreateNewVenue:      config.ButtonCreateNewVenue,
+			ButtonCreateNewVenue:      config.ButtonCreateVenue,
 			LabelAddVenue:             config.LabelAddVenue,
 			LabelSelectVenue:          config.LabelSelectVenue,
 			OptionNoVenue:             config.OptionNoVenue,
@@ -123,10 +131,12 @@ func ListEventsHandler(applicationContext *config.ApplicationContext) http.Handl
 			LabelVenueEmail:           config.LabelVenueEmail,
 			LabelVenueWebsite:         config.LabelVenueWebsite,
 			ButtonUpdateEvent:         config.ButtonUpdateEvent,
+			ButtonDeleteEvent:         config.ButtonDeleteEvent,
+			EventsManagerLabel:        config.ResourceLabelEventManager,
 			FormattedStartTime:        formattedStartTime,
 			CurrentDuration:           currentDuration,
-			ShowAddVenueSubform:       false,
 		}
-		baseHttpHandler.RenderView(responseWriter, request, config.TemplateEvents, viewData)
+
+		baseHttpHandler.RenderView(responseWriter, request, config.TemplateEvents, listViewData)
 	}
 }

@@ -3,8 +3,6 @@
 {{ define "content" }}
     {{ $viewData := . }}
     <div class="container mt-4">
-        <h1>{{ .VenueManagerLabel }}</h1>
-
         {{ if $viewData.SelectedItemForEdit }}
             {{ template "partials/_edit_venue_form.tmpl" $viewData }}
         {{ else }}
@@ -16,8 +14,7 @@
         <div class="card mt-4">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <h4 class="mb-0">All {{ .VenueManagerLabel }}</h4>
-                <button id="globalNewVenueButton" class="btn btn-primary"
-                        {{ if $viewData.SelectedItemForEdit }}disabled{{ end }}>
+                <button id="globalNewVenueButton" class="btn btn-primary" {{ if $viewData.SelectedItemForEdit }}disabled{{ end }}>
                     + New
                 </button>
             </div>
@@ -26,48 +23,42 @@
                 <div class="table-responsive">
                     <table class="table table-striped table-hover mb-0">
                         <thead class="table-light">
-                        <tr>
-                            <th scope="col">Name</th>
-                            <th scope="col">Address</th>
-                            <th scope="col">Capacity</th>
-                            <th scope="col">Phone</th>
-                            <th scope="col">Email</th>
-                            <th scope="col" class="text-end">Actions</th>
-                        </tr>
+                            <tr>
+                                <th scope="col">Name</th>
+                                <th scope="col">Address</th>
+                                <th scope="col">Capacity</th>
+                                <th scope="col" class="text-end">Actions</th>
+                            </tr>
                         </thead>
                         <tbody>
-                        {{ range .VenueList }}
-                            <tr>
-                                <td class="align-middle">{{ .Name }}</td>
-                                <td class="align-middle">{{ .Address }}</td>
-                                <td class="align-middle">{{ .Capacity }}</td>
-                                <td class="align-middle">{{ .Phone }}</td>
-                                <td class="align-middle">{{ .Email }}</td>
-                                <td class="text-end align-middle">
-                                    <div class="btn-group btn-group-sm" role="group">
-                                        <a href="{{ $viewData.URLForVenueActions }}?{{ $viewData.ParamNameVenueID }}={{ .ID }}"
-                                           class="btn btn-outline-secondary">
-                                            Edit
-                                        </a>
-                                        <form id="deleteVenueForm_{{ .ID }}" action="{{ $viewData.URLForVenueActions }}"
-                                              method="POST" class="d-inline">
-                                            <input type="hidden" name="{{ $viewData.ParamNameMethodOverride }}"
-                                                   value="DELETE">
-                                            <input type="hidden" name="{{ $viewData.ParamNameVenueID }}"
-                                                   value="{{ .ID }}">
-                                            <button type="submit" class="btn btn-outline-danger">Delete</button>
-                                        </form>
-                                    </div>
-                                </td>
-                            </tr>
-                        {{ end }}
+                            {{ range .VenueList }}
+                                <tr>
+                                    <td class="align-middle">{{ .Name }}</td>
+                                    <td class="align-middle">
+                                        <a
+                                            href="https://www.google.com/maps/search/?api=1&query={{ .Address | urlquery }}"
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                        >{{ .Address }}</a>
+                                    </td>
+                                    <td class="align-middle">{{ .Capacity }}</td>
+                                    <td class="text-end align-middle">
+                                        <div class="btn-group btn-group-sm" role="group">
+                                            <a href="{{ $viewData.URLForVenueActions }}?{{ $viewData.ParamNameVenueID }}={{ .ID }}"
+                                               class="btn btn-outline-secondary text-nowrap"
+                                            >
+                                                Edit
+                                            </a>
+                                        </div>
+                                    </td>
+                                </tr>
+                            {{ end }}
                         </tbody>
                     </table>
                 </div>
             {{ else }}
                 <div class="card-body text-center">
-                    <p class="mb-0">No {{ .VenueManagerLabel }} found. Click "+ New {{ .VenueManagerLabel }}" to create
-                        your first {{ .VenueManagerLabel }}!</p>
+                    <p class="mb-0">No {{ .VenueManagerLabel }} found. Click "+ New {{ .VenueManagerLabel }}" to create your first {{ .VenueManagerLabel }}!</p>
                 </div>
             {{ end }}
         </div>
@@ -102,4 +93,5 @@
         });
     </script>
 {{ end }}
+
 {{ template "layout" . }}

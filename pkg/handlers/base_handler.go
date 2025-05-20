@@ -17,21 +17,21 @@ import (
 // It contains common data needed by the layout (like user info, CSRF token, common URLs)
 // and view-specific data (Data field). It now also includes header navigation fields.
 type PageData struct {
-	IsPublicPage       bool
-	UserName           string
-	UserPicture        string
-	CSRFToken          string
-	URLForLogout       string
-	URLForRoot         string
-	Data               interface{}
-	AppTitle           string
-	RSVPManagerLabel   string
-	URLForRSVPManager  string
-	VenueManagerLabel  string
-	URLForVenueManager string
-	LabelWelcome       string // Added for header template
-	LabelSignOut       string // Added for header template
-	LabelNotSignedIn   string // Added for header template
+	IsPublicPage        bool
+	UserName            string
+	UserPicture         string
+	CSRFToken           string
+	URLForLogout        string
+	URLForRoot          string
+	Data                interface{}
+	AppTitle            string
+	EventsManagerLabel  string
+	URLForEventsManager string
+	VenueManagerLabel   string
+	URLForVenueManager  string
+	LabelWelcome        string
+	LabelSignOut        string
+	LabelNotSignedIn    string
 }
 
 // LoggedUserData holds essential user information retrieved from the session.
@@ -190,22 +190,23 @@ func (handler *BaseHttpHandler) RenderView(
 	publicViews := map[string]bool{
 		config.TemplateResponse: true,
 		config.TemplateThankYou: true,
+		config.TemplateLanding:  true,
 	}
 	isPublicPage := publicViews[viewName]
 
 	pageData := PageData{
-		IsPublicPage:       isPublicPage,
-		Data:               viewSpecificData,
-		URLForLogout:       gconstants.LogoutPath,
-		URLForRoot:         config.WebRoot,
-		AppTitle:           config.AppTitle,
-		RSVPManagerLabel:   config.ResourceLabelRSVPManager,
-		URLForRSVPManager:  config.WebRSVPs, // Changed from WebEvents to WebRSVPs based on label
-		VenueManagerLabel:  config.ResourceLabelVenueManager,
-		URLForVenueManager: config.WebVenues,
-		LabelWelcome:       config.LabelWelcome,     // Populate LabelWelcome
-		LabelSignOut:       config.LabelSignOut,     // Populate LabelSignOut
-		LabelNotSignedIn:   config.LabelNotSignedIn, // Populate LabelNotSignedIn
+		IsPublicPage:        isPublicPage,
+		Data:                viewSpecificData,
+		URLForLogout:        gconstants.LogoutPath,
+		URLForRoot:          config.WebRoot,
+		AppTitle:            config.AppTitle,
+		EventsManagerLabel:  config.ResourceLabelEventManager,
+		URLForEventsManager: config.WebEvents,
+		VenueManagerLabel:   config.ResourceLabelVenueManager,
+		URLForVenueManager:  config.WebVenues,
+		LabelWelcome:        config.LabelWelcome,
+		LabelSignOut:        config.LabelSignOut,
+		LabelNotSignedIn:    config.LabelNotSignedIn,
 	}
 	if !isPublicPage {
 		loggedUserData := handler.GetUserSessionData(httpRequest)
@@ -217,9 +218,15 @@ func (handler *BaseHttpHandler) RenderView(
 	}
 	templateSet, exists := templates.PrecompiledTemplatesMap[viewName]
 	if !exists {
+		if viewName != config.TemplateLanding {
+			handler.ApplicationContext.Logger.Printf("WARN: Template set for view '%s' not found in PrecompiledTemplatesMap. Attempting to render landing page.", viewName)
+			handler.HandleError(httpResponseWriter, nil, utils.ServerError, utils.ErrMsgInternalServer)
+			return
+		}
 		handler.ApplicationContext.Logger.Printf("CRITICAL: Template set for view '%s' not found in PrecompiledTemplatesMap.", viewName)
 		handler.HandleError(httpResponseWriter, nil, utils.ServerError, utils.ErrMsgInternalServer)
 		return
+
 	}
 	executionError := templateSet.ExecuteTemplate(httpResponseWriter, config.TemplateLayout, pageData)
 	if executionError != nil {

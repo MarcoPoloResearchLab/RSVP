@@ -39,17 +39,24 @@ func (eventInstance *Event) GetIDGeneratorFunc() func(int) (string, error) {
 
 // BeforeCreate is a GORM hook to ensure the event has a unique ID before creation.
 func (eventInstance *Event) BeforeCreate(databaseTransaction *gorm.DB) error {
-	return eventInstance.BaseModel.GenerateID(databaseTransaction, eventInstance)
+	generateIDError := eventInstance.BaseModel.GenerateID(databaseTransaction, eventInstance)
+	if generateIDError != nil {
+		return generateIDError
+	}
+	return nil
 }
 
 // FindByID retrieves an Event record by its identifier.
 func (eventInstance *Event) FindByID(databaseConnection *gorm.DB, eventIdentifier string) error {
-	return databaseConnection.Where("id = ?", eventIdentifier).First(eventInstance).Error
+	queryError := databaseConnection.Where("id = ?", eventIdentifier).First(eventInstance).Error
+	return queryError
 }
 
 // FindByIDAndOwner retrieves an Event record by its identifier ensuring it belongs to the specified owner.
+// It also preloads the associated Venue.
 func (eventInstance *Event) FindByIDAndOwner(databaseConnection *gorm.DB, eventIdentifier string, ownerUserID string) error {
-	return databaseConnection.Preload("Venue").Where("id = ? AND user_id = ?", eventIdentifier, ownerUserID).First(eventInstance).Error
+	queryError := databaseConnection.Preload("Venue").Where("id = ? AND user_id = ?", eventIdentifier, ownerUserID).First(eventInstance).Error
+	return queryError
 }
 
 // FindEventsByUserID retrieves all events for a given user identifier.
@@ -62,28 +69,38 @@ func FindEventsByUserID(databaseConnection *gorm.DB, ownerUserID string, preload
 	if preloadVenues {
 		queryBuilder = queryBuilder.Preload("Venue")
 	}
-	resultError := queryBuilder.Find(&userEvents)
-	return userEvents, resultError.Error
+	queryError := queryBuilder.Find(&userEvents).Error
+	return userEvents, queryError
 }
 
 // Create inserts the current Event record into the database.
 func (eventInstance *Event) Create(databaseConnection *gorm.DB) error {
-	return databaseConnection.Create(eventInstance).Error
+	if eventInstance.VenueID == nil {
+		eventInstance.Venue = nil
+	}
+	creationError := databaseConnection.Create(eventInstance).Error
+	return creationError
 }
 
 // Update updates the current Event record in the database.
 func (eventInstance *Event) Update(databaseConnection *gorm.DB) error {
-	return databaseConnection.Save(eventInstance).Error
+	if eventInstance.VenueID == nil {
+		eventInstance.Venue = nil
+	}
+	updateError := databaseConnection.Save(eventInstance).Error
+	return updateError
 }
 
 // LoadWithRSVPs retrieves an Event record along with its associated RSVPs.
 func (eventInstance *Event) LoadWithRSVPs(databaseConnection *gorm.DB, eventIdentifier string) error {
-	return databaseConnection.Preload("RSVPs").Where("id = ?", eventIdentifier).First(eventInstance).Error
+	queryError := databaseConnection.Preload("RSVPs").Where("id = ?", eventIdentifier).First(eventInstance).Error
+	return queryError
 }
 
 // LoadWithVenue retrieves an Event record along with its associated Venue.
 func (eventInstance *Event) LoadWithVenue(databaseConnection *gorm.DB, eventIdentifier string) error {
-	return databaseConnection.Preload("Venue").Where("id = ?", eventIdentifier).First(eventInstance).Error
+	queryError := databaseConnection.Preload("Venue").Where("id = ?", eventIdentifier).First(eventInstance).Error
+	return queryError
 }
 
 // FindVenueIDsAssociatedWithUserEvents retrieves distinct venue IDs associated with events for a given user.

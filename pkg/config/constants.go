@@ -3,8 +3,8 @@ package config
 
 const (
 	WebRoot             = "/"
-	WebEvents           = "/events/"
-	WebRSVPs            = "/rsvps/"
+	WebEvents           = "/events/" // Correct URL for Events
+	WebRSVPs            = "/rsvps/"  // URL for managing RSVPs *within* an event
 	WebRSVPQR           = "/rsvps/qr/"
 	WebResponse         = "/response/"
 	WebResponseThankYou = "/response/thankyou"
@@ -106,7 +106,6 @@ const (
 	ErrMsgVenueCreation          = "Failed to create new venue"
 	ErrMsgUnknownAction          = "Unknown action"
 	ButtonCancelEdit             = "Cancel Edit"
-	ButtonUpdateEvent            = "Update Event"
 )
 
 const (
@@ -123,27 +122,29 @@ const (
 )
 
 const (
-	LabelEventTitle       = "Event Title"
-	LabelEventDescription = "Event Description"
-	LabelStartTime        = "Start Time"
-	LabelDuration         = "Duration"
-	LabelVenueDetails     = "Venue Details"
-	ButtonDeleteVenue     = "Delete Venue"
 	ButtonAddVenue        = "Add Venue"
-	ButtonCreateNewVenue  = "Create New Venue"
+	ButtonCreateVenue     = "Create New Venue"
+	ButtonDeleteEvent     = "Delete Event"
+	ButtonUpdateEvent     = "Update Event"
+	ButtonDeleteVenue     = "Delete Venue"
+	ButtonUpdateVenue     = "Update Venue"
 	LabelAddVenue         = "Add Venue"
+	LabelDuration         = "Duration"
+	LabelEventDescription = "Event Description"
+	LabelEventTitle       = "Event Title"
 	LabelSelectVenue      = "Select Venue"
-	OptionNoVenue         = "-- No Venue --"
-	OptionCreateNewVenue  = "-- Create New Venue --"
+	LabelStartTime        = "Start Time"
+	LabelVenueAddress     = "Venue Address"
+	LabelVenueCapacity    = "Venue Capacity"
+	LabelVenueDescription = "Venue Description"
+	LabelVenueDetails     = "Venue Details"
+	LabelVenueEmail       = "Venue Email"
 	LabelVenueFormTitle   = "Venue Information"
 	LabelVenueName        = "Venue Name"
-	LabelVenueAddress     = "Venue Address"
-	LabelVenueDescription = "Venue Description"
-	LabelVenueCapacity    = "Venue Capacity"
 	LabelVenuePhone       = "Venue Phone"
-	LabelVenueEmail       = "Venue Email"
 	LabelVenueWebsite     = "Venue Website"
-	ButtonUpdateVenue     = "Update Venue"
+	OptionCreateNewVenue  = "-- Create New Venue --"
+	OptionNoVenue         = "-- No Venue --"
 )
 
 const (
@@ -166,9 +167,9 @@ const (
 )
 
 const (
-	ResourceLabelRSVPManager  = "RSVP Manager"
-	ResourceLabelVenueManager = "Venue Manager"
-	AppTitle                  = "RSVP Manager"
+	ResourceLabelEventManager = "Events" // Changed from RSVP Manager
+	ResourceLabelVenueManager = "Venues"
+	AppTitle                  = "RSVP Manager" // App title remains the same
 	LabelWelcome              = "Welcome,"
 	LabelSignOut              = "Sign Out"
 	LabelNotSignedIn          = "Not signed in"

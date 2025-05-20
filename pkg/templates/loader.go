@@ -2,6 +2,7 @@ package templates
 
 import (
 	"bytes"
+	"fmt"
 	"html/template"
 	"io/fs"
 	"log"
@@ -29,6 +30,15 @@ var customTemplateFunctions = template.FuncMap{
 			return ""
 		}
 		return template.HTML(outputBuffer.String())
+	},
+	"formatDuration": func(duration time.Duration) string {
+		totalMinutes := int(duration.Minutes())
+		hours := totalMinutes / 60
+		minutes := totalMinutes % 60
+		if minutes == 0 {
+			return fmt.Sprintf("%dh", hours)
+		}
+		return fmt.Sprintf("%dh%dm", hours, minutes)
 	},
 }
 
@@ -77,21 +87,16 @@ func LoadAllPrecompiledTemplates(templatesDirectoryPath string) {
 			partialTemplateFiles = append(partialTemplateFiles, filePath)
 			log.Printf("Found partial: %s", relativeFilePath)
 		} else {
-			mainViewFound := false
 			for _, mainViewName := range mainViewTemplateNames {
 				if baseTemplateName == mainViewName {
 					if existingFilePath, fileFound := mainViewFilePaths[mainViewName]; fileFound {
 						log.Printf("Multiple files found for main view '%s'; using '%s' and ignoring '%s'", mainViewName, existingFilePath, filePath)
 					} else {
 						mainViewFilePaths[mainViewName] = filePath
-						mainViewFound = true
 						log.Printf("Found main view: %s (for %s)", relativeFilePath, mainViewName)
 					}
 					break
 				}
-			}
-			if !mainViewFound {
-				log.Printf("Found template file '%s' not identified as layout, partial, or known main view. Ignoring in layout system.", relativeFilePath)
 			}
 		}
 		return nil

@@ -1,9 +1,13 @@
-{{ define "title" }}{{ .RSVPManagerLabel }}{{ end }}
+{{ define "title" }}{{ .EventsManagerLabel }}{{ end }}
+
+{{ define "head" }}
+    <link rel="stylesheet"
+          href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+{{ end }}
 
 {{ define "content" }}
     {{ $viewData := . }}
     <div class="container mt-4">
-        <h1>{{ .RSVPManagerLabel }}</h1>
         {{ if $viewData.SelectedItemForEdit }}
             {{ template "partials/_edit_event_form.tmpl" $viewData }}
         {{ else }}
@@ -13,43 +17,54 @@
         {{ end }}
         <div class="card mt-4">
             <div class="card-header d-flex justify-content-between align-items-center">
-                <h4 class="mb-0">All {{ .RSVPManagerLabel }}</h4>
+                <h4 class="mb-0">All {{ .EventsManagerLabel }}</h4>
                 <button id="globalNewEventButton" class="btn btn-primary"
-                        {{ if $viewData.SelectedItemForEdit }}disabled{{ end }}>
-                    + New {{ .RSVPManagerLabel }}
+                        {{ if $viewData.SelectedItemForEdit }}disabled{{ end }}>+ New
                 </button>
             </div>
             {{ if .EventList }}
                 <div class="table-responsive">
-                    <table class="table table-striped table-hover mb-0">
+                    <table class="table table-striped table-hover mb-0" id="eventsTable">
                         <thead class="table-light">
                         <tr>
-                            <th scope="col">Title</th>
-                            <th scope="col">Start Time</th>
-                            <th scope="col">Duration</th>
-                            <th scope="col">Venue</th>
-                            <th scope="col">RSVPs (Answered/Total)</th>
+                            <th scope="col" style="width:30%;"
+                                class="sortable" data-key="title">
+                                Title <i class="bi bi-chevron-expand ms-1"></i>
+                            </th>
+                            <th scope="col" class="text-nowrap sortable" data-key="start">
+                                When <i class="bi bi-chevron-expand ms-1"></i>
+                            </th>
+                            <th scope="col" style="width:25%;"
+                                class="sortable" data-key="venue">
+                                Venue <i class="bi bi-chevron-expand ms-1"></i>
+                            </th>
+                            <th scope="col" style="width:90px;"
+                                class="text-center text-nowrap sortable" data-key="rsvp">
+                                RSVPs <i class="bi bi-chevron-expand ms-1"></i>
+                            </th>
                             <th scope="col" class="text-end">Actions</th>
                         </tr>
                         </thead>
-                        <tbody>
+                        <tbody id="eventsTableBody">
                         {{ range .EventList }}
-                            <tr>
-                                <td class="align-middle">{{ .Title }}</td>
-                                <td class="align-middle">{{ .StartTime.Format "Jan 2, 2006 3:04 PM" }}</td>
-                                <td class="align-middle">{{ .EndTime.Sub .StartTime }}</td>
-                                <td class="align-middle">{{ .VenueName }}</td>
-                                <td class="align-middle">{{ .RSVPAnsweredCount }} / {{ .RSVPCount }}</td>
+                            <tr data-title="{{ .Title }}"
+                                data-start="{{ .StartTime.Unix }}"
+                                data-venue="{{ .VenueName }}"
+                                data-rsvp="{{ .RSVPAnsweredCount }}">
+                                <td class="align-middle" style="width:30%;">{{ .Title }}</td>
+                                <td class="align-middle text-nowrap">
+                                    {{ .StartTime.Format "Jan 2, 2006 3:04 PM" }} – {{ .EndTime.Format "3:04 PM" }}
+                                </td>
+                                <td class="align-middle" style="width:25%;">{{ .VenueName }}</td>
+                                <td class="align-middle text-center" style="width:90px;">
+                                    {{ .RSVPAnsweredCount }} / {{ .RSVPCount }}
+                                </td>
                                 <td class="text-end align-middle">
                                     <div class="btn-group btn-group-sm" role="group">
                                         <a href="{{ $viewData.URLForEventActions }}?{{ $viewData.ParamNameEventID }}={{ .ID }}"
-                                           class="btn btn-outline-secondary">
-                                            Edit
-                                        </a>
+                                           class="btn btn-outline-secondary text-nowrap">Edit</a>
                                         <a href="{{ $viewData.URLForRSVPListBase }}?{{ $viewData.ParamNameEventID }}={{ .ID }}"
-                                           class="btn btn-outline-primary">
-                                            Manage RSVPs
-                                        </a>
+                                           class="btn btn-outline-primary text-nowrap">Manage RSVPs</a>
                                     </div>
                                 </td>
                             </tr>
@@ -59,8 +74,8 @@
                 </div>
             {{ else }}
                 <div class="card-body text-center">
-                    <p class="mb-0">No {{ .RSVPManagerLabel }} found. Click "+ New {{ .RSVPManagerLabel }}" to create
-                        your first {{ .RSVPManagerLabel }}!</p>
+                    <p class="mb-0">No {{ .EventsManagerLabel }} found. Click "+ New
+                        {{ .EventsManagerLabel }}" to create your first {{ .EventsManagerLabel }}!</p>
                 </div>
             {{ end }}
         </div>
@@ -68,39 +83,86 @@
 {{ end }}
 
 {{ define "scripts" }}
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/easymde/dist/easymde.min.css">
+    <link rel="stylesheet"
+          href="https://cdn.jsdelivr.net/npm/easymde/dist/easymde.min.css">
     <script src="https://cdn.jsdelivr.net/npm/easymde/dist/easymde.min.js"></script>
     <script>
         document.addEventListener("DOMContentLoaded", function () {
-            var newEventDescriptionElement = document.getElementById("descriptionInput");
-            if (newEventDescriptionElement) {
-                new EasyMDE({
-                    element: newEventDescriptionElement,
-                    spellChecker: false,
-                    toolbar: ["bold", "italic", "heading", "|", "quote", "unordered-list", "ordered-list", "|", "link", "|", "preview"],
-                    forceSync: true,
-                    minHeight: "100px"
+            function initMDE(id) {
+                const el = document.getElementById(id);
+                if (el) {
+                    new EasyMDE({
+                        element: el,
+                        spellChecker: false,
+                        toolbar: ["bold", "italic", "heading", "|", "quote",
+                            "unordered-list", "ordered-list", "|", "link", "|", "preview"],
+                        forceSync: true,
+                        minHeight: "100px"
+                    });
+                }
+            }
+
+            initMDE("descriptionInput");
+            initMDE("editDescriptionInput");
+
+            const newBtn = document.getElementById("globalNewEventButton");
+            const newContainer = document.getElementById("newEventContainer");
+            const cancelBtn = document.getElementById("cancelNewEventButton");
+            const editCard = document.getElementById("editEventCard");
+
+            if (newBtn && newContainer && !editCard) {
+                newBtn.addEventListener("click", () => {
+                    newContainer.style.display = "block";
+                    newBtn.style.display = "none";
                 });
             }
-            var editEventDescriptionElement = document.getElementById("editDescriptionInput");
-            if (editEventDescriptionElement) {
-                new EasyMDE({
-                    element: editEventDescriptionElement,
-                    spellChecker: false,
-                    toolbar: ["bold", "italic", "heading", "|", "quote", "unordered-list", "ordered-list", "|", "link", "|", "preview"],
-                    forceSync: true,
-                    minHeight: "100px"
+            if (cancelBtn && newContainer && newBtn) {
+                cancelBtn.addEventListener("click", () => {
+                    newContainer.style.display = "none";
+                    newBtn.style.display = "block";
+                    const form = document.getElementById("newEventForm");
+                    if (form) {
+                        form.reset();
+                        const mde = EasyMDE.getInstance(document.getElementById("descriptionInput"));
+                        if (mde) mde.value("");
+                    }
                 });
             }
-            var globalNewEventButtonElement = document.getElementById("globalNewEventButton");
-            var newEventContainerElement = document.getElementById("newEventContainer");
-            var editEventCardElement = document.getElementById("editEventCard");
-            if (globalNewEventButtonElement && newEventContainerElement && !editEventCardElement) {
-                globalNewEventButtonElement.addEventListener("click", function () {
-                    newEventContainerElement.style.display = "block";
-                    globalNewEventButtonElement.style.display = "none";
+
+            const headers = document.querySelectorAll("th.sortable");
+            let currentKey = "";
+            let asc = true;
+
+            headers.forEach(h => {
+                h.addEventListener("click", function () {
+                    const key = this.dataset.key;
+                    const tbody = document.getElementById("eventsTableBody");
+                    const rows = Array.from(tbody.querySelectorAll("tr"));
+                    if (currentKey !== key) {
+                        if (currentKey) {
+                            const prevIcon = document
+                                .querySelector(`th.sortable[data-key="${currentKey}"] i`);
+                            if (prevIcon) prevIcon.className = "bi bi-chevron-expand ms-1";
+                        }
+                        asc = true;
+                        currentKey = key;
+                    } else {
+                        asc = !asc;
+                    }
+                    const icon = this.querySelector("i");
+                    icon.className = "bi ms-1 " + (asc ? "bi-chevron-up" : "bi-chevron-down");
+
+                    rows.sort((a, b) => {
+                        const av = a.dataset[key];
+                        const bv = b.dataset[key];
+                        if (key === "start" || key === "rsvp") {
+                            return asc ? av - bv : bv - av;
+                        }
+                        return asc ? av.localeCompare(bv) : bv.localeCompare(av);
+                    });
+                    rows.forEach(r => tbody.appendChild(r));
                 });
-            }
+            });
         });
     </script>
 {{ end }}

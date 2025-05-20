@@ -1,68 +1,64 @@
 {{ define "partials/_edit_venue_form.tmpl" }}
-    <div class="card" id="editVenueCard">
-        <div class="card-header d-flex justify-content-between align-items-center">
-            <h4 class="mb-0">Edit Venue: {{ .SelectedItemForEdit.Name }}</h4>
-            <a href="{{ .URLForVenueActions }}" class="btn btn-outline-secondary">{{ .ButtonCancelEdit }}</a>
+<div class="card" id="editVenueCard">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h4 class="mb-0">Edit Venue: {{ .SelectedItemForEdit.Name }}</h4>
+        <a href="{{ .URLForVenueActions }}" class="btn btn-sm btn-outline-secondary">{{ .ButtonCancelEdit }}</a>
+    </div>
+
+    <form id="updateVenueForm" action="{{ .URLForVenueActions }}" method="POST">
+        <input type="hidden" name="{{ .ParamNameMethodOverride }}" value="PUT">
+        <input type="hidden" name="{{ .ParamNameVenueID }}" value="{{ .SelectedItemForEdit.ID }}">
+        <div class="card-body">
+            <div class="mb-3">
+                <label for="editVenueNameInput" class="form-label">{{ .LabelVenueName }}</label>
+                <input type="text" class="form-control" id="editVenueNameInput" name="{{ .ParamNameVenueName }}"
+                       required value="{{ .SelectedItemForEdit.Name }}">
+            </div>
+            <div class="mb-3">
+                <label for="editVenueAddressInput" class="form-label">{{ .LabelVenueAddress }}</label>
+                <input type="text" class="form-control" id="editVenueAddressInput"
+                       name="{{ .ParamNameVenueAddress }}"
+                       value="{{ .SelectedItemForEdit.Address }}">
+            </div>
+            <div class="mb-3">
+                <label for="editVenueDescriptionInput" class="form-label">{{ .LabelVenueDescription }}</label>
+                <textarea class="form-control" id="editVenueDescriptionInput"
+                          name="{{ .ParamNameVenueDescription }}" rows="2">{{ .SelectedItemForEdit.Description }}</textarea>
+            </div>
+            <div class="row mb-3">
+                <div class="col-md-6">
+                    <label for="editVenueCapacityInput" class="form-label">{{ .LabelVenueCapacity }}</label>
+                    <input type="number" class="form-control" id="editVenueCapacityInput"
+                           name="{{ .ParamNameVenueCapacity }}"
+                           value="{{ .SelectedItemForEdit.Capacity }}">
+                </div>
+                <div class="col-md-6">
+                    <label for="editVenuePhoneInput" class="form-label">{{ .LabelVenuePhone }}</label>
+                    <input type="tel" class="form-control" id="editVenuePhoneInput"
+                           name="{{ .ParamNameVenuePhone }}"
+                           value="{{ .SelectedItemForEdit.Phone }}">
+                </div>
+            </div>
+            <div class="mb-3">
+                <label for="editVenueEmailInput" class="form-label">{{ .LabelVenueEmail }}</label>
+                <input type="email" class="form-control" id="editVenueEmailInput"
+                       name="{{ .ParamNameVenueEmail }}" value="{{ .SelectedItemForEdit.Email }}">
+            </div>
+            <div class="mb-3">
+                <label for="editVenueWebsiteInput" class="form-label">{{ .LabelVenueWebsite }}</label>
+                <input type="url" class="form-control" id="editVenueWebsiteInput"
+                       name="{{ .ParamNameVenueWebsite }}" value="{{ .SelectedItemForEdit.Website }}">
+            </div>
         </div>
-        <form id="updateVenueForm" action="{{ .URLForVenueActions }}" method="POST">
-            <input type="hidden" name="{{ .ParamNameMethodOverride }}" value="PUT">
+    </form>
+
+    <div class="d-flex justify-content-between align-items-center px-3 pb-3">
+        <button type="submit" class="btn btn-primary" form="updateVenueForm">{{ .ButtonUpdateVenue }}</button>
+        <form id="deleteVenueForm" action="{{ .URLForVenueActions }}" method="POST" style="display:inline;">
+            <input type="hidden" name="{{ .ParamNameMethodOverride }}" value="DELETE">
             <input type="hidden" name="{{ .ParamNameVenueID }}" value="{{ .SelectedItemForEdit.ID }}">
-            <div class="card-body">
-                <div class="mb-3">
-                    <label for="editVenueNameInput" class="form-label">{{ .LabelVenueName }}</label>
-                    <input type="text" class="form-control" id="editVenueNameInput" name="{{ .ParamNameVenueName }}"
-                           required
-                           value="{{ .SelectedItemForEdit.Name }}">
-                </div>
-                <div class="mb-3">
-                    <label for="editVenueAddressInput" class="form-label">{{ .LabelVenueAddress }}</label>
-                    <input type="text" class="form-control" id="editVenueAddressInput"
-                           name="{{ .ParamNameVenueAddress }}"
-                           value="{{ .SelectedItemForEdit.Address }}">
-                </div>
-                <div class="mb-3">
-                    <label for="editVenueDescriptionInput" class="form-label">{{ .LabelVenueDescription }}</label>
-                    <textarea class="form-control" id="editVenueDescriptionInput"
-                              name="{{ .ParamNameVenueDescription }}"
-                              rows="2">{{ .SelectedItemForEdit.Description }}</textarea>
-                </div>
-                <div class="row mb-3">
-                    <div class="col-md-6">
-                        <label for="editVenueCapacityInput" class="form-label">{{ .LabelVenueCapacity }}</label>
-                        <input type="number" class="form-control" id="editVenueCapacityInput"
-                               name="{{ .ParamNameVenueCapacity }}"
-                               value="{{ .SelectedItemForEdit.Capacity }}">
-                    </div>
-                    <div class="col-md-6">
-                        <label for="editVenuePhoneInput" class="form-label">{{ .LabelVenuePhone }}</label>
-                        <input type="tel" class="form-control" id="editVenuePhoneInput"
-                               name="{{ .ParamNameVenuePhone }}"
-                               value="{{ .SelectedItemForEdit.Phone }}">
-                    </div>
-                </div>
-                <div class="mb-3">
-                    <label for="editVenueEmailInput" class="form-label">{{ .LabelVenueEmail }}</label>
-                    <input type="email" class="form-control" id="editVenueEmailInput" name="{{ .ParamNameVenueEmail }}"
-                           value="{{ .SelectedItemForEdit.Email }}">
-                </div>
-                <div class="mb-3">
-                    <label for="editVenueWebsiteInput" class="form-label">{{ .LabelVenueWebsite }}</label>
-                    <input type="url" class="form-control" id="editVenueWebsiteInput"
-                           name="{{ .ParamNameVenueWebsite }}"
-                           value="{{ .SelectedItemForEdit.Website }}">
-                </div>
-            </div>
-            <div class="d-flex justify-content-between align-items-center px-3 pb-3">
-                <div class="d-flex gap-2">
-                    <a href="{{ .URLForVenueActions }}" class="btn btn-outline-secondary">{{ .ButtonCancelEdit }}</a>
-                    <button type="submit" class="btn btn-primary">{{ .ButtonUpdateVenue }}</button>
-                </div>
-                <form id="deleteVenueForm" action="{{ .URLForVenueActions }}" method="POST">
-                    <input type="hidden" name="{{ .ParamNameMethodOverride }}" value="DELETE">
-                    <input type="hidden" name="{{ .ParamNameVenueID }}" value="{{ .SelectedItemForEdit.ID }}">
-                    <button type="submit" class="btn btn-outline-danger">{{ .ButtonDeleteVenue }}</button>
-                </form>
-            </div>
+            <button type="submit" class="btn btn-danger">{{ .ButtonDeleteVenue }}</button>
         </form>
     </div>
+</div>
 {{ end }}

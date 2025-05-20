@@ -1,35 +1,16 @@
 {{ define "partials/header" }}
-    <nav class="navbar navbar-expand-lg navbar-custom">
-        <div class="container">
-            <a class="navbar-brand" href="{{ .URLForRoot }}">{{ .AppTitle }}</a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse"
-                    data-bs-target="#navbarSupportedContent">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="navbarSupportedContent">
-                <ul class="navbar-nav me-auto mb-2 mb-lg-0">
-                    <li class="nav-item">
-                        <a class="nav-link" href="{{ .URLForVenueManager }}">{{ .VenueManagerLabel }}</a>
-                    </li>
-                </ul>
-                {{ if .UserName }}
-                    <div class="d-flex">
-                        <form action="{{ .URLForLogout }}" method="POST" class="d-flex align-items-center">
-                            <button type="submit" class="btn btn-sm btn-outline-secondary d-flex align-items-center">
-                                {{ if .UserPicture }}
-                                    <img src="{{ .UserPicture }}" alt="{{ .UserName }}" class="rounded-circle"
-                                         style="width:24px; height:24px; margin-right:5px;">
-                                {{ end }}
-                                {{ .LabelSignOut }}
-                            </button>
-                        </form>
-                    </div>
-                {{ else }}
-                    <div class="d-flex">
-                        <span class="navbar-text">{{ .LabelNotSignedIn }}</span>
-                    </div>
-                {{ end }}
-            </div>
+<nav class="navbar navbar-expand-lg navbar-custom">
+    <div class="container d-flex justify-content-between align-items-center">
+        <div class="d-flex">
+            <a class="navbar-brand px-3" href="{{ .URLForEventsManager }}">{{ .EventsManagerLabel }}</a>
+            <a class="navbar-brand px-3" href="{{ .URLForVenueManager }}">{{ .VenueManagerLabel }}</a>
         </div>
-    </nav>
+        <form action="{{ .URLForLogout }}" method="POST" class="d-inline">
+            <button type="submit" class="btn btn-outline-secondary btn-sm d-inline-flex align-items-center">
+                <img src="{{ .UserPicture }}" alt="User avatar" class="rounded-circle me-2" style="width:24px; height:24px;">
+                {{ .LabelSignOut }}
+            </button>
+        </form>
+    </div>
+</nav>
 {{ end }}
