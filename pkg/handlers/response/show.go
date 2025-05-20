@@ -23,8 +23,8 @@ type ViewData struct {
 	ParamRSVPID          string
 	ParamMethodOverride  string
 	ParamResponse        string
-	ParamExtraGuests     string // Ensure this is present
-	MaxGuestCount        int    // Ensure this is present if used directly (though not needed for original design template)
+	ParamExtraGuests     string
+	MaxGuestCount        int
 }
 
 // ThankYouViewData is the data structure passed to the thankyou.tmpl template.
@@ -66,9 +66,9 @@ func Handler(applicationContext *config.ApplicationContext) http.HandlerFunc {
 		}
 
 		var eventRecord models.Event
-		eventError := eventRecord.FindByID(applicationContext.Database, rsvpRecord.EventID)
+		eventError := eventRecord.LoadWithVenue(applicationContext.Database, rsvpRecord.EventID)
 		if eventError != nil {
-			applicationContext.Logger.Printf("ERROR: Could not find event %s associated with RSVP %s: %v", rsvpRecord.EventID, rsvpCode, eventError)
+			applicationContext.Logger.Printf("ERROR: Could not find event %s associated with RSVP %s (using LoadWithVenue): %v", rsvpRecord.EventID, rsvpCode, eventError)
 			errorType := utils.DatabaseError
 			userMessage := "Sorry, we encountered an error loading event details."
 			if errors.Is(eventError, gorm.ErrRecordNotFound) {
@@ -89,9 +89,9 @@ func Handler(applicationContext *config.ApplicationContext) http.HandlerFunc {
 				URLForResponseSubmit: submitURL,
 				ParamRSVPID:          config.RSVPIDParam,
 				ParamMethodOverride:  config.MethodOverrideParam,
-				ParamResponse:        config.ResponseParam,    // For hidden input 1
-				ParamExtraGuests:     config.ExtraGuestsParam, // For hidden input 2
-				MaxGuestCount:        config.MaxGuestCount,    // Still needed for Thank You logic? No.
+				ParamResponse:        config.ResponseParam,
+				ParamExtraGuests:     config.ExtraGuestsParam,
+				MaxGuestCount:        config.MaxGuestCount,
 			}
 			baseHandler.RenderView(httpResponseWriter, httpRequest, config.TemplateResponse, viewData)
 
@@ -103,9 +103,8 @@ func Handler(applicationContext *config.ApplicationContext) http.HandlerFunc {
 				}
 			}
 
-			// Expecting separate parameters now due to JS modification on submit
-			responseStatus := httpRequest.FormValue(config.ResponseParam)    // Should be "Yes" or "No"
-			extraGuestsStr := httpRequest.FormValue(config.ExtraGuestsParam) // Should be "0" to "4"
+			responseStatus := httpRequest.FormValue(config.ResponseParam)
+			extraGuestsStr := httpRequest.FormValue(config.ExtraGuestsParam)
 			var extraGuests int = 0
 
 			if validationError := utils.ValidateRSVPResponseStatus(responseStatus); validationError != nil {
@@ -113,11 +112,10 @@ func Handler(applicationContext *config.ApplicationContext) http.HandlerFunc {
 				return
 			}
 
-			if responseStatus == config.RSVPResponseYesPrefix { // Check is against "Yes"
+			if responseStatus == config.RSVPResponseYesPrefix {
 				var parseErr error
 				extraGuests, parseErr = strconv.Atoi(extraGuestsStr)
 				if parseErr != nil {
-					// This indicates an issue with JS setting the hidden field or bad submission
 					baseHandler.HandleError(httpResponseWriter, parseErr, utils.ValidationError, "Invalid value provided for extra guests.")
 					return
 				}
@@ -125,13 +123,12 @@ func Handler(applicationContext *config.ApplicationContext) http.HandlerFunc {
 					baseHandler.HandleError(httpResponseWriter, validationError, utils.ValidationError, validationError.Error())
 					return
 				}
-				rsvpRecord.Response = config.RSVPResponseYesPrefix // Store "Yes"
+				rsvpRecord.Response = config.RSVPResponseYesPrefix
 				rsvpRecord.ExtraGuests = extraGuests
 			} else if responseStatus == config.RSVPResponseNo {
-				rsvpRecord.Response = config.RSVPResponseNoCommaZero // Store "No,0"
+				rsvpRecord.Response = config.RSVPResponseNoCommaZero
 				rsvpRecord.ExtraGuests = 0
 			} else {
-				// Should not happen if validation passes
 				baseHandler.HandleError(httpResponseWriter, nil, utils.ValidationError, "Invalid response status submitted.")
 				return
 			}
@@ -182,7 +179,6 @@ func ThankYouHandler(applicationContext *config.ApplicationContext) http.Handler
 		}
 
 		var thankYouMessageText string
-		// Check based on the stored response value ("Yes" or "No,0")
 		if rsvpRecord.Response == config.RSVPResponseYesPrefix {
 			guests := rsvpRecord.ExtraGuests
 			if guests == 0 {

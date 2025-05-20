@@ -1,11 +1,8 @@
 package event
 
 import (
-	"errors"
 	"net/http"
-	"time"
-
-	"gorm.io/gorm"
+	"strconv"
 
 	"github.com/temirov/RSVP/models"
 	"github.com/temirov/RSVP/pkg/config"
@@ -14,105 +11,150 @@ import (
 	"github.com/temirov/RSVP/pkg/utils"
 )
 
-// StatisticsData holds calculated statistics for a single event, used for display in the list view.
-type StatisticsData struct {
-	ID                string
-	Title             string
-	StartTime         time.Time
-	EndTime           time.Time
-	RSVPCount         int
-	RSVPAnsweredCount int
-}
-
-// EnhancedEventData extends models.Event with calculated fields needed specifically for the edit form view.
-type EnhancedEventData struct {
-	models.Event
-	CalculatedDurationInHours int
-}
-
-// eventListViewData is the structure passed as PageData.Data to the events.tmpl template.
-type eventListViewData struct {
-	EventList               []StatisticsData
-	SelectedItemForEdit     *EnhancedEventData
-	URLForEventActions      string
-	URLForRSVPListBase      string
-	ParamNameEventID        string
-	ParamNameTitle          string
-	ParamNameDescription    string
-	ParamNameStartTime      string
-	ParamNameDuration       string
-	ParamNameMethodOverride string
-}
-
-// ListEventsHandler handles GET requests for the events list page (/events/).
+// ListEventsHandler returns the Events main page (list + optional edit panel).
 func ListEventsHandler(applicationContext *config.ApplicationContext) http.HandlerFunc {
-	baseHandler := handlers.NewBaseHttpHandler(applicationContext, config.ResourceNameEvent, config.WebEvents)
+	baseHttpHandler := handlers.NewBaseHttpHandler(applicationContext, config.ResourceNameEvent, config.WebEvents)
 
-	return func(httpResponseWriter http.ResponseWriter, httpRequest *http.Request) {
-		if !baseHandler.ValidateHttpMethod(httpResponseWriter, httpRequest, http.MethodGet) {
-			return
-		}
+	return func(w http.ResponseWriter, r *http.Request) {
+		currentUser := r.Context().Value(middleware.ContextKeyUser).(*models.User)
 
-		currentUser := httpRequest.Context().Value(middleware.ContextKeyUser).(*models.User)
-
-		userEvents, eventsRetrievalError := models.FindEventsByUserID(applicationContext.Database, currentUser.ID, true)
-		if eventsRetrievalError != nil {
-			baseHandler.HandleError(httpResponseWriter, eventsRetrievalError, utils.DatabaseError, "Failed to retrieve your events.")
-			return
-		}
-
-		eventStatistics := make([]StatisticsData, 0, len(userEvents))
-		for _, event := range userEvents {
-			totalRSVPCount := len(event.RSVPs)
-			answeredRSVPCount := 0
-			for _, rsvp := range event.RSVPs {
-				if rsvp.Response != "" && rsvp.Response != config.RSVPResponsePending {
-					answeredRSVPCount++
-				}
-			}
-			eventStatistics = append(eventStatistics, StatisticsData{
-				ID:                event.ID,
-				Title:             event.Title,
-				StartTime:         event.StartTime,
-				EndTime:           event.EndTime,
-				RSVPCount:         totalRSVPCount,
-				RSVPAnsweredCount: answeredRSVPCount,
-			})
-		}
-
+		requestedEventIDForEdit := r.URL.Query().Get(config.EventIDParam)
 		var selectedEventForEdit *EnhancedEventData
-		requestedEventIDForEdit := baseHandler.GetParam(httpRequest, config.EventIDParam)
 
+		/* load user venues (for selector) */
+		userReusedVenues, err := models.FindVenuesByOwner(applicationContext.Database, currentUser.ID)
+		if err != nil {
+			baseHttpHandler.ApplicationContext.Logger.Printf(
+				"ERROR: Failed to retrieve venues owned by user %s: %v",
+				currentUser.ID, err,
+			)
+			userReusedVenues = []models.Venue{}
+		}
+
+		/* if an event is selected for editing – load it */
 		if requestedEventIDForEdit != "" {
 			var eventToEdit models.Event
-			findError := eventToEdit.FindByIDAndOwner(applicationContext.Database, requestedEventIDForEdit, currentUser.ID)
-			if findError == nil {
+			err = eventToEdit.FindByIDAndOwner(applicationContext.Database, requestedEventIDForEdit, currentUser.ID)
+			if err == nil {
+				venueID := ""
+				if eventToEdit.VenueID != nil {
+					venueID = *eventToEdit.VenueID
+				}
 				selectedEventForEdit = &EnhancedEventData{
 					Event:                     eventToEdit,
-					CalculatedDurationInHours: eventToEdit.DurationHours(),
+					CalculatedDurationInHours: float64(eventToEdit.DurationHours()),
+					SelectedVenueID:           venueID,
 				}
-			} else if errors.Is(findError, gorm.ErrRecordNotFound) {
-				baseHandler.HandleError(httpResponseWriter, findError, utils.NotFoundError, "Event not found or you do not have permission to edit it.")
-				return
 			} else {
-				baseHandler.HandleError(httpResponseWriter, findError, utils.DatabaseError, "Error retrieving event details for editing.")
-				return
+				baseHttpHandler.ApplicationContext.Logger.Printf(
+					"WARN: Failed to find event %s for edit or user %s does not own it: %v",
+					requestedEventIDForEdit, currentUser.ID, err,
+				)
 			}
 		}
 
-		viewData := eventListViewData{
-			EventList:               eventStatistics,
-			SelectedItemForEdit:     selectedEventForEdit,
-			URLForEventActions:      config.WebEvents,
-			URLForRSVPListBase:      config.WebRSVPs,
-			ParamNameEventID:        config.EventIDParam,
-			ParamNameTitle:          config.TitleParam,
-			ParamNameDescription:    config.DescriptionParam,
-			ParamNameStartTime:      config.StartTimeParam,
-			ParamNameDuration:       config.DurationParam,
-			ParamNameMethodOverride: config.MethodOverrideParam,
+		/* gather statistics for list */
+		eventsOwnedByUser, err := models.FindEventsByUserID(applicationContext.Database, currentUser.ID, true, true)
+		if err != nil {
+			baseHttpHandler.HandleError(w, err, utils.DatabaseError, "Failed to retrieve events list.")
+			return
 		}
 
-		baseHandler.RenderView(httpResponseWriter, httpRequest, config.TemplateEvents, viewData)
+		eventStatistics := make([]StatisticsData, len(eventsOwnedByUser))
+		for i, ev := range eventsOwnedByUser {
+			total := len(ev.RSVPs)
+			answered := 0
+			for _, rsvp := range ev.RSVPs {
+				if rsvp.Response != "" && rsvp.Response != config.RSVPResponsePending {
+					answered++
+				}
+			}
+			venueName := "N/A"
+			if ev.Venue != nil {
+				venueName = ev.Venue.Name
+			}
+
+			eventStatistics[i] = StatisticsData{
+				ID:                ev.ID,
+				Title:             ev.Title,
+				StartTime:         ev.StartTime,
+				EndTime:           ev.EndTime,
+				VenueName:         venueName,
+				RSVPCount:         total,
+				RSVPAnsweredCount: answered,
+			}
+		}
+
+		var formattedStartTime, currentDuration string
+		if selectedEventForEdit != nil {
+			formattedStartTime = selectedEventForEdit.Event.StartTime.Format(config.TimeLayoutHTMLForm)
+			currentDuration = strconv.Itoa(selectedEventForEdit.Event.DurationHours())
+		}
+
+		listViewData := ListViewData{
+			/* navigation */
+			AppTitle:           config.AppTitle,
+			EventsManagerLabel: config.ResourceLabelEventManager,
+			VenueManagerLabel:  config.ResourceLabelVenueManager,
+			RSVPManagerLabel:   "RSVPs",
+
+			URLForEventActions: config.WebEvents,
+			URLForRSVPListBase: config.WebRSVPs,
+			URLForRSVPManager:  config.WebRSVPs,
+			URLForVenues:       config.WebVenues,
+
+			/* data */
+			EventList:           eventStatistics,
+			SelectedItemForEdit: selectedEventForEdit,
+			UserReusedVenues:    userReusedVenues,
+
+			/* helpers */
+			ParamNameEventID:          config.EventIDParam,
+			ParamNameVenueID:          config.VenueIDParam,
+			ParamNameTitle:            config.TitleParam,
+			ParamNameDescription:      config.DescriptionParam,
+			ParamNameStartTime:        config.StartTimeParam,
+			ParamNameDuration:         config.DurationParam,
+			ParamNameMethodOverride:   config.MethodOverrideParam,
+			ParamNameVenueName:        config.VenueNameParam,
+			ParamNameVenueAddress:     config.VenueAddressParam,
+			ParamNameVenueDescription: config.VenueDescriptionParam,
+			ParamNameVenueCapacity:    config.VenueCapacityParam,
+			ParamNameVenuePhone:       config.VenuePhoneParam,
+			ParamNameVenueEmail:       config.VenueEmailParam,
+			ParamNameVenueWebsite:     config.VenueWebsiteParam,
+
+			/* labels / buttons */
+			LabelEventTitle:       config.LabelEventTitle,
+			LabelEventDescription: config.LabelEventDescription,
+			LabelStartTime:        config.LabelStartTime,
+			LabelDuration:         config.LabelDuration,
+			LabelSelectVenue:      config.LabelSelectVenue,
+			LabelAddVenue:         config.LabelAddVenue,
+			LabelVenueDetails:     config.LabelVenueDetails,
+			LabelVenueName:        config.LabelVenueName,
+			LabelVenueAddress:     config.LabelVenueAddress,
+			LabelVenueDescription: config.LabelVenueDescription,
+			LabelVenueCapacity:    config.LabelVenueCapacity,
+			LabelVenuePhone:       config.LabelVenuePhone,
+			LabelVenueEmail:       config.LabelVenueEmail,
+			LabelVenueWebsite:     config.LabelVenueWebsite,
+
+			ButtonCancelEdit:     config.ButtonCancelEdit,
+			ButtonAddVenue:       config.ButtonAddVenue,
+			ButtonCreateNewVenue: config.ButtonCreateVenue,
+			ButtonUpdateEvent:    config.ButtonUpdateEvent,
+			ButtonDeleteEvent:    config.ButtonDeleteEvent,
+			ButtonDeleteVenue:    config.ButtonDeleteVenue,
+
+			OptionNoVenue:             config.OptionNoVenue,
+			OptionCreateNewVenue:      config.OptionCreateNewVenue,
+			VenueSelectCreateNewValue: config.VenueSelectCreateNewValue,
+
+			FormattedStartTime: formattedStartTime,
+			CurrentDuration:    currentDuration,
+		}
+
+		baseHttpHandler.RenderView(w, r, config.TemplateEvents, listViewData)
 	}
 }

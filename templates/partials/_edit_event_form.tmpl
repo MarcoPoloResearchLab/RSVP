@@ -1,61 +1,100 @@
 {{ define "partials/_edit_event_form.tmpl" }}
-    <div class="card" id="editEventCard">
-        {{ $eventDataView := . }}
-        {{ $selectedEvent := $eventDataView.SelectedItemForEdit }}
-        <div class="card-header">
-            <h4 class="mb-0">Edit Event: {{ $selectedEvent.Title }}</h4>
-            <a href="{{ $eventDataView.URLForEventActions }}" class="btn btn-sm btn-outline-secondary">Cancel Edit</a>
+<div class="card" id="editEventCard">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h4 class="mb-0">Edit Event: {{ .SelectedItemForEdit.Event.Title }}</h4>
+        <a href="{{ .URLForEventActions }}" class="btn btn-sm btn-outline-secondary">{{ .ButtonCancelEdit }}</a>
+    </div>
+
+    <form id="updateEventForm" action="{{ .URLForEventActions }}" method="POST">
+        <input type="hidden" name="{{ .ParamNameMethodOverride }}" value="PUT">
+        <input type="hidden" name="{{ .ParamNameEventID }}" value="{{ .SelectedItemForEdit.Event.ID }}">
+
+        <div class="card-body">
+            <div class="mb-3">
+                <label for="editTitleInput" class="form-label">{{ .LabelEventTitle }}</label>
+                <input type="text"
+                       class="form-control"
+                       id="editTitleInput"
+                       name="{{ .ParamNameTitle }}"
+                       required
+                       value="{{ .SelectedItemForEdit.Event.Title }}">
+            </div>
+
+            <div class="mb-3">
+                <label for="editDescriptionInput" class="form-label">{{ .LabelEventDescription }}</label>
+                <textarea class="form-control"
+                          id="editDescriptionInput"
+                          name="{{ .ParamNameDescription }}"
+                          rows="3">{{ .SelectedItemForEdit.Event.Description }}</textarea>
+            </div>
+
+            <div class="row mb-3">
+                <div class="col-md-6">
+                    <label for="editStartTimeInput" class="form-label">{{ .LabelStartTime }}</label>
+                    <input type="datetime-local"
+                           class="form-control"
+                           id="editStartTimeInput"
+                           name="{{ .ParamNameStartTime }}"
+                           required
+                           value="{{ .SelectedItemForEdit.Event.StartTime.Format `2006-01-02T15:04` }}">
+                </div>
+                <div class="col-md-6">
+                    <label for="editDurationSelect" class="form-label">{{ .LabelDuration }}</label>
+                    <select class="form-select"
+                            id="editDurationSelect"
+                            name="{{ .ParamNameDuration }}"
+                            required>
+                        <option value="1" {{ if eq .CurrentDuration "1" }}selected{{ end }}>1 hour</option>
+                        <option value="2" {{ if eq .CurrentDuration "2" }}selected{{ end }}>2 hours</option>
+                        <option value="3" {{ if eq .CurrentDuration "3" }}selected{{ end }}>3 hours</option>
+                        <option value="4" {{ if eq .CurrentDuration "4" }}selected{{ end }}>4 hours</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="mb-3">
+                <label for="editVenueSelect" class="form-label">{{ .LabelSelectVenue }}</label>
+                <select class="form-select"
+                        id="editVenueSelect"
+                        name="{{ .ParamNameVenueID }}">
+                    <option value="" {{ if not .SelectedItemForEdit.Event.Venue }}selected{{ end }}>{{ .OptionNoVenue }}</option>
+                    {{ range .UserReusedVenues }}
+                        <option value="{{ .ID }}" {{ if eq $.SelectedItemForEdit.SelectedVenueID .ID }}selected{{ end }}>{{ .Name }}</option>
+                    {{ end }}
+                </select>
+            </div>
+
+            {{ if .SelectedItemForEdit.Event.Venue }}
+                <hr>
+                <h5>{{ .LabelVenueDetails }}</h5>
+                <p class="mb-1"><strong>{{ .LabelVenueName }}:</strong>
+                    <a href="{{ .URLForVenues }}?{{ .ParamNameVenueID }}={{ .SelectedItemForEdit.Event.Venue.ID }}">{{ .SelectedItemForEdit.Event.Venue.Name }}</a>
+                </p>
+                <p class="mb-1"><strong>{{ .LabelVenueAddress }}:</strong>
+                    <a href="{{ mapsURL .SelectedItemForEdit.Event.Venue.Address }}" target="_blank" rel="noopener noreferrer">{{ .SelectedItemForEdit.Event.Venue.Address }}</a>
+                </p>
+                <p class="mb-1"><strong>{{ .LabelVenueCapacity }}:</strong> {{ .SelectedItemForEdit.Event.Venue.Capacity }}</p>
+                {{ if .SelectedItemForEdit.Event.Venue.Phone }}
+                    <p class="mb-0"><strong>{{ .LabelVenuePhone }}:</strong> {{ .SelectedItemForEdit.Event.Venue.Phone }}</p>
+                {{ end }}
+            {{ end }}
         </div>
-        <form id="editEventForm" action="{{ $eventDataView.URLForEventActions }}" method="POST">
-            <input type="hidden" name="{{ $eventDataView.ParamNameEventID }}" value="{{ $selectedEvent.ID }}">
-            <input type="hidden" name="{{ $eventDataView.ParamNameMethodOverride }}" value="PUT">
-            <div class="card-body">
-                <div class="form-group mb-3">
-                    <label for="editTitleInput">Event Title:</label>
-                    <input type="text" class="form-control" id="editTitleInput"
-                           name="{{ $eventDataView.ParamNameTitle }}" required value="{{ $selectedEvent.Title }}">
-                </div>
-                <div class="form-group mb-3">
-                    <label for="editDescriptionInput">Description (Markdown Supported):</label>
-                    <textarea class="form-control" id="editDescriptionInput"
-                              name="{{ $eventDataView.ParamNameDescription }}"
-                              rows="5">{{ $selectedEvent.Description }}</textarea>
-                </div>
-                <div class="row mb-3">
-                    <div class="form-group col-md-6">
-                        <label for="editStartTimeInput">Start Time:</label>
-                        <input type="datetime-local" class="form-control" id="editStartTimeInput"
-                               name="{{ $eventDataView.ParamNameStartTime }}" required
-                               value="{{ $selectedEvent.StartTime.Format "2006-01-02T15:04" }}">
-                    </div>
-                    <div class="form-group col-md-6">
-                        <label for="editDurationSelect">Duration (hours):</label>
-                        <select class="form-select" id="editDurationSelect"
-                                name="{{ $eventDataView.ParamNameDuration }}" required>
-                            {{ $currentDuration := $selectedEvent.CalculatedDurationInHours }}
-                            <option value="1" {{ if eq $currentDuration 1 }}selected{{ end }}>1 hour</option>
-                            <option value="2" {{ if eq $currentDuration 2 }}selected{{ end }}>2 hours</option>
-                            <option value="3" {{ if eq $currentDuration 3 }}selected{{ end }}>3 hours</option>
-                            <option value="4" {{ if eq $currentDuration 4 }}selected{{ end }}>4 hours</option>
-                        </select>
-                    </div>
-                </div>
-            </div>
+    </form>
+
+    <div class="d-flex justify-content-between align-items-center px-3 pb-3">
+        <form action="{{ .URLForEventActions }}" method="POST" style="display:inline;">
+            <input type="hidden" name="{{ .ParamNameMethodOverride }}" value="DELETE">
+            <input type="hidden" name="{{ .ParamNameEventID }}" value="{{ .SelectedItemForEdit.Event.ID }}">
+            <button type="submit" class="btn btn-danger">{{ .ButtonDeleteEvent }}</button>
         </form>
-        <div class="d-flex justify-content-between align-items-center p-3">
-            <div>
-                <form id="deleteEventForm_{{ $selectedEvent.ID }}" action="{{ $eventDataView.URLForEventActions }}"
-                      method="POST" class="d-inline">
-                    <input type="hidden" name="{{ $eventDataView.ParamNameMethodOverride }}" value="DELETE">
-                    <input type="hidden" name="{{ $eventDataView.ParamNameEventID }}" value="{{ $selectedEvent.ID }}">
-                    <button type="submit" class="btn btn-delete">Delete Event</button>
-                </form>
-            </div>
-            <div>
-                <button type="submit" form="editEventForm" class="btn btn-primary">Update Event</button>
-                <a href="{{ $eventDataView.URLForRSVPListBase }}?{{ $eventDataView.ParamNameEventID }}={{ $selectedEvent.ID }}"
-                   class="btn btn-outline-primary">Manage RSVPs ></a>
-            </div>
+
+        <div class="d-flex gap-2">
+            <button type="submit"
+                    form="updateEventForm"
+                    class="btn btn-primary">{{ .ButtonUpdateEvent }}</button>
+            <a href="{{ .URLForRSVPListBase }}?{{ .ParamNameEventID }}={{ .SelectedItemForEdit.Event.ID }}"
+               class="btn btn-outline-primary text-nowrap">Manage RSVPs &gt;</a>
         </div>
     </div>
+</div>
 {{ end }}

@@ -16,17 +16,35 @@ import (
 // within the maximum allowed attempts.
 var ErrFailedToGenerateUniqueID = errors.New("failed to generate a unique ID after maximum attempts")
 
-// BaseModel provides common fields for database models, including a string-based
-// primary key (ID) and standard GORM timestamp/soft-delete fields.
+// IDGenerator defines the interface for models that need ID generation
+type IDGenerator interface {
+	GetTableName() string
+	GetIDGeneratorFunc() func(int) (string, error)
+}
+
+// BaseModel provides common fields for database models
 type BaseModel struct {
-	// ID is the unique primary key for the model, stored as an 8-character string.
-	ID string `gorm:"primaryKey;type:varchar(8);index"`
-	// CreatedAt records the time the record was created. Managed by GORM.
+	ID        string `gorm:"primaryKey;type:varchar(8);index"`
 	CreatedAt time.Time
-	// UpdatedAt records the time the record was last updated. Managed by GORM.
 	UpdatedAt time.Time
-	// DeletedAt records the time the record was soft-deleted. Managed by GORM.
 	DeletedAt gorm.DeletedAt `gorm:"index"`
+}
+
+// GenerateID is a helper method to generate a unique ID for any model
+// that implements IDGenerator
+func (base *BaseModel) GenerateID(tx *gorm.DB, model IDGenerator) error {
+	if base.ID == "" {
+		uniqueID, err := EnsureUniqueID(
+			tx,
+			model.GetTableName(),
+			model.GetIDGeneratorFunc(),
+		)
+		if err != nil {
+			return err
+		}
+		base.ID = uniqueID
+	}
+	return nil
 }
 
 // GenerateBase62ID generates a random base62 (alphanumeric) ID of the specified length.

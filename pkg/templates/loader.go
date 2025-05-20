@@ -1,11 +1,12 @@
-// Package templates handles the loading, parsing, and caching of HTML templates.
 package templates
 
 import (
 	"bytes"
+	"fmt"
 	"html/template"
 	"io/fs"
 	"log"
+	"net/url"
 	"path/filepath"
 	"strings"
 	"time"
@@ -27,15 +28,29 @@ var customTemplateFunctions = template.FuncMap{
 		var outputBuffer bytes.Buffer
 		conversionError := goldmarkMarkdownRenderer.Convert([]byte(inputText), &outputBuffer)
 		if conversionError != nil {
-			return template.HTML("")
+			return ""
 		}
 		return template.HTML(outputBuffer.String())
+	},
+	"formatDuration": func(duration time.Duration) string {
+		totalMinutes := int(duration.Minutes())
+		hours := totalMinutes / 60
+		minutes := totalMinutes % 60
+		if minutes == 0 {
+			return fmt.Sprintf("%dh", hours)
+		}
+		return fmt.Sprintf("%dh%dm", hours, minutes)
+	},
+	"mapsURL": func(address string) string {
+		if address == "" {
+			return ""
+		}
+		return config.MapsSearchBaseURL + url.QueryEscape(address)
 	},
 }
 
 var PrecompiledTemplatesMap map[string]*template.Template
 
-// LoadAllPrecompiledTemplates discovers and parses all application templates integrated with layout.
 func LoadAllPrecompiledTemplates(templatesDirectoryPath string) {
 	PrecompiledTemplatesMap = make(map[string]*template.Template)
 	mainViewTemplateNames := []string{
@@ -44,8 +59,8 @@ func LoadAllPrecompiledTemplates(templatesDirectoryPath string) {
 		config.TemplateRSVP,
 		config.TemplateResponse,
 		config.TemplateThankYou,
+		config.TemplateVenues,
 	}
-	log.Println("Loading application templates integrated with layout...")
 	var layoutFilePath string
 	var partialTemplateFiles []string
 	mainViewFilePaths := make(map[string]string)
@@ -78,21 +93,16 @@ func LoadAllPrecompiledTemplates(templatesDirectoryPath string) {
 			partialTemplateFiles = append(partialTemplateFiles, filePath)
 			log.Printf("Found partial: %s", relativeFilePath)
 		} else {
-			mainViewFound := false
 			for _, mainViewName := range mainViewTemplateNames {
 				if baseTemplateName == mainViewName {
 					if existingFilePath, fileFound := mainViewFilePaths[mainViewName]; fileFound {
 						log.Printf("Multiple files found for main view '%s'; using '%s' and ignoring '%s'", mainViewName, existingFilePath, filePath)
 					} else {
 						mainViewFilePaths[mainViewName] = filePath
-						mainViewFound = true
 						log.Printf("Found main view: %s (for %s)", relativeFilePath, mainViewName)
 					}
 					break
 				}
-			}
-			if !mainViewFound && baseTemplateName != config.TemplateLayout && !strings.HasPrefix(relativeFilePath, config.PartialsDir+string(filepath.Separator)) && !strings.HasPrefix(baseTemplateName, "_") {
-				log.Printf("Found template file '%s' not identified as layout, partial, or known main view. Ignoring in layout system.", relativeFilePath)
 			}
 		}
 		return nil
@@ -115,7 +125,9 @@ func LoadAllPrecompiledTemplates(templatesDirectoryPath string) {
 		filesForTemplateSet := []string{layoutFilePath}
 		filesForTemplateSet = append(filesForTemplateSet, partialTemplateFiles...)
 		filesForTemplateSet = append(filesForTemplateSet, mainViewFilePath)
-		templateSet, parseError := template.New(filepath.Base(mainViewFilePath)).Funcs(customTemplateFunctions).ParseFiles(filesForTemplateSet...)
+		templateSet, parseError := template.New(filepath.Base(mainViewFilePath)).
+			Funcs(customTemplateFunctions).
+			ParseFiles(filesForTemplateSet...)
 		if parseError != nil {
 			log.Fatalf("FATAL: Failed to parse template set for view '%s'. Error: %v. Files: %v", mainViewName, parseError, filesForTemplateSet)
 		}

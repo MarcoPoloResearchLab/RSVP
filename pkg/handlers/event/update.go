@@ -1,7 +1,6 @@
 package event
 
 import (
-	"errors"
 	"net/http"
 	"time"
 
@@ -10,80 +9,95 @@ import (
 	"github.com/temirov/RSVP/pkg/handlers"
 	"github.com/temirov/RSVP/pkg/middleware"
 	"github.com/temirov/RSVP/pkg/utils"
-	"gorm.io/gorm"
 )
 
-// UpdateHandler handles PUT/PATCH requests (or POST with _method override) to update an existing event.
-func UpdateHandler(applicationContext *config.ApplicationContext) http.HandlerFunc {
-	baseHandler := handlers.NewBaseHttpHandler(applicationContext, config.ResourceNameEvent, config.WebEvents)
+// UpdateEventHandler updates basic event data and optionally associates or
+// disassociates a venue. The form always includes the venue_id field; an empty
+// value explicitly removes any existing association.
+func UpdateEventHandler(applicationContext *config.ApplicationContext) http.HandlerFunc {
+	baseHttpHandler := handlers.NewBaseHttpHandler(applicationContext, config.ResourceNameEvent, config.WebEvents)
 
 	return func(httpResponseWriter http.ResponseWriter, httpRequest *http.Request) {
-		if !baseHandler.ValidateHttpMethod(httpResponseWriter, httpRequest, http.MethodPut, http.MethodPatch) {
+		if !baseHttpHandler.ValidateHttpMethod(httpResponseWriter, httpRequest, http.MethodPut, http.MethodPatch) {
 			return
 		}
-
 		currentUser := httpRequest.Context().Value(middleware.ContextKeyUser).(*models.User)
 
-		params, paramsOk := baseHandler.RequireParams(httpResponseWriter, httpRequest, config.EventIDParam)
-		if !paramsOk {
-			return
-		}
-		targetEventID := params[config.EventIDParam]
-
-		if err := httpRequest.ParseForm(); err != nil {
-			baseHandler.HandleError(httpResponseWriter, err, utils.ValidationError, utils.ErrMsgInvalidFormData)
-			return
-		}
-		newTitle := httpRequest.FormValue(config.TitleParam)
-		newDescription := httpRequest.FormValue(config.DescriptionParam)
-		newStartTimeString := httpRequest.FormValue(config.StartTimeParam)
-		newDurationString := httpRequest.FormValue(config.DurationParam)
-
-		if validationError := utils.ValidateEventTitle(newTitle); validationError != nil {
-			baseHandler.HandleError(httpResponseWriter, validationError, utils.ValidationError, validationError.Error())
-			return
-		}
-		parsedNewDurationHours, validationError := utils.ValidateAndParseEventDuration(newDurationString)
-		if validationError != nil {
-			baseHandler.HandleError(httpResponseWriter, validationError, utils.ValidationError, validationError.Error())
-			return
-		}
-		parsedNewStartTime, timeParseError := time.Parse(config.TimeLayoutHTMLForm, newStartTimeString)
-		if timeParseError != nil {
-			baseHandler.HandleError(httpResponseWriter, timeParseError, utils.ValidationError, utils.ErrMsgInvalidStartTimeFormat)
-			return
-		}
-		if validationError := utils.ValidateEventStartTime(parsedNewStartTime); validationError != nil {
-			baseHandler.HandleError(httpResponseWriter, validationError, utils.ValidationError, validationError.Error())
+		parseFormError := httpRequest.ParseForm()
+		if parseFormError != nil {
+			baseHttpHandler.HandleError(httpResponseWriter, parseFormError, utils.ValidationError, config.ErrMsgInvalidFormData)
 			return
 		}
 
-		var eventRecord models.Event
-		findError := applicationContext.Database.First(&eventRecord, "id = ?", targetEventID).Error
-		if findError != nil {
-			if errors.Is(findError, gorm.ErrRecordNotFound) {
-				baseHandler.HandleError(httpResponseWriter, findError, utils.NotFoundError, "Event not found.")
+		activeTransaction := applicationContext.Database.Begin()
+		if activeTransaction.Error != nil {
+			baseHttpHandler.HandleError(httpResponseWriter, activeTransaction.Error, utils.DatabaseError, config.ErrMsgTransactionStart)
+			return
+		}
+
+		targetEventIdentifier := httpRequest.FormValue(config.EventIDParam)
+
+		var existingEventRecord models.Event
+		// FindByIDAndOwner preloads Venue, so existingEventRecord.Venue will be populated if associated.
+		findEventError := existingEventRecord.FindByIDAndOwner(activeTransaction, targetEventIdentifier, currentUser.ID)
+		if findEventError != nil {
+			activeTransaction.Rollback()
+			baseHttpHandler.HandleError(httpResponseWriter, findEventError, utils.NotFoundError, config.ErrMsgEventNotFound)
+			return
+		}
+
+		existingEventRecord.Title = httpRequest.FormValue(config.TitleParam)
+		existingEventRecord.Description = httpRequest.FormValue(config.DescriptionParam)
+
+		parsedDurationHours, durationValidationError := utils.ValidateAndParseEventDuration(httpRequest.FormValue(config.DurationParam))
+		if durationValidationError != nil {
+			activeTransaction.Rollback()
+			baseHttpHandler.HandleError(httpResponseWriter, durationValidationError, utils.ValidationError, durationValidationError.Error())
+			return
+		}
+
+		parsedStartTime, startTimeParseError := time.Parse(config.TimeLayoutHTMLForm, httpRequest.FormValue(config.StartTimeParam))
+		if startTimeParseError != nil {
+			activeTransaction.Rollback()
+			baseHttpHandler.HandleError(httpResponseWriter, startTimeParseError, utils.ValidationError, config.ErrMsgInvalidStartTimeFormat)
+			return
+		}
+
+		existingEventRecord.StartTime = parsedStartTime
+		existingEventRecord.EndTime = parsedStartTime.Add(time.Duration(parsedDurationHours) * time.Hour)
+
+		if _, venueParameterPresent := httpRequest.Form[config.VenueIDParam]; venueParameterPresent {
+			selectedVenueIdentifierString := httpRequest.FormValue(config.VenueIDParam)
+
+			if selectedVenueIdentifierString == "" {
+				existingEventRecord.VenueID = nil
 			} else {
-				baseHandler.HandleError(httpResponseWriter, findError, utils.DatabaseError, "Error retrieving event for update.")
+				if existingEventRecord.VenueID == nil || *existingEventRecord.VenueID != selectedVenueIdentifierString {
+					var verifiedVenueRecord models.Venue
+					findVenueError := verifiedVenueRecord.FindByIDAndOwner(activeTransaction, selectedVenueIdentifierString, currentUser.ID)
+					if findVenueError != nil {
+						activeTransaction.Rollback()
+						baseHttpHandler.HandleError(httpResponseWriter, findVenueError, utils.ForbiddenError, config.ErrMsgVenuePermission)
+						return
+					}
+					existingEventRecord.VenueID = &selectedVenueIdentifierString
+				}
 			}
+		}
+
+		updateEventError := existingEventRecord.Update(activeTransaction)
+		if updateEventError != nil {
+			activeTransaction.Rollback()
+			baseHttpHandler.HandleError(httpResponseWriter, updateEventError, utils.DatabaseError, config.ErrMsgEventUpdate)
 			return
 		}
 
-		if !baseHandler.VerifyResourceOwnership(httpResponseWriter, httpRequest, eventRecord.UserID, currentUser.ID) {
+		commitTransactionError := activeTransaction.Commit().Error
+		if commitTransactionError != nil {
+			baseHttpHandler.HandleError(httpResponseWriter, commitTransactionError, utils.DatabaseError, config.ErrMsgEventUpdate)
 			return
 		}
 
-		calculatedNewEndTime := parsedNewStartTime.Add(time.Duration(parsedNewDurationHours) * time.Hour)
-		eventRecord.Title = newTitle
-		eventRecord.Description = newDescription
-		eventRecord.StartTime = parsedNewStartTime
-		eventRecord.EndTime = calculatedNewEndTime
-
-		if saveError := eventRecord.Save(applicationContext.Database); saveError != nil {
-			baseHandler.HandleError(httpResponseWriter, saveError, utils.DatabaseError, "Failed to update the event.")
-			return
-		}
-
-		baseHandler.RedirectToList(httpResponseWriter, httpRequest)
+		baseHttpHandler.RedirectToList(httpResponseWriter, httpRequest)
 	}
 }

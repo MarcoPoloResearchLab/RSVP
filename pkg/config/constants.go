@@ -1,8 +1,5 @@
 package config
 
-import "time"
-
-// Constants defining common web paths used throughout the application.
 const (
 	WebRoot             = "/"
 	WebEvents           = "/events/"
@@ -10,47 +7,62 @@ const (
 	WebRSVPQR           = "/rsvps/qr/"
 	WebResponse         = "/response/"
 	WebResponseThankYou = "/response/thankyou"
+	WebVenues           = "/venues/"
 )
 
-// Constants defining template base names used for looking up precompiled templates
-// by the main template loader.
 const (
 	TemplateEvents    = "events"
 	TemplateRSVP      = "rsvp"
 	TemplateRSVPs     = "rsvps"
 	TemplateResponse  = "response"
 	TemplateThankYou  = "thankyou"
+	TemplateVenues    = "venues"
 	TemplateExtension = ".tmpl"
-	TemplateLayout    = "layout"    // Name of the main layout template
-	TemplateLanding   = "landing"   // Name of the standalone landing page template
-	TemplatesDir      = "templates" // Directory where application templates are stored.
-	PartialsDir       = "partials"  // Subdirectory for partial templates
+	TemplateLayout    = "layout"
+	TemplateLanding   = "landing"
+	TemplatesDir      = "templates"
+	PartialsDir       = "partials"
 )
 
-// Constants defining parameter names used in HTTP requests (query and form values).
 const (
-	EventIDParam        = "event_id"
-	RSVPIDParam         = "rsvp_id"
-	NameParam           = "name"
-	TitleParam          = "title"
-	DescriptionParam    = "description"
-	StartTimeParam      = "start_time"
-	DurationParam       = "duration"
-	ResponseParam       = "response"
-	ExtraGuestsParam    = "extra_guests" // Added for clarity, potentially used in Phase 2
-	MethodOverrideParam = "_method"
-	ErrorQueryParam     = "error" // Used by GAuss on redirect
+	EventIDParam              = "event_id"
+	RSVPIDParam               = "rsvp_id"
+	VenueIDParam              = "venue_id"
+	NameParam                 = "name"
+	TitleParam                = "title"
+	DescriptionParam          = "description"
+	StartTimeParam            = "start_time"
+	DurationParam             = "duration"
+	ResponseParam             = "response"
+	ExtraGuestsParam          = "extra_guests"
+	MethodOverrideParam       = "_method"
+	ErrorQueryParam           = "error"
+	VenueNameParam            = "venue_name"
+	VenueAddressParam         = "venue_address"
+	VenueCapacityParam        = "venue_capacity"
+	VenuePhoneParam           = "venue_phone"
+	VenueEmailParam           = "venue_email"
+	VenueWebsiteParam         = "venue_website"
+	VenueDescriptionParam     = "venue_description"
+	VenueSelectCreateNewValue = "__CREATE_NEW__"
+	ActionQueryParam          = "action"
+	ActionManageVenue         = "manage_venue"
 )
 
-// Database related constants.
+const (
+	ActionParam            = ActionQueryParam
+	ErrMsgTransactionStart = "Failed to start transaction"
+	ErrMsgEventNotFound    = "Event not found"
+)
+
 const (
 	DefaultDBName = "rsvps.db"
 	TableEvents   = "events"
 	TableRSVPs    = "rsvps"
 	TableUsers    = "users"
+	TableVenues   = "venues"
 )
 
-// Resource names used for logging and potentially UI messages.
 const (
 	ResourceNameEvent    = "Event"
 	ResourceNameRSVP     = "RSVP"
@@ -58,37 +70,49 @@ const (
 	ResourceNameResponse = "Response"
 	ResourceNameThankYou = "Thank You Page"
 	ResourceNameUser     = "User"
+	ResourceNameVenue    = "Venue"
 )
 
-// ID generation constants.
 const (
-	// Base62Chars is the charset used for base62 encoding (0-9, A-Z, a-z).
-	Base62Chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
-	// Base36Chars is the charset used for base36 encoding (0-9, A-Z).
-	Base36Chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-	// IDLength is the standard length for IDs.
-	IDLength = 8
-	// MaxIDGenerationAttempts is the maximum number of attempts for unique ID generation.
+	Base62Chars             = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+	Base36Chars             = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+	IDLength                = 8
 	MaxIDGenerationAttempts = 10
 )
 
-// Validation constants.
 const (
 	MaxTitleLength     = 255
 	MaxNameLength      = 100
 	MaxGuestCount      = 4
-	MinEventDuration   = 1                  // hours
-	MaxEventDuration   = 4                  // hours
-	TimeLayoutHTMLForm = "2006-01-02T15:04" // Format used by <input type="datetime-local">
+	MinEventDuration   = 1
+	MaxEventDuration   = 4
+	TimeLayoutHTMLForm = "2006-01-02T15:04"
+	MaxVenueNameLength = 200
 )
 
-// RSVP Response values.
+const (
+	ErrMsgInvalidFormData        = "Invalid form data"
+	ActionUpdateEventDetails     = "update_event_details"
+	ErrMsgInvalidStartTimeFormat = "Invalid start time format"
+	ErrMsgEventUpdate            = "Failed to update event"
+	ActionRemoveVenue            = "remove_venue"
+	ErrMsgVenueRemoval           = "Failed to remove venue"
+	ActionShowAddVenue           = "show_add_venue"
+	ActionAddExistingVenue       = "add_existing_venue"
+	ErrMsgVenuePermission        = "You do not have permission to use the selected venue"
+	ErrMsgVenueAssociation       = "Failed to associate venue"
+	ActionCreateNewVenue         = "create_new_venue"
+	ErrMsgVenueCreation          = "Failed to create new venue"
+	ErrMsgUnknownAction          = "Unknown action"
+	ButtonCancelEdit             = "Cancel Edit"
+)
+
 const (
 	RSVPResponsePending      = "Pending"
 	RSVPResponseYesPrefix    = "Yes"
 	RSVPResponseNo           = "No"
-	RSVPResponseNoCommaZero  = "No,0" // Standardized 'No' response in DB
-	RSVPResponseYesBase      = "Yes," // Base for constructing Yes responses
+	RSVPResponseNoCommaZero  = "No,0"
+	RSVPResponseYesBase      = "Yes,"
 	RSVPResponseYesJustMe    = "Yes,0"
 	RSVPResponseYesPlusOne   = "Yes,1"
 	RSVPResponseYesPlusTwo   = "Yes,2"
@@ -96,19 +120,60 @@ const (
 	RSVPResponseYesPlusFour  = "Yes,4"
 )
 
-// Server configuration constants.
+const (
+	ButtonAddVenue        = "Add Venue"
+	ButtonCreateVenue     = "Create New Venue"
+	ButtonDeleteEvent     = "Delete Event"
+	ButtonUpdateEvent     = "Update Event"
+	ButtonDeleteVenue     = "Delete Venue"
+	ButtonUpdateVenue     = "Update Venue"
+	LabelAddVenue         = "Add Venue"
+	LabelDuration         = "Duration"
+	LabelEventDescription = "Event Description"
+	LabelEventTitle       = "Event Title"
+	LabelSelectVenue      = "Select Venue"
+	LabelStartTime        = "Start Time"
+	LabelVenueAddress     = "Venue Address"
+	LabelVenueCapacity    = "Venue Capacity"
+	LabelVenueDescription = "Venue Description"
+	LabelVenueDetails     = "Venue Details"
+	LabelVenueEmail       = "Venue Email"
+	LabelVenueFormTitle   = "Venue Information"
+	LabelVenueName        = "Venue Name"
+	LabelVenuePhone       = "Venue Phone"
+	LabelVenueWebsite     = "Venue Website"
+	OptionCreateNewVenue  = "-- Create New Venue --"
+	OptionNoVenue         = "-- No Venue --"
+)
+
 const (
 	ServerHTTPPort                = 8080
 	ServerHTTPAddress             = "0.0.0.0"
-	ServerGracefulShutdownTimeout = 10 * time.Second
+	ServerGracefulShutdownTimeout = 10 * 1e9
 )
 
-// Logging constants.
 const (
 	LogPrefixApp = "[APP] "
 )
 
-// Other constants.
 const (
 	RSVPCodeValidationRegexPattern = `^[0-9a-zA-Z]{1,8}$`
+)
+
+const (
+	ContextKeyUser = "user"
+	DatabaseError  = "database_error"
+)
+
+const (
+	ResourceLabelEventManager = "Events"
+	ResourceLabelVenueManager = "Venues"
+	AppTitle                  = "RSVP Manager"
+	LabelWelcome              = "Welcome,"
+	LabelSignOut              = "Sign Out"
+	LabelNotSignedIn          = "Not signed in"
+)
+
+const (
+	MapsSearchBaseURL = "https://www.google.com/maps/search/?api=1&query="
 )

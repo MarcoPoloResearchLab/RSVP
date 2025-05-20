@@ -1,33 +1,16 @@
 {{ define "partials/header" }}
-    {{/* Context is PageData { UserName, UserPicture, URLForRoot, URLForLogout } */}}
-    <nav class="navbar navbar-expand-lg navbar-custom">
-        <div class="container">
-            {{/* Use URLForRoot from context */}}
-            <a class="navbar-brand" href="{{ .URLForRoot }}">RSVP Manager</a>
-            {{ if .UserName }}
-                <div class="ms-auto">
-                    {{/* Use URLForLogout from context */}}
-                    <form action="{{ .URLForLogout }}" method="POST" class="d-flex align-items-center">
-                    <span class="navbar-text me-3">
-                        Welcome, {{ .UserName }}
-                    </span>
-                        <button type="submit" class="btn btn-sm btn-outline-secondary d-flex align-items-center">
-                            {{ if .UserPicture }}
-                                <img src="{{ .UserPicture }}" alt="{{ .UserName }}" class="rounded-circle"
-                                     style="width:24px; height:24px; margin-right:5px;">
-                            {{ end }}
-                            Sign out
-                        </button>
-                    </form>
-                </div>
-            {{ else }}
-                <div class="ms-auto">
-                    {{/* Cannot access constants.GoogleAuthPath here, need to pass if required */}}
-                    {{/* However, GAuss middleware should handle redirect, so login button might be redundant */}}
-                    {{/* <a href="{{ ??? }}" class="btn btn-sm btn-primary">Sign In</a> */}}
-                    <span class="navbar-text">Not signed in</span>
-                </div>
-            {{ end }}
+<nav class="navbar navbar-expand-lg navbar-custom">
+    <div class="container d-flex justify-content-between align-items-center">
+        <div class="d-flex">
+            <a class="navbar-brand px-3" href="{{ .URLForEventsManager }}">{{ .EventsManagerLabel }}</a>
+            <a class="navbar-brand px-3" href="{{ .URLForVenueManager }}">{{ .VenueManagerLabel }}</a>
         </div>
-    </nav>
+        <form action="{{ .URLForLogout }}" method="POST" class="d-inline">
+            <button type="submit" class="btn btn-outline-secondary btn-sm d-inline-flex align-items-center">
+                <img src="{{ .UserPicture }}" alt="User avatar" class="rounded-circle me-2" style="width:24px; height:24px;">
+                {{ .LabelSignOut }}
+            </button>
+        </form>
+    </div>
+</nav>
 {{ end }}
