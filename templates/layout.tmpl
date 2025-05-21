@@ -4,6 +4,7 @@
     <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
+        <link rel="icon" href="data:image/png;base64,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" type="image/png" sizes="32x32">
         {{/* Title block - View template will provide definition via {{define "title"}} */}}
         {{/* The context here is PageData.Data */}}
         <title>{{ block "title" .Data }}RSVP Manager{{ end }}</title>
@@ -333,7 +334,7 @@
         {{/* The context here is PageData.Data */}}
         {{ block "head" .Data }}{{ end }}
     </head>
-    <body> <!-- Removed flex classes, handled by body style -->
+    <body>
 
     <!-- Conditional Header -->
     {{/* The context here is PageData */}}
