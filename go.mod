@@ -1,4 +1,4 @@
-module github.com/temirov/RSVP
+module github.com/tyemirov/RSVP
 
 go 1.23.6
 
