@@ -4,7 +4,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/temirov/RSVP/pkg/config" // Import config for constant
+	"github.com/tyemirov/RSVP/pkg/config" // Import config for constant
 )
 
 // NewLogger creates and returns a new standard Go logger instance configured
