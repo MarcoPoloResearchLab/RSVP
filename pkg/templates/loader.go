@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/temirov/RSVP/pkg/config"
+	"github.com/tyemirov/RSVP/pkg/config"
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/renderer/html"
 )
