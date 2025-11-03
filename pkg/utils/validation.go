@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/temirov/RSVP/pkg/config"
+	"github.com/tyemirov/RSVP/pkg/config"
 )
 
 // Predefined validation error messages.
