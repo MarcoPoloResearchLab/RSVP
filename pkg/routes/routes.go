@@ -2,19 +2,20 @@
 package routes
 
 import (
-	"github.com/temirov/GAuss/pkg/constants"
-	"github.com/temirov/GAuss/pkg/gauss"
-	"github.com/temirov/GAuss/pkg/session"
-	"github.com/temirov/RSVP/pkg/config"
-	"github.com/temirov/RSVP/pkg/handlers/event"
-	"github.com/temirov/RSVP/pkg/handlers/response"
-	"github.com/temirov/RSVP/pkg/handlers/rsvp"
-	"github.com/temirov/RSVP/pkg/handlers/venue"
-	"github.com/temirov/RSVP/pkg/middleware"
-	"github.com/temirov/RSVP/pkg/utils"
 	"html/template"
 	"net/http"
 	"path/filepath"
+
+	"github.com/tyemirov/GAuss/pkg/constants"
+	"github.com/tyemirov/GAuss/pkg/gauss"
+	"github.com/tyemirov/GAuss/pkg/session"
+	"github.com/tyemirov/RSVP/pkg/config"
+	"github.com/tyemirov/RSVP/pkg/handlers/event"
+	"github.com/tyemirov/RSVP/pkg/handlers/response"
+	"github.com/tyemirov/RSVP/pkg/handlers/rsvp"
+	"github.com/tyemirov/RSVP/pkg/handlers/venue"
+	"github.com/tyemirov/RSVP/pkg/middleware"
+	"github.com/tyemirov/RSVP/pkg/utils"
 )
 
 // Routes holds shared resources and environment configuration.
