@@ -3,7 +3,7 @@ package handlers
 import (
 	"regexp"
 
-	"github.com/temirov/RSVP/pkg/config" // Import config for constant
+	"github.com/tyemirov/RSVP/pkg/config" // Import config for constant
 )
 
 // rsvpCodeValidationRegex is the compiled regular expression for validating RSVP codes.
