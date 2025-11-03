@@ -5,11 +5,11 @@ import (
 	"context"
 	"net/http"
 
-	gconstants "github.com/temirov/GAuss/pkg/constants"
-	"github.com/temirov/GAuss/pkg/session"
-	"github.com/temirov/RSVP/models"
-	"github.com/temirov/RSVP/pkg/config"
-	"github.com/temirov/RSVP/pkg/utils"
+	gconstants "github.com/tyemirov/GAuss/pkg/constants"
+	"github.com/tyemirov/GAuss/pkg/session"
+	"github.com/tyemirov/RSVP/models"
+	"github.com/tyemirov/RSVP/pkg/config"
+	"github.com/tyemirov/RSVP/pkg/utils"
 )
 
 // contextKey is a custom type used for keys in context.Context to avoid collisions.
