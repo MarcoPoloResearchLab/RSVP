@@ -11,6 +11,7 @@ on:
       - 'Dockerfile'
       - '**/*.html'
       - '**/*.tmpl'
+      - '.github/workflows/docker-build.yaml'
   workflow_dispatch:
 
 jobs:
