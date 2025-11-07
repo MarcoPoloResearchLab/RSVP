@@ -1,8 +1,8 @@
 package venue
 
 import (
-	"github.com/temirov/RSVP/models"
-	"github.com/temirov/RSVP/pkg/config"
+	"github.com/tyemirov/RSVP/models"
+	"github.com/tyemirov/RSVP/pkg/config"
 )
 
 type ListViewData struct {
