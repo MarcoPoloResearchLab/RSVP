@@ -6,11 +6,11 @@ import (
 	"net/http"
 	"strings"
 
-	gconstants "github.com/temirov/GAuss/pkg/constants"
-	"github.com/temirov/GAuss/pkg/session"
-	"github.com/temirov/RSVP/pkg/config"
-	"github.com/temirov/RSVP/pkg/templates"
-	"github.com/temirov/RSVP/pkg/utils"
+	gconstants "github.com/tyemirov/GAuss/pkg/constants"
+	"github.com/tyemirov/GAuss/pkg/session"
+	"github.com/tyemirov/RSVP/pkg/config"
+	"github.com/tyemirov/RSVP/pkg/templates"
+	"github.com/tyemirov/RSVP/pkg/utils"
 )
 
 // PageData is the top-level wrapper struct passed to the layout template execution.

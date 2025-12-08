@@ -8,7 +8,7 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/temirov/RSVP/pkg/config" // Import config for constants
+	"github.com/tyemirov/RSVP/pkg/config" // Import config for constants
 	"gorm.io/gorm"
 )
 
