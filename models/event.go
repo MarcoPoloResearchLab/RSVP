@@ -3,7 +3,7 @@ package models
 import (
 	"time"
 
-	"github.com/temirov/RSVP/pkg/config"
+	"github.com/tyemirov/RSVP/pkg/config"
 	"gorm.io/gorm"
 )
 

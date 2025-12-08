@@ -4,7 +4,7 @@ package event
 import (
 	"time"
 
-	"github.com/temirov/RSVP/models"
+	"github.com/tyemirov/RSVP/models"
 )
 
 // StatisticsData holds event statistics.

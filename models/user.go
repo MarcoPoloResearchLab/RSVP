@@ -6,7 +6,7 @@ import (
 	"errors"
 	"log" // Keep log for UpsertUser specific logging
 
-	"github.com/temirov/RSVP/pkg/config"
+	"github.com/tyemirov/RSVP/pkg/config"
 	"gorm.io/gorm"
 )
 

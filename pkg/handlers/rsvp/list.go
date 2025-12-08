@@ -6,11 +6,11 @@ import (
 
 	"gorm.io/gorm"
 
-	"github.com/temirov/RSVP/models"
-	"github.com/temirov/RSVP/pkg/config"
-	"github.com/temirov/RSVP/pkg/handlers"
-	"github.com/temirov/RSVP/pkg/middleware"
-	"github.com/temirov/RSVP/pkg/utils"
+	"github.com/tyemirov/RSVP/models"
+	"github.com/tyemirov/RSVP/pkg/config"
+	"github.com/tyemirov/RSVP/pkg/handlers"
+	"github.com/tyemirov/RSVP/pkg/middleware"
+	"github.com/tyemirov/RSVP/pkg/utils"
 )
 
 // rsvpListViewData is the structure passed as PageData.Data to the rsvps.tmpl template.
