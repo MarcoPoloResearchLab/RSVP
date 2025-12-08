@@ -12,12 +12,12 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/temirov/GAuss/pkg/session"
-	"github.com/temirov/RSVP/pkg/config"
-	"github.com/temirov/RSVP/pkg/routes"
-	"github.com/temirov/RSVP/pkg/services"
-	"github.com/temirov/RSVP/pkg/templates"
-	"github.com/temirov/RSVP/pkg/utils"
+	"github.com/tyemirov/GAuss/pkg/session"
+	"github.com/tyemirov/RSVP/pkg/config"
+	"github.com/tyemirov/RSVP/pkg/routes"
+	"github.com/tyemirov/RSVP/pkg/services"
+	"github.com/tyemirov/RSVP/pkg/templates"
+	"github.com/tyemirov/RSVP/pkg/utils"
 )
 
 // main is the primary function that sets up and runs the web server.

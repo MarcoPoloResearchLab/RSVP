@@ -1,8 +1,8 @@
 package models
 
 import (
-	"github.com/temirov/RSVP/pkg/config"
-	"github.com/temirov/RSVP/pkg/utils"
+	"github.com/tyemirov/RSVP/pkg/config"
+	"github.com/tyemirov/RSVP/pkg/utils"
 	"gorm.io/gorm"
 )
 
