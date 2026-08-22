@@ -1,0 +1,54 @@
+{{ define "title" }}Horizon{{ end }}
+
+{{ define "content" }}
+    <section aria-labelledby="horizon-title">
+        <header class="mb-4">
+            <h1 id="horizon-title">Horizon</h1>
+            <p class="text-muted mb-0">
+                <time datetime="{{ .Window.Start }}">{{ .Window.Start }}</time>
+                through
+                <time datetime="{{ .Window.End }}">{{ .Window.End }}</time>
+                ({{ .Window.Timezone }})
+            </p>
+        </header>
+        {{ range .Calendars }}
+            <section class="card" data-calendar-id="{{ .ID }}" data-calendar-visible="{{ .Visible }}">
+                <div class="card-header">
+                    <h2 class="h4 mb-0">{{ .Symbol }} {{ .Name }}</h2>
+                </div>
+                <div class="card-body">
+                    {{ if .Lanes }}
+                        <ol class="list-group list-group-flush">
+                            {{ range .Lanes }}
+                                <li class="list-group-item" data-lane-id="{{ .ID }}">
+                                    <h3 class="h5">{{ .Title }}</h3>
+                                    <p>
+                                        <time datetime="{{ .StartsAt }}">{{ .StartsAt }}</time>
+                                        {{ if .EndsAt }}through <time datetime="{{ .EndsAt }}">{{ .EndsAt }}</time>{{ end }}
+                                    </p>
+                                    {{ if .Markers }}
+                                        <ul>
+                                            {{ range .Markers }}
+                                                <li data-marker-id="{{ .ID }}" data-marker-type="{{ .Type }}">
+                                                    {{ .Title }} ({{ .Type }})
+                                                </li>
+                                            {{ end }}
+                                        </ul>
+                                    {{ else }}
+                                        <p>No markers occur in this window.</p>
+                                    {{ end }}
+                                </li>
+                            {{ end }}
+                        </ol>
+                    {{ else }}
+                        <p>No lanes intersect this window.</p>
+                    {{ end }}
+                </div>
+            </section>
+        {{ else }}
+            <p>No calendars are available.</p>
+        {{ end }}
+    </section>
+{{ end }}
+
+{{ template "layout" . }}
