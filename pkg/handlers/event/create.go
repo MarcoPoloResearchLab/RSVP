@@ -33,6 +33,7 @@ func CreateHandler(applicationContext *config.ApplicationContext) http.HandlerFu
 		eventTitle := httpRequest.FormValue(config.TitleParam)
 		eventDescription := httpRequest.FormValue(config.DescriptionParam)
 		eventStartTimeString := httpRequest.FormValue(config.StartTimeParam)
+		timezoneString := httpRequest.FormValue(config.TimezoneParam)
 		durationHoursString := httpRequest.FormValue(config.DurationParam)
 		selectedVenueIdentifierString := httpRequest.FormValue(config.VenueIDParam)
 		newVenueNameString := httpRequest.FormValue(createVenuePrefix + config.VenueNameParam)
@@ -47,7 +48,12 @@ func CreateHandler(applicationContext *config.ApplicationContext) http.HandlerFu
 			baseHttpHandler.HandleError(httpResponseWriter, validationError, utils.ValidationError, validationError.Error())
 			return
 		}
-		parsedStartTime, timeParseError := time.Parse(config.TimeLayoutHTMLForm, eventStartTimeString)
+		timezone, timezoneError := models.NewTimezone(timezoneString)
+		if timezoneError != nil {
+			baseHttpHandler.HandleError(httpResponseWriter, timezoneError, utils.ValidationError, timezoneError.Error())
+			return
+		}
+		parsedStartTime, timeParseError := models.ParseLocalTime(eventStartTimeString, config.TimeLayoutHTMLForm, timezone)
 		if timeParseError != nil {
 			baseHttpHandler.HandleError(httpResponseWriter, timeParseError, utils.ValidationError, utils.ErrMsgInvalidStartTimeFormat)
 			return
@@ -58,16 +64,9 @@ func CreateHandler(applicationContext *config.ApplicationContext) http.HandlerFu
 		}
 
 		calculatedEndTime := parsedStartTime.Add(time.Duration(parsedDurationHours) * time.Hour)
-		currentUserIdentifier := httpRequest.Context().Value(middleware.ContextKeyUser).(*models.User).ID
-
-		newEventRecord := models.Event{
-			Title:       eventTitle,
-			Description: eventDescription,
-			StartTime:   parsedStartTime,
-			EndTime:     calculatedEndTime,
-			UserID:      currentUserIdentifier,
-			VenueID:     nil,
-		}
+		currentUser := httpRequest.Context().Value(middleware.ContextKeyUser).(*models.User)
+		currentUserIdentifier := currentUser.ID
+		requestReferenceTime := time.Now().UTC()
 
 		transactionError := applicationContext.Database.Transaction(func(activeTransaction *gorm.DB) error {
 			var venueIdentifierToAssociate *string
@@ -90,8 +89,17 @@ func CreateHandler(applicationContext *config.ApplicationContext) http.HandlerFu
 				venueIdentifierToAssociate = &selectedVenueIdentifierString
 			}
 
-			newEventRecord.VenueID = venueIdentifierToAssociate
-			if err := newEventRecord.Create(activeTransaction); err != nil {
+			if _, err := models.CreateIndependentIntervalEvent(
+				activeTransaction,
+				currentUser,
+				eventTitle,
+				eventDescription,
+				venueIdentifierToAssociate,
+				parsedStartTime,
+				calculatedEndTime,
+				requestReferenceTime,
+				timezone,
+			); err != nil {
 				return err
 			}
 			return nil
@@ -140,7 +148,9 @@ func venueFromForm(httpRequest *http.Request, prefix string) models.Venue {
 
 func isModelValidationError(err error) error {
 	if errors.Is(err, utils.ErrVenueNameRequired) || errors.Is(err, utils.ErrVenueNameTooLong) ||
-		errors.Is(err, utils.ErrTitleRequired) || errors.Is(err, utils.ErrTitleTooLong) {
+		errors.Is(err, utils.ErrTitleRequired) || errors.Is(err, utils.ErrTitleTooLong) ||
+		errors.Is(err, models.ErrLaneEndInvalid) || errors.Is(err, models.ErrMarkerOutsideLane) ||
+		errors.Is(err, models.ErrTimezoneRequired) || errors.Is(err, models.ErrTimezoneInvalid) {
 		return err
 	}
 	return nil

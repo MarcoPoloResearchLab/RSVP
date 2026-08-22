@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"time"
 
 	"gorm.io/gorm"
 
@@ -19,6 +20,8 @@ import (
 type ViewData struct {
 	RSVP                 models.RSVP
 	Event                models.Event
+	EventStartTime       time.Time
+	EventEndTime         time.Time
 	URLForResponseSubmit string
 	ParamRSVPID          string
 	ParamMethodOverride  string
@@ -82,10 +85,17 @@ func Handler(applicationContext *config.ApplicationContext) http.HandlerFunc {
 		switch httpRequest.Method {
 		case http.MethodGet:
 			submitURL := utils.BuildRelativeURL(config.WebResponse, map[string]string{config.RSVPIDParam: rsvpCode})
+			eventStartTime, eventEndTime, boundsError := eventRecord.LocalMarkerBounds()
+			if boundsError != nil {
+				baseHandler.HandleError(httpResponseWriter, boundsError, utils.ServerError, "Could not read the event time.")
+				return
+			}
 
 			viewData := ViewData{
 				RSVP:                 rsvpRecord,
 				Event:                eventRecord,
+				EventStartTime:       eventStartTime,
+				EventEndTime:         eventEndTime,
 				URLForResponseSubmit: submitURL,
 				ParamRSVPID:          config.RSVPIDParam,
 				ParamMethodOverride:  config.MethodOverrideParam,

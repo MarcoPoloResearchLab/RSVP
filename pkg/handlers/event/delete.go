@@ -39,9 +39,28 @@ func DeleteHandler(applicationContext *config.ApplicationContext) http.HandlerFu
 			}
 			return
 		}
-		if !baseHttpHandler.VerifyResourceOwnership(httpResponseWriter, httpRequest, eventRecord.UserID, currentUser.ID) {
+		eventOwnerID, ownerError := eventRecord.OwnerID(tx)
+		if ownerError != nil {
+			tx.Rollback()
+			baseHttpHandler.HandleError(httpResponseWriter, ownerError, utils.DatabaseError, "Error retrieving event ownership.")
+			return
+		}
+		if !baseHttpHandler.VerifyResourceOwnership(httpResponseWriter, httpRequest, eventOwnerID, currentUser.ID) {
 			tx.Rollback()
 			return
+		}
+		if eventRecord.RelationType == models.EventRelationIndependent {
+			hasDependents, dependentsError := eventRecord.HasDependentEvents(tx)
+			if dependentsError != nil {
+				tx.Rollback()
+				baseHttpHandler.HandleError(httpResponseWriter, dependentsError, utils.DatabaseError, "Failed to inspect dependent events.")
+				return
+			}
+			if hasDependents {
+				tx.Rollback()
+				baseHttpHandler.HandleError(httpResponseWriter, models.ErrEventHasDependents, utils.ConflictError, "Delete dependent events before deleting their anchor event.")
+				return
+			}
 		}
 		if deleteRSVPsErr := tx.Where("event_id = ?", targetEventID).Delete(&models.RSVP{}).Error; deleteRSVPsErr != nil {
 			tx.Rollback()
@@ -51,6 +70,17 @@ func DeleteHandler(applicationContext *config.ApplicationContext) http.HandlerFu
 		if deleteEventErr := tx.Delete(&eventRecord).Error; deleteEventErr != nil {
 			tx.Rollback()
 			baseHttpHandler.HandleError(httpResponseWriter, deleteEventErr, utils.DatabaseError, "Failed to delete the event.")
+			return
+		}
+		if eventRecord.RelationType == models.EventRelationIndependent {
+			if deleteLaneError := tx.Delete(&models.Lane{}, "id = ?", eventRecord.LaneID).Error; deleteLaneError != nil {
+				tx.Rollback()
+				baseHttpHandler.HandleError(httpResponseWriter, deleteLaneError, utils.DatabaseError, "Failed to delete the event lane.")
+				return
+			}
+		} else if laneBoundsError := models.RecalculateFiniteLaneEnd(tx, eventRecord.LaneID); laneBoundsError != nil {
+			tx.Rollback()
+			baseHttpHandler.HandleError(httpResponseWriter, laneBoundsError, utils.DatabaseError, "Failed to update the event lane.")
 			return
 		}
 		if commitErr := tx.Commit().Error; commitErr != nil {

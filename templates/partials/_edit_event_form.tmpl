@@ -36,7 +36,7 @@
                            id="editStartTimeInput"
                            name="{{ .ParamNameStartTime }}"
                            required
-                           value="{{ .SelectedItemForEdit.Event.StartTime.Format `2006-01-02T15:04` }}">
+                           value="{{ .FormattedStartTime }}">
                 </div>
                 <div class="col-md-6">
                     <label for="editDurationSelect" class="form-label">{{ .LabelDuration }}</label>
@@ -50,6 +50,17 @@
                         <option value="4" {{ if eq .CurrentDuration "4" }}selected{{ end }}>4 hours</option>
                     </select>
                 </div>
+            </div>
+
+            <div class="mb-3">
+                <label for="editTimezoneInput" class="form-label">{{ .LabelTimezone }}</label>
+                <input type="text"
+                       class="form-control client-timezone"
+                       id="editTimezoneInput"
+                       name="{{ .ParamNameTimezone }}"
+                       autocomplete="off"
+                       required
+                       value="{{ .SelectedItemForEdit.Event.Timezone }}">
             </div>
 
             <div class="mb-3">

@@ -8,10 +8,10 @@
             <h4 class="card-subtitle h6 mb-4 text-muted">Event: {{ $viewData.Event.Title }}</h4>
 
             <div class="event-details text-start mb-4 pb-4 border-bottom">
-                <p class="mb-1"><strong>Date:</strong> {{ $viewData.Event.StartTime.Format "Monday, January 2, 2006" }}
+                <p class="mb-1"><strong>Date:</strong> {{ $viewData.EventStartTime.Format "Monday, January 2, 2006" }}
                 </p>
-                <p class="mb-1"><strong>Time:</strong> {{ $viewData.Event.StartTime.Format "3:04 PM" }}
-                    - {{ $viewData.Event.EndTime.Format "3:04 PM" }}</p>
+                <p class="mb-1"><strong>Time:</strong> {{ $viewData.EventStartTime.Format "3:04 PM" }}
+                    - {{ $viewData.EventEndTime.Format "3:04 PM" }}</p>
                 {{ if $viewData.Event.Description }}
                     <p class="mt-2 mb-0 fst-italic">{{ $viewData.Event.Description | renderMarkdown }}</p>
                 {{ end }}

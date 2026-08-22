@@ -50,6 +50,7 @@ type ListViewData struct {
 	ParamNameTitle            string
 	ParamNameDescription      string
 	ParamNameStartTime        string
+	ParamNameTimezone         string
 	ParamNameDuration         string
 	ParamNameMethodOverride   string
 	ParamNameVenueName        string
@@ -64,6 +65,7 @@ type ListViewData struct {
 	LabelEventTitle       string
 	LabelEventDescription string
 	LabelStartTime        string
+	LabelTimezone         string
 	LabelDuration         string
 	LabelSelectVenue      string
 	LabelAddVenue         string

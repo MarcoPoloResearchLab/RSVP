@@ -36,13 +36,18 @@ func ListEventsHandler(applicationContext *config.ApplicationContext) http.Handl
 			var eventToEdit models.Event
 			err = eventToEdit.FindByIDAndOwner(applicationContext.Database, requestedEventIDForEdit, currentUser.ID)
 			if err == nil {
+				durationHours, durationError := eventToEdit.IntervalDurationHours()
+				if durationError != nil {
+					baseHttpHandler.HandleError(w, durationError, utils.ServerError, "The event time cannot be edited.")
+					return
+				}
 				venueID := ""
 				if eventToEdit.VenueID != nil {
 					venueID = *eventToEdit.VenueID
 				}
 				selectedEventForEdit = &EnhancedEventData{
 					Event:                     eventToEdit,
-					CalculatedDurationInHours: float64(eventToEdit.DurationHours()),
+					CalculatedDurationInHours: float64(durationHours),
 					SelectedVenueID:           venueID,
 				}
 			} else {
@@ -62,6 +67,11 @@ func ListEventsHandler(applicationContext *config.ApplicationContext) http.Handl
 
 		eventStatistics := make([]StatisticsData, len(eventsOwnedByUser))
 		for i, ev := range eventsOwnedByUser {
+			localStart, localEnd, boundsError := ev.LocalMarkerBounds()
+			if boundsError != nil {
+				baseHttpHandler.HandleError(w, boundsError, utils.ServerError, "Failed to read an event time.")
+				return
+			}
 			total := len(ev.RSVPs)
 			answered := 0
 			for _, rsvp := range ev.RSVPs {
@@ -77,8 +87,8 @@ func ListEventsHandler(applicationContext *config.ApplicationContext) http.Handl
 			eventStatistics[i] = StatisticsData{
 				ID:                ev.ID,
 				Title:             ev.Title,
-				StartTime:         ev.StartTime,
-				EndTime:           ev.EndTime,
+				StartTime:         localStart,
+				EndTime:           localEnd,
 				VenueName:         venueName,
 				RSVPCount:         total,
 				RSVPAnsweredCount: answered,
@@ -87,8 +97,18 @@ func ListEventsHandler(applicationContext *config.ApplicationContext) http.Handl
 
 		var formattedStartTime, currentDuration string
 		if selectedEventForEdit != nil {
-			formattedStartTime = selectedEventForEdit.Event.StartTime.Format(config.TimeLayoutHTMLForm)
-			currentDuration = strconv.Itoa(selectedEventForEdit.Event.DurationHours())
+			localStart, _, boundsError := selectedEventForEdit.Event.LocalMarkerBounds()
+			if boundsError != nil {
+				baseHttpHandler.HandleError(w, boundsError, utils.ServerError, "Failed to read the event time.")
+				return
+			}
+			durationHours, durationError := selectedEventForEdit.Event.IntervalDurationHours()
+			if durationError != nil {
+				baseHttpHandler.HandleError(w, durationError, utils.ServerError, "Failed to read the event duration.")
+				return
+			}
+			formattedStartTime = localStart.Format(config.TimeLayoutHTMLForm)
+			currentDuration = strconv.Itoa(durationHours)
 		}
 
 		listViewData := ListViewData{
@@ -114,6 +134,7 @@ func ListEventsHandler(applicationContext *config.ApplicationContext) http.Handl
 			ParamNameTitle:            config.TitleParam,
 			ParamNameDescription:      config.DescriptionParam,
 			ParamNameStartTime:        config.StartTimeParam,
+			ParamNameTimezone:         config.TimezoneParam,
 			ParamNameDuration:         config.DurationParam,
 			ParamNameMethodOverride:   config.MethodOverrideParam,
 			ParamNameVenueName:        config.VenueNameParam,
@@ -128,6 +149,7 @@ func ListEventsHandler(applicationContext *config.ApplicationContext) http.Handl
 			LabelEventTitle:       config.LabelEventTitle,
 			LabelEventDescription: config.LabelEventDescription,
 			LabelStartTime:        config.LabelStartTime,
+			LabelTimezone:         config.LabelTimezone,
 			LabelDuration:         config.LabelDuration,
 			LabelSelectVenue:      config.LabelSelectVenue,
 			LabelAddVenue:         config.LabelAddVenue,

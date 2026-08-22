@@ -28,7 +28,7 @@ func main() {
 	// Initialize session management using the secret key from environment configuration.
 	session.NewSession([]byte(environmentConfiguration.SessionSecret))
 
-	// Initialize the SQLite database connection and run auto-migrations for models.
+	// Open the canonical SQLite database or initialize its fresh schema.
 	databaseConnection := services.InitDatabase(environmentConfiguration.Database.Name, applicationLogger)
 
 	// Pre-parse all application template sets (layout, partials, views) exactly once at startup.

@@ -81,7 +81,7 @@ func FindVenuesByOwner(databaseConnection *gorm.DB, ownerID string) ([]Venue, er
 }
 
 func (venue *Venue) Delete(db *gorm.DB) error {
-	if err := db.Model(&Event{}).Where("venue_id = ?", venue.ID).Update("venue_id", gorm.Expr("NULL")).Error; err != nil {
+	if err := db.Model(&Event{}).Where("venue_id = ?", venue.ID).UpdateColumn("venue_id", gorm.Expr("NULL")).Error; err != nil {
 		utils.NewLogger().Printf("WARN: Failed to disassociate events from venue %s during deletion: %v", venue.ID, err)
 	}
 	if err := db.Delete(venue).Error; err != nil {

@@ -38,6 +38,8 @@ const (
 	EventID = "EVT00001"
 	// RSVPID is the deterministic public code for the default fixture RSVP.
 	RSVPID = "RSVP0001"
+	// TimezoneName is the explicit IANA timezone used by temporal fixtures.
+	TimezoneName = "America/Los_Angeles"
 )
 
 var (
@@ -137,17 +139,51 @@ func (fixture *Fixture) CreateVenue(identifier string, ownerIdentifier string) m
 // CreateEvent inserts a deterministic event fixture for an owner.
 func (fixture *Fixture) CreateEvent(identifier string, ownerIdentifier string, venueIdentifier *string) models.Event {
 	fixture.T.Helper()
-	eventRecord := models.Event{
-		BaseModel:   models.BaseModel{ID: identifier},
-		Title:       "Event " + identifier,
-		StartTime:   fixedStartTime,
-		EndTime:     fixedStartTime.Add(2 * time.Hour),
-		UserID:      ownerIdentifier,
-		VenueID:     venueIdentifier,
-		Description: "A deterministic event fixture.",
-	}
-	if createError := eventRecord.Create(fixture.Database); createError != nil {
-		fixture.T.Fatalf("create event %s: %v", identifier, createError)
+	var eventRecord models.Event
+	transactionError := fixture.Database.Transaction(func(transaction *gorm.DB) error {
+		var owner models.User
+		if findError := owner.FindByID(transaction, ownerIdentifier); findError != nil {
+			return findError
+		}
+		timezone, timezoneError := models.NewTimezone(TimezoneName)
+		if timezoneError != nil {
+			return timezoneError
+		}
+		if confirmationError := owner.ConfirmTimezone(transaction, timezone); confirmationError != nil {
+			return confirmationError
+		}
+		calendar, calendarError := models.EnsureDefaultCalendar(transaction, ownerIdentifier)
+		if calendarError != nil {
+			return calendarError
+		}
+		displayOrder, orderError := models.NextLaneDisplayOrder(transaction, calendar.ID)
+		if orderError != nil {
+			return orderError
+		}
+		lane, laneError := models.NewFiniteLane(calendar.ID, "Event "+identifier, fixedStartTime.Add(-24*time.Hour), fixedStartTime.Add(2*time.Hour), displayOrder)
+		if laneError != nil {
+			return laneError
+		}
+		if createError := transaction.Create(lane).Error; createError != nil {
+			return createError
+		}
+		eventTime, eventTimeError := models.NewIntervalEventTime(fixedStartTime, fixedStartTime.Add(2*time.Hour), timezone)
+		if eventTimeError != nil {
+			return eventTimeError
+		}
+		newEvent, eventError := models.NewEvent(lane.ID, "Event "+identifier, "A deterministic event fixture.", venueIdentifier, models.IndependentEventRelation(), eventTime)
+		if eventError != nil {
+			return eventError
+		}
+		newEvent.BaseModel.ID = identifier
+		if createError := newEvent.Create(transaction); createError != nil {
+			return createError
+		}
+		eventRecord = *newEvent
+		return nil
+	})
+	if transactionError != nil {
+		fixture.T.Fatalf("create event %s: %v", identifier, transactionError)
 	}
 	return eventRecord
 }

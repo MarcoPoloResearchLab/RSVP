@@ -81,7 +81,7 @@ func TestQRCodePageUsesCanonicalPublicResponseURL(testingContext *testing.T) {
 	expectedPublicURL := testsupport.ApplicationBaseURL + "response/?" + config.RSVPIDParam + "=" + rsvpRecord.ID
 	responseBody := responseRecorder.Body.String()
 	if !strings.Contains(responseBody, expectedPublicURL) {
-		testingContext.Fatalf("QR page does not contain public URL %q", expectedPublicURL)
+		testingContext.Fatalf("QR page does not contain public URL %q; body = %s", expectedPublicURL, responseBody)
 	}
 	if decodedPayload := decodeQRCodePayload(testingContext, responseBody); decodedPayload != expectedPublicURL {
 		testingContext.Fatalf("QR payload = %q, want %q", decodedPayload, expectedPublicURL)

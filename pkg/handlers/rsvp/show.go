@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/skip2/go-qrcode"
 	"gorm.io/gorm"
@@ -19,6 +20,8 @@ import (
 type ShowViewData struct {
 	RSVP           models.RSVP
 	Event          models.Event
+	EventStartTime time.Time
+	EventEndTime   time.Time
 	QRCode         string
 	PublicURL      string
 	URLForRSVPList string
@@ -70,7 +73,7 @@ func ShowHandler(applicationContext *config.ApplicationContext) http.HandlerFunc
 			return
 		}
 
-		if !baseHandler.VerifyResourceOwnership(httpResponseWriter, httpRequest, eventRecord.UserID, currentUser.ID) {
+		if !verifyEventOwnership(&baseHandler, httpResponseWriter, httpRequest, applicationContext.Database, &eventRecord, currentUser.ID) {
 			return
 		}
 
@@ -94,10 +97,17 @@ func ShowHandler(applicationContext *config.ApplicationContext) http.HandlerFunc
 		qrCodeBase64 := base64.StdEncoding.EncodeToString(qrCodePNG)
 
 		rsvpListURL := utils.BuildRelativeURL(config.WebRSVPs, map[string]string{config.EventIDParam: eventRecord.ID})
+		eventStartTime, eventEndTime, boundsError := eventRecord.LocalMarkerBounds()
+		if boundsError != nil {
+			baseHandler.HandleError(httpResponseWriter, boundsError, utils.ServerError, "Could not read the event time.")
+			return
+		}
 
 		viewData := ShowViewData{
 			RSVP:           rsvpRecord,
 			Event:          eventRecord,
+			EventStartTime: eventStartTime,
+			EventEndTime:   eventEndTime,
 			QRCode:         qrCodeBase64,
 			PublicURL:      publicURLString,
 			URLForRSVPList: rsvpListURL,

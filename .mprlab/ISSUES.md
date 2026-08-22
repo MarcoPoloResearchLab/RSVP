@@ -12,7 +12,7 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 - [x] [I001] (P0) Add RSVP contract tests
   Goal:
-  This issue adds test evidence for current RSVP behavior before the temporal data migration.
+  This issue adds test evidence for current RSVP behavior before the temporal schema replacement.
 
   Requirements:
   - Add isolated SQLite test fixtures that do not share state.
@@ -33,14 +33,15 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Run `go test -count=1 ./...`.
   - Confirm that named tests verify each specified behavior.
 
-- [ ] [I002] (P0) {P001,I001} Migrate events to calendar lanes
+- [x] [I002] (P0) {P001,I001} Replace events with calendar lanes
   Goal:
   This issue replaces the event-only temporal schema with the approved calendar and lane schema.
 
   Requirements:
   - Add calendar, lane, event series, probe, and attention policy domain types.
   - Add one required organizer timezone with an IANA timezone name.
-  - For a new organizer, require timezone confirmation before the first temporal write.
+  - The client must supply each timezone default.
+  - For a new organizer, store the client timezone with the first temporal write.
   - Represent an open lane with no end time.
   - Add a required `lane_id` field to each event.
   - Start each lane when RSVP starts to track its temporal subject.
@@ -53,33 +54,28 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Put each probe on the lane for the related attention policy.
   - Enforce ownership through the calendar and lane relationships.
   - Remove the duplicate event owner field from the canonical schema.
-  - Create one `RSVP Events` calendar for each current user.
-  - Create one finite lane for each current event.
-  - Start each migrated lane at the earlier event creation time or event start time.
-  - End each migrated lane at the event end time.
-  - Preserve event identifiers, RSVP codes, responses, and venue relationships.
-  - Before the migration starts, require one explicit legacy timezone.
-  - Assign the legacy timezone to each current organizer and event.
-  - Interpret each legacy timestamp as a local wall time in the legacy timezone.
-  - Reject each invalid or ambiguous daylight time during migration.
-  - Implement the migration as an explicit one-time operation.
-  - After the target database migration completes, remove embedded startup migrations.
-  - After the operation completes, remove the one-time migration code.
+  - Create one `RSVP Events` calendar with the first temporal write.
+  - Create one finite lane for each independent event.
+  - End each finite event lane at the event end time.
+  - Initialize only the complete canonical schema in an empty database.
+  - Reject an incomplete or event-only database at startup.
+  - Keep the runtime free of schema conversion and data repair paths.
 
   Deliverables:
   - Add the canonical GORM models and database constraints.
-  - Add a tested one-time migration command and operator runbook.
+  - Add tested canonical schema initialization and validation.
   - Update all ownership queries for the canonical relationship chain.
 
   Validation:
-  - Migrate a fixture database that contains events, venues, and RSVP responses.
-  - After migration, compare all preserved identifiers and relationships.
+  - Initialize a fresh fixture database with the complete canonical schema.
+  - Reject an event-only fixture database.
   - Confirm that invalid open and finite lane states fail.
   - Confirm that an event without a lane fails.
   - Confirm that two independent events in one calendar use different lanes.
   - Confirm that dependent events use the anchor event lane.
   - Confirm that all occurrences of one event series use one lane.
-  - After you remove the migration code, run `make ci`.
+  - Make sure that an absent client timezone stops the temporal write.
+  - Run `make ci`.
 
 - [ ] [I003] (P1) {F004,F006,F007,F009} Complete time horizon acceptance
   Goal:
@@ -87,7 +83,7 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
   Requirements:
   - Create representative data for independent events, event series, dependency chains, open lanes, and calendars.
-  - Rehearse the one-time migration with a production-like SQLite fixture.
+  - Initialize a production-like SQLite fixture with the canonical schema.
   - Do a test of the horizon view on desktop and mobile browser sizes.
   - Verify the current QR code and public RSVP response flows.
   - Verify initial and incremental Google Calendar synchronization.
@@ -98,16 +94,16 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
   Deliverables:
   - Add one deterministic end-to-end acceptance suite.
-  - Add one migration rehearsal record with row-count and relationship checks.
+  - Add one schema initialization record with relationship checks.
   - Add current technical documentation for the complete capability.
 
   Validation:
   - Run `make ci`.
   - Run the complete browser test target.
   - Run the adapter tests with the deterministic test server.
-  - Run the migration rehearsal from a clean database copy.
+  - Run schema initialization with an empty database.
   - Run the documentation language checker on each changed technical document.
-  - Confirm that the repository contains no legacy temporal schema or compatibility path.
+  - Make sure that the repository contains only the canonical temporal schema and runtime paths.
 
 ## Maintenance
 
@@ -641,7 +637,7 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 - [x] [P001] (P0) Specify the time horizon contract
   Goal:
-  The time horizon needs one approved contract for data, interfaces, migration, and user behavior.
+  The time horizon needs one approved contract for data, interfaces, schema initialization, and user behavior.
   This issue gives the required decisions and does not authorize implementation.
 
   Requirements:
@@ -655,14 +651,14 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Define open, finite, active, and resolved lane states.
   - Define point, interval, all-day, and timezone rules for markers.
   - Define ownership without duplicate owner fields.
-  - Record the required operator decision for the legacy event timezone.
+  - Define client responsibility for timezone defaults.
   - Define the default horizon window and maximum window size.
   - Define calendar visibility, lane order, and empty-lane behavior.
   - Define resource routes and response schemas for new interfaces.
   - Define Google Calendar authorization, source mapping, and synchronization ownership.
   - Define derived marker recalculation rules.
   - Define ingestion draft confirmation rules.
-  - Define the migration and production cutover sequence.
+  - Define the schema initialization and production cutover sequence.
 
   Deliverables:
   - Add `ARCHITECTURE.md` as the approved time horizon architecture document.
