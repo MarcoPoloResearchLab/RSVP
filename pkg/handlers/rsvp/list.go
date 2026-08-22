@@ -70,7 +70,7 @@ func ListHandler(applicationContext *config.ApplicationContext) http.HandlerFunc
 				return
 			}
 
-			if !baseHandler.VerifyResourceOwnership(httpResponseWriter, httpRequest, parentEvent.UserID, currentUser.ID) {
+			if !verifyEventOwnership(&baseHandler, httpResponseWriter, httpRequest, applicationContext.Database, &parentEvent, currentUser.ID) {
 				return
 			}
 
@@ -95,7 +95,7 @@ func ListHandler(applicationContext *config.ApplicationContext) http.HandlerFunc
 				return
 			}
 
-			if !baseHandler.VerifyResourceOwnership(httpResponseWriter, httpRequest, parentEvent.UserID, currentUser.ID) {
+			if !verifyEventOwnership(&baseHandler, httpResponseWriter, httpRequest, applicationContext.Database, &parentEvent, currentUser.ID) {
 				return
 			}
 			selectedRsvpForEdit = nil

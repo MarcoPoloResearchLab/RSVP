@@ -115,6 +115,7 @@ const (
 	NotFoundError
 	ServerError
 	ForbiddenError
+	ConflictError
 	MethodNotAllowedError
 )
 
@@ -150,6 +151,8 @@ func HandleError(
 		statusCode = http.StatusUnauthorized
 	case ForbiddenError:
 		statusCode = http.StatusForbidden
+	case ConflictError:
+		statusCode = http.StatusConflict
 	case NotFoundError:
 		statusCode = http.StatusNotFound
 	case MethodNotAllowedError:

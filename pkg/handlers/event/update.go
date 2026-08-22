@@ -56,15 +56,46 @@ func UpdateEventHandler(applicationContext *config.ApplicationContext) http.Hand
 			return
 		}
 
-		parsedStartTime, startTimeParseError := time.Parse(config.TimeLayoutHTMLForm, httpRequest.FormValue(config.StartTimeParam))
+		timezone, timezoneError := models.NewTimezone(httpRequest.FormValue(config.TimezoneParam))
+		if timezoneError != nil {
+			activeTransaction.Rollback()
+			baseHttpHandler.HandleError(httpResponseWriter, timezoneError, utils.ValidationError, timezoneError.Error())
+			return
+		}
+
+		parsedStartTime, startTimeParseError := models.ParseLocalTime(httpRequest.FormValue(config.StartTimeParam), config.TimeLayoutHTMLForm, timezone)
 		if startTimeParseError != nil {
 			activeTransaction.Rollback()
 			baseHttpHandler.HandleError(httpResponseWriter, startTimeParseError, utils.ValidationError, config.ErrMsgInvalidStartTimeFormat)
 			return
 		}
 
-		existingEventRecord.StartTime = parsedStartTime
-		existingEventRecord.EndTime = parsedStartTime.Add(time.Duration(parsedDurationHours) * time.Hour)
+		parsedEndTime := parsedStartTime.Add(time.Duration(parsedDurationHours) * time.Hour)
+		if timeValidationError := existingEventRecord.SetIntervalTime(parsedStartTime, parsedEndTime, timezone); timeValidationError != nil {
+			activeTransaction.Rollback()
+			baseHttpHandler.HandleError(httpResponseWriter, timeValidationError, utils.ValidationError, timeValidationError.Error())
+			return
+		}
+
+		var eventLane models.Lane
+		if laneFindError := activeTransaction.First(&eventLane, "id = ?", existingEventRecord.LaneID).Error; laneFindError != nil {
+			activeTransaction.Rollback()
+			baseHttpHandler.HandleError(httpResponseWriter, laneFindError, utils.DatabaseError, config.ErrMsgEventUpdate)
+			return
+		}
+		if parsedStartTime.Before(eventLane.StartsAt) {
+			activeTransaction.Rollback()
+			baseHttpHandler.HandleError(httpResponseWriter, models.ErrMarkerOutsideLane, utils.ValidationError, models.ErrMarkerOutsideLane.Error())
+			return
+		}
+		if eventLane.EndsAt != nil && parsedEndTime.After(*eventLane.EndsAt) {
+			eventLane.EndsAt = &parsedEndTime
+			if laneUpdateError := activeTransaction.Save(&eventLane).Error; laneUpdateError != nil {
+				activeTransaction.Rollback()
+				baseHttpHandler.HandleError(httpResponseWriter, laneUpdateError, utils.DatabaseError, config.ErrMsgEventUpdate)
+				return
+			}
+		}
 
 		if _, venueParameterPresent := httpRequest.Form[config.VenueIDParam]; venueParameterPresent {
 			selectedVenueIdentifierString := httpRequest.FormValue(config.VenueIDParam)
@@ -88,8 +119,25 @@ func UpdateEventHandler(applicationContext *config.ApplicationContext) http.Hand
 		updateEventError := existingEventRecord.Update(activeTransaction)
 		if updateEventError != nil {
 			activeTransaction.Rollback()
-			baseHttpHandler.HandleError(httpResponseWriter, updateEventError, utils.DatabaseError, config.ErrMsgEventUpdate)
+			if validationError := isModelValidationError(updateEventError); validationError != nil {
+				baseHttpHandler.HandleError(httpResponseWriter, validationError, utils.ValidationError, validationError.Error())
+			} else {
+				baseHttpHandler.HandleError(httpResponseWriter, updateEventError, utils.DatabaseError, config.ErrMsgEventUpdate)
+			}
 			return
+		}
+		if laneBoundsError := models.RecalculateFiniteLaneEnd(activeTransaction, existingEventRecord.LaneID); laneBoundsError != nil {
+			activeTransaction.Rollback()
+			baseHttpHandler.HandleError(httpResponseWriter, laneBoundsError, utils.DatabaseError, config.ErrMsgEventUpdate)
+			return
+		}
+		if existingEventRecord.RelationType == models.EventRelationIndependent {
+			eventLane.Title = existingEventRecord.Title
+			if laneTitleError := activeTransaction.Model(&eventLane).Update("title", eventLane.Title).Error; laneTitleError != nil {
+				activeTransaction.Rollback()
+				baseHttpHandler.HandleError(httpResponseWriter, laneTitleError, utils.DatabaseError, config.ErrMsgEventUpdate)
+				return
+			}
 		}
 
 		commitTransactionError := activeTransaction.Commit().Error

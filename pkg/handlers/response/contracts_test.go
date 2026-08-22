@@ -42,7 +42,7 @@ func TestPublicResponseRouteShowsInvitation(testingContext *testing.T) {
 	}
 	for _, expectedSubstring := range expectedContent {
 		if !strings.Contains(responseBody, expectedSubstring) {
-			testingContext.Errorf("response page does not contain %q", expectedSubstring)
+			testingContext.Errorf("response page does not contain %q; body = %s", expectedSubstring, responseBody)
 		}
 	}
 }

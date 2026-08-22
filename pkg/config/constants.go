@@ -32,6 +32,7 @@ const (
 	TitleParam                = "title"
 	DescriptionParam          = "description"
 	StartTimeParam            = "start_time"
+	TimezoneParam             = "timezone"
 	DurationParam             = "duration"
 	ResponseParam             = "response"
 	ExtraGuestsParam          = "extra_guests"
@@ -56,11 +57,16 @@ const (
 )
 
 const (
-	DefaultDBName = "rsvps.db"
-	TableEvents   = "events"
-	TableRSVPs    = "rsvps"
-	TableUsers    = "users"
-	TableVenues   = "venues"
+	DefaultDBName          = "rsvps.db"
+	TableAttentionPolicies = "attention_policies"
+	TableCalendars         = "calendars"
+	TableEvents            = "events"
+	TableEventSeries       = "event_series"
+	TableLanes             = "lanes"
+	TableProbes            = "probes"
+	TableRSVPs             = "rsvps"
+	TableUsers             = "users"
+	TableVenues            = "venues"
 )
 
 const (
@@ -133,6 +139,7 @@ const (
 	LabelEventTitle       = "Event Title"
 	LabelSelectVenue      = "Select Venue"
 	LabelStartTime        = "Start Time"
+	LabelTimezone         = "Timezone"
 	LabelVenueAddress     = "Venue Address"
 	LabelVenueCapacity    = "Venue Capacity"
 	LabelVenueDescription = "Venue Description"
