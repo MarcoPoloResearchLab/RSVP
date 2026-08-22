@@ -87,6 +87,39 @@ Add repository-specific technical nouns below this line.
 - `term`: Definition with one meaning.
 ```
 
+- `anchor marker`: A marker that supplies the base time for a derived marker.
+- `all-day event`: An event that uses a local date without a time of day.
+- `attention policy`: Rules that specify the next probe and its escalation time for a lane.
+- `browser test`: An automated test that operates the browser frontend.
+- `calendar`: A user-owned visibility family that groups lanes without control of lane membership.
+- `calendar connection`: An authorized link between RSVP and an external calendar provider.
+- `calendar provider`: An external service that supplies source calendars and provider events.
+- `dependency chain`: An anchor event and its dependent events on one lane.
+- `dependent event`: An event with an explicit dependency that shares a lane with its anchor event.
+- `derived marker`: A marker whose time uses an offset from an anchor marker.
+- `event occurrence`: One dated instance of an event series.
+- `event series`: One recurring event and its event occurrences on one lane.
+- `external event link`: A relationship between one RSVP event and one provider event.
+- `finite lane`: A lane with an end time.
+- `horizon projection`: Structured calendar, lane, and marker data for one time window.
+- `horizon view`: The browser frontend that shows calendars, lanes, and markers on a time axis.
+- `ingestion draft`: Validated proposed temporal data that has not changed persisted data.
+- `independent event`: An event without an explicit dependency that owns one lane.
+- `lane`: A timeline row for one independent event, one event series, or one dependency chain.
+- `lane membership`: The relationship between a lane and its independent event, event series, or dependency chain.
+- `marker`: A visible point or interval for one event occurrence or probe.
+- `open lane`: A lane without an end time.
+- `organizer`: An authenticated RSVP user who owns temporal resources.
+- `probe`: A dated review action for a lane.
+- `provider event`: An event that a calendar provider owns.
+- `source calendar`: An external calendar that an organizer selects for import.
+- `source-owned marker`: An imported marker with fields that a calendar provider owns.
+- `sync cursor`: Provider data that identifies the next incremental calendar synchronization position.
+- `temporal resource`: A calendar, lane, event, probe, attention policy, or derived marker.
+- `time horizon`: The product contract that represents dated events and unresolved temporal subjects.
+- `time window`: A bounded interval for one horizon projection.
+- `timezone`: A named IANA rule set for local time interpretation.
+
 ## MPR Lab Technical Verbs
 
 - `archive`: Move completed history from the active issue tracker to durable storage.
