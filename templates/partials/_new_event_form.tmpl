@@ -30,6 +30,11 @@
                         </select>
                     </div>
                 </div>
+                <div class="form-group mb-3">
+                    <label for="timezoneInput" class="form-label">{{ .LabelTimezone }}:</label>
+                    <input type="text" class="form-control client-timezone" id="timezoneInput"
+                           name="{{ .ParamNameTimezone }}" autocomplete="off" required>
+                </div>
             </div>
             <div class="form-footer-row">
                 <button type="button" id="cancelNewEventButton" class="btn btn-outline-secondary">Cancel New Event

@@ -88,10 +88,20 @@
     <script src="https://cdn.jsdelivr.net/npm/easymde/dist/easymde.min.js"></script>
     <script>
         document.addEventListener("DOMContentLoaded", function () {
+            const browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+            function applyClientTimezoneDefaults() {
+                document.querySelectorAll(".client-timezone").forEach(input => {
+                    if (!input.value && browserTimezone) {
+                        input.value = browserTimezone;
+                    }
+                });
+            }
+            applyClientTimezoneDefaults();
+
             function initMDE(id) {
                 const el = document.getElementById(id);
                 if (el) {
-                    new EasyMDE({
+                    return new EasyMDE({
                         element: el,
                         spellChecker: false,
                         toolbar: ["bold", "italic", "heading", "|", "quote",
@@ -100,9 +110,10 @@
                         minHeight: "100px"
                     });
                 }
+                return null;
             }
 
-            initMDE("descriptionInput");
+            const descriptionEditor = initMDE("descriptionInput");
             initMDE("editDescriptionInput");
 
             const newBtn = document.getElementById("globalNewEventButton");
@@ -123,8 +134,8 @@
                     const form = document.getElementById("newEventForm");
                     if (form) {
                         form.reset();
-                        const mde = EasyMDE.getInstance(document.getElementById("descriptionInput"));
-                        if (mde) mde.value("");
+                        applyClientTimezoneDefaults();
+                        if (descriptionEditor) descriptionEditor.value("");
                     }
                 });
             }
