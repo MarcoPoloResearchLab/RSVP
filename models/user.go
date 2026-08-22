@@ -4,6 +4,7 @@ package models
 
 import (
 	"errors"
+	"fmt"
 	"log" // Keep log for UpsertUser specific logging
 
 	"github.com/tyemirov/RSVP/pkg/config"
@@ -21,15 +22,34 @@ type User struct {
 	Name string `gorm:"size:255"`
 	// Picture is the URL to the user's profile picture, provided by the authentication provider.
 	Picture string `gorm:"size:512"`
-	// Events is a slice containing all Event records created by this user.
-	// GORM automatically handles the foreign key relationship (UserID on Event model).
-	// Cascade constraints ensure Events (and their RSVPs) are deleted if the User is deleted.
-	Events []Event `gorm:"foreignKey:UserID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
+	// Timezone is absent until the client confirms an IANA timezone for the first temporal write.
+	Timezone *string `gorm:"type:text"`
+	// Calendars contain all temporal resources that this organizer owns.
+	Calendars []Calendar `gorm:"foreignKey:OrganizerID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
+}
+
+// ConfirmTimezone stores the client-supplied organizer timezone before the first temporal write.
+func (userRecord *User) ConfirmTimezone(databaseConnection *gorm.DB, timezone Timezone) error {
+	if userRecord.ID == "" {
+		return ErrOrganizerIDRequired
+	}
+	if userRecord.Timezone != nil {
+		return nil
+	}
+	timezoneName := timezone.String()
+	if updateError := databaseConnection.Model(userRecord).Update("timezone", timezoneName).Error; updateError != nil {
+		return fmt.Errorf("confirm timezone for organizer %s: %w", userRecord.ID, updateError)
+	}
+	userRecord.Timezone = &timezoneName
+	return nil
 }
 
 // BeforeCreate is a GORM hook executed before a new User record is inserted.
 // It ensures that the User has a unique base62 ID generated if one is not already set.
 func (userRecord *User) BeforeCreate(dbTransaction *gorm.DB) error {
+	if validationError := userRecord.Validate(); validationError != nil {
+		return validationError
+	}
 	if userRecord.ID == "" {
 		generatedID, generateIDError := EnsureUniqueID(dbTransaction, config.TableUsers, GenerateBase62ID)
 		if generateIDError != nil {
@@ -38,6 +58,20 @@ func (userRecord *User) BeforeCreate(dbTransaction *gorm.DB) error {
 		userRecord.ID = generatedID
 	}
 	return nil
+}
+
+// BeforeUpdate validates the organizer timezone when it is present.
+func (userRecord *User) BeforeUpdate(*gorm.DB) error {
+	return userRecord.Validate()
+}
+
+// Validate checks the optional pre-temporal organizer timezone.
+func (userRecord *User) Validate() error {
+	if userRecord.Timezone == nil {
+		return nil
+	}
+	_, timezoneError := NewTimezone(*userRecord.Timezone)
+	return timezoneError
 }
 
 // FindByEmail retrieves a single User from the database based on their unique email address.
