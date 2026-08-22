@@ -7,6 +7,7 @@ import (
 	"github.com/tyemirov/GAuss/pkg/session"
 	"github.com/tyemirov/RSVP/pkg/config"
 	"github.com/tyemirov/RSVP/pkg/handlers/event"
+	"github.com/tyemirov/RSVP/pkg/handlers/horizon"
 	"github.com/tyemirov/RSVP/pkg/handlers/response"
 	"github.com/tyemirov/RSVP/pkg/handlers/rsvp"
 	"github.com/tyemirov/RSVP/pkg/handlers/venue"
@@ -15,6 +16,7 @@ import (
 	"html/template"
 	"net/http"
 	"path/filepath"
+	"time"
 )
 
 // Routes holds shared resources and environment configuration.
@@ -152,6 +154,8 @@ func (appRoutes *Routes) RegisterRoutes(mux *http.ServeMux) {
 		}
 	})
 	mux.Handle(config.WebEvents, protectedChain(eventBaseDispatcher))
+	horizonHandler := horizon.Handler(appRoutes.ApplicationContext, time.Now)
+	mux.Handle(config.WebHorizon, horizon.AuthenticationMiddleware(appRoutes.ApplicationContext, addUserMiddleware(applyOverrides(horizonHandler))))
 	mux.Handle(config.WebRSVPQR, authRequired(addUserMiddleware(http.HandlerFunc(rsvp.ShowHandler(appRoutes.ApplicationContext)))))
 	rsvpBaseDispatcher := http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
 		appRoutes.ApplicationContext.Logger.Printf("Router: Protected path %s, method %s", request.URL.Path, request.Method)

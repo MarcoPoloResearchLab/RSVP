@@ -3,6 +3,7 @@ package config
 const (
 	WebRoot             = "/"
 	WebEvents           = "/events/"
+	WebHorizon          = "/horizon/"
 	WebRSVPs            = "/rsvps/"
 	WebRSVPQR           = "/rsvps/qr/"
 	WebResponse         = "/response/"
@@ -12,6 +13,7 @@ const (
 
 const (
 	TemplateEvents    = "events"
+	TemplateHorizon   = "horizon"
 	TemplateRSVP      = "rsvp"
 	TemplateRSVPs     = "rsvps"
 	TemplateResponse  = "response"
@@ -26,6 +28,8 @@ const (
 
 const (
 	EventIDParam              = "event_id"
+	HorizonEndParam           = "end"
+	HorizonStartParam         = "start"
 	RSVPIDParam               = "rsvp_id"
 	VenueIDParam              = "venue_id"
 	NameParam                 = "name"
@@ -71,6 +75,7 @@ const (
 
 const (
 	ResourceNameEvent    = "Event"
+	ResourceNameHorizon  = "Horizon"
 	ResourceNameRSVP     = "RSVP"
 	ResourceNameRSVPQR   = "RSVP QR Code"
 	ResourceNameResponse = "Response"

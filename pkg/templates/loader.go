@@ -55,6 +55,7 @@ func LoadAllPrecompiledTemplates(templatesDirectoryPath string) {
 	PrecompiledTemplatesMap = make(map[string]*template.Template)
 	mainViewTemplateNames := []string{
 		config.TemplateEvents,
+		config.TemplateHorizon,
 		config.TemplateRSVPs,
 		config.TemplateRSVP,
 		config.TemplateResponse,
