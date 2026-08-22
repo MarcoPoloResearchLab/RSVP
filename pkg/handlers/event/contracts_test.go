@@ -2,10 +2,10 @@ package event_test
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"strings"
 	"testing"
 
 	"github.com/tyemirov/RSVP/internal/testsupport"
@@ -53,22 +53,35 @@ func TestEventCreationTransactionCommitsEventAndVenue(testingContext *testing.T)
 	}
 }
 
-func TestEventCreationTransactionRollsBackInvalidVenue(testingContext *testing.T) {
+func TestEventCreationTransactionRollsBackVenueWhenEventInsertFails(testingContext *testing.T) {
 	fixture := testsupport.NewFixture(testingContext)
 	owner := fixture.CreateUser(testsupport.OwnerUserID)
+	triggerStatement := fmt.Sprintf(`
+		CREATE TRIGGER reject_event_insert
+		BEFORE INSERT ON %s
+		BEGIN
+			SELECT RAISE(ABORT, 'forced event insert failure');
+		END
+	`, config.TableEvents)
+	if triggerError := fixture.Database.Exec(triggerStatement).Error; triggerError != nil {
+		testingContext.Fatalf("create event insert failure trigger: %v", triggerError)
+	}
 	formValues := url.Values{
-		config.TitleParam:                 {"Rollback Dinner"},
-		config.StartTimeParam:             {testsupport.FixedStartTime().Format(config.TimeLayoutHTMLForm)},
-		config.DurationParam:              {"2"},
-		"create_" + config.VenueNameParam: {strings.Repeat("v", config.MaxVenueNameLength+1)},
+		config.TitleParam:                        {"Rollback Dinner"},
+		config.StartTimeParam:                    {testsupport.FixedStartTime().Format(config.TimeLayoutHTMLForm)},
+		config.DurationParam:                     {"2"},
+		"create_" + config.VenueNameParam:        {"Rollback Hall"},
+		"create_" + config.VenueAddressParam:     {"100 Test Avenue"},
+		"create_" + config.VenueCapacityParam:    {"40"},
+		"create_" + config.VenueDescriptionParam: {"Must roll back"},
 	}
 	request := testsupport.Request(testingContext, http.MethodPost, config.WebEvents, formValues, &owner)
 	responseRecorder := httptest.NewRecorder()
 
 	event.CreateHandler(fixture.ApplicationContext).ServeHTTP(responseRecorder, request)
 
-	if responseRecorder.Code != http.StatusBadRequest {
-		testingContext.Fatalf("status = %d, want %d; body = %s", responseRecorder.Code, http.StatusBadRequest, responseRecorder.Body.String())
+	if responseRecorder.Code != http.StatusInternalServerError {
+		testingContext.Fatalf("status = %d, want %d; body = %s", responseRecorder.Code, http.StatusInternalServerError, responseRecorder.Body.String())
 	}
 	var eventCount int64
 	if countError := fixture.Database.Model(&models.Event{}).Where("title = ?", "Rollback Dinner").Count(&eventCount).Error; countError != nil {
