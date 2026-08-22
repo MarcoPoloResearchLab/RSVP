@@ -46,7 +46,7 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Give each independent event one lane.
   - Put all occurrences of one event series on one lane.
   - Permit distinct events on one lane only through an explicit dependency chain.
-  - Put each probe on the lane for its attention policy.
+  - Put each probe on the lane for the related attention policy.
   - Enforce ownership through the calendar and lane relationships.
   - Remove the duplicate event owner field from the canonical schema.
   - Create one `RSVP Events` calendar for each current user.
@@ -369,7 +369,7 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - When an organizer creates an independent event, create a new lane.
   - When an organizer creates a dependent event, require an anchor event.
   - Put each dependent event on the anchor event lane.
-  - Put each new event occurrence on its event series lane.
+  - Put each new event occurrence on the related event series lane.
   - Use calendar selection only for calendar membership.
   - Apply the approved deletion rules in one database transaction.
   - Validate all request data at the HTTP boundary.
@@ -479,7 +479,7 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Protect provider-owned marker fields from local updates.
   - Create one lane for each independent provider event.
   - Create one lane for each provider event series.
-  - Put each recurring event occurrence on its event series lane.
+  - Put each recurring event occurrence on the related event series lane.
   - Use the source calendar only for calendar membership.
   - Record the last successful synchronization time and the current error.
   - Show synchronization state in the calendar controls.
@@ -606,7 +606,7 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Confirm that the draft contains an open lane and an attention policy.
   - Parse a flight with relative departure and arrival markers.
   - Confirm that the draft contains the anchor and derived marker rules.
-  - Confirm that the flight markers use one dependency chain.
+  - Confirm that the draft creates one dependency chain for the flight markers.
   - Reject an invalid provider response without a database change.
   - Run `make ci`.
   - Run the browser test target.

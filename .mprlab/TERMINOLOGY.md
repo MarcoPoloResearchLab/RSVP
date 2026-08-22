@@ -94,11 +94,11 @@ Add repository-specific technical nouns below this line.
 - `calendar`: A user-owned visibility family that groups lanes without control of lane membership.
 - `calendar connection`: An authorized link between RSVP and an external calendar provider.
 - `calendar provider`: An external service that supplies source calendars and provider events.
-- `dependency chain`: An anchor event and its dependent events on one lane.
+- `dependency chain`: An anchor event and related dependent events on one lane.
 - `dependent event`: An event with an explicit dependency that shares a lane with its anchor event.
 - `derived marker`: A marker whose time uses an offset from an anchor marker.
 - `event occurrence`: One dated instance of an event series.
-- `event series`: One recurring event and its event occurrences on one lane.
+- `event series`: One recurring event with all event occurrences on one lane.
 - `external event link`: A relationship between one RSVP event and one provider event.
 - `finite lane`: A lane with an end time.
 - `horizon projection`: Structured calendar, lane, and marker data for one time window.
@@ -106,7 +106,7 @@ Add repository-specific technical nouns below this line.
 - `ingestion draft`: Validated proposed temporal data that has not changed persisted data.
 - `independent event`: An event without an explicit dependency that owns one lane.
 - `lane`: A timeline row for one independent event, one event series, or one dependency chain.
-- `lane membership`: The relationship between a lane and its independent event, event series, or dependency chain.
+- `lane membership`: The relationship of one independent event, event series, or dependency chain to one lane.
 - `marker`: A visible point or interval for one event occurrence or probe.
 - `open lane`: A lane without an end time.
 - `organizer`: An authenticated RSVP user who owns temporal resources.
