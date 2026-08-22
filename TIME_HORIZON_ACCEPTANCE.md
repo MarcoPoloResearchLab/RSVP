@@ -3,29 +3,29 @@
 This matrix connects the approved [time horizon architecture](ARCHITECTURE.md) to implementation evidence.
 The issue identifiers refer to [.mprlab/ISSUES.md](.mprlab/ISSUES.md).
 
-## Data And Migration
+## Data And Schema
 
 | ID | Contract behavior | Required evidence | Issue |
 |---|---|---|---|
 | TH-001 | Each organizer owns calendars. | Model constraints and owner query tests. | I002 |
-| TH-002 | Each lane belongs to one calendar. | Model constraint and migration tests. | I002 |
-| TH-003 | Each independent event owns one lane. | Migration and creation tests. | I002, F003 |
+| TH-002 | Each lane belongs to one calendar. | Model constraint and schema tests. | I002 |
+| TH-003 | Each independent event owns one lane. | Relationship and creation tests. | I002, F003 |
 | TH-004 | One event series uses one lane. | Series occurrence tests. | I002, F006 |
 | TH-005 | One dependency chain uses its anchor lane. | Relationship and cycle tests. | I002, F003 |
 | TH-006 | Each probe uses its policy lane. | Model constraint and cadence tests. | I002, F004 |
 | TH-007 | Child resources use calendar ownership. | Cross-owner query and handler tests. | I002, F003 |
-| TH-008 | Events have no duplicate organizer field. | Schema inspection and migration tests. | I002 |
+| TH-008 | Events have no duplicate organizer field. | Schema inspection and owner query tests. | I002 |
 | TH-009 | Open and finite lanes reject invalid states. | Constructor and database constraint tests. | I002 |
 | TH-010 | Lane resolution creates one finite end. | Transaction and state transition tests. | F003, F004 |
 | TH-011 | Timed markers keep an IANA timezone. | Constructor, storage, and serialization tests. | I002 |
 | TH-012 | All-day markers keep local date bounds. | Date and daylight time tests. | I002, F006 |
-| TH-013 | Each organizer has a confirmed timezone. | Setup and invalid timezone tests. | I002 |
-| TH-014 | Migration requires one timezone and preserves local wall times. | Command, daylight time, and fixture tests. | I002 |
-| TH-015 | Migration preserves RSVP relationships. | Fixture row and relationship comparison. | I002, I003 |
-| TH-016 | Migration rollback is atomic. | Forced failure migration test. | I002 |
-| TH-017 | The canonical runtime has no migration bridge. | Source scan and clean startup test. | I002, I003 |
+| TH-013 | Each organizer has a stored timezone after its first temporal write. | Setup and invalid timezone tests. | I002 |
+| TH-014 | Each temporal write must have a client-supplied timezone. | HTTP rejection and daylight time tests. | I002 |
+| TH-015 | Canonical fixtures keep RSVP relationships. | Fixture relationship and public route tests. | I002, I003 |
+| TH-016 | Temporal creation rollback is atomic. | Forced event failure test. | I002 |
+| TH-017 | The runtime uses only canonical schema initialization. | Source scan and clean startup test. | I002, I003 |
 | TH-018 | A lane starts when RSVP starts to track its subject. | Creation, import, and projection tests. | I002, F003, F006 |
-| TH-019 | Migrated lane bounds preserve the event history and end. | Migration fixture comparison. | I002 |
+| TH-019 | A finite event lane ends at its event marker end. | Creation and update tests. | I002 |
 
 ## Projection And View
 
@@ -112,12 +112,12 @@ The issue identifiers refer to [.mprlab/ISSUES.md](.mprlab/ISSUES.md).
 
 | ID | Contract behavior | Required evidence | Issue |
 |---|---|---|---|
-| TH-090 | Event identifiers stay unchanged. | Migration fixture comparison. | I002, I003 |
-| TH-091 | RSVP public codes stay unchanged. | Migration fixture comparison. | I002, I003 |
+| TH-090 | Event identifiers stay stable in canonical operations. | Canonical fixture comparison. | I002, I003 |
+| TH-091 | RSVP public codes stay stable in canonical operations. | Canonical fixture comparison. | I002, I003 |
 | TH-092 | The public response route stays available. | Registered public HTTP test. | I001, I003 |
 | TH-093 | Public response updates stay available. | Registered public HTTP update test. | I001, I003 |
 | TH-094 | QR images contain the public response URL. | Decoded QR payload test. | I001, I003 |
-| TH-095 | Venue relationships stay unchanged. | Migration fixture comparison. | I002, I003 |
+| TH-095 | Venue relationships stay stable in canonical operations. | Canonical fixture comparison. | I002, I003 |
 | TH-096 | No obsolete temporal contract exists. | Source, schema, route, and asset scan. | I003 |
 | TH-097 | Desktop and mobile browsers render the complete horizon. | Deterministic end-to-end suite. | I003 |
 
