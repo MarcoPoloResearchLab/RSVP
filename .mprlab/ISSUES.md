@@ -286,7 +286,7 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 ## Features
 
-- [ ] [F001] (P0) {I002} Add the horizon projection
+- [x] [F001] (P0) {I002} Add the horizon projection
   Goal:
   This issue adds the authenticated read interface for calendars, lanes, events, and probes in one time window.
 
