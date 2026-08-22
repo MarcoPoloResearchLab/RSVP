@@ -1,0 +1,92 @@
+---
+mprlab_resources:
+  owner: rsvp
+  release:
+    scheme: semver
+  resources:
+    - kind: private_values
+      id: private
+      bindings:
+        app-base-url: APP_BASE_URL
+        google-client-id: GOOGLE_CLIENT_ID
+        google-client-secret: GOOGLE_CLIENT_SECRET
+        google-oauth2-base: GOOGLE_OAUTH2_BASE
+        session-secret: SESSION_SECRET
+    - kind: compose_project
+      id: runtime
+      images:
+        - id: rsvp-image
+          repository: ghcr.io/marcopoloresearchlab/rsvp
+          build:
+            context: .
+            dockerfile: Dockerfile
+            platforms:
+              - linux/amd64
+      volumes:
+        - id: data
+          name: rsvp-data
+          retention: retain
+      services:
+        - id: web
+          image: rsvp-image
+          placement:
+            group: gateway
+            cardinality: one
+          environment:
+            APP_BASE_URL:
+              resource: private
+              output: app-base-url
+            DB_NAME:
+              value: /app/data/rsvps.db
+            GOOGLE_CLIENT_ID:
+              resource: private
+              output: google-client-id
+            GOOGLE_CLIENT_SECRET:
+              resource: private
+              output: google-client-secret
+            GOOGLE_OAUTH2_BASE:
+              resource: private
+              output: google-oauth2-base
+            SESSION_SECRET:
+              resource: private
+              output: session-secret
+          mounts:
+            - volume: data
+              target: /app/data
+          ports:
+            - container_port: 8080
+          readiness:
+            protocol: http
+            port: 8080
+            path: /
+            expected_status: 200
+    - kind: runtime_capability
+      id: web-http
+      name: rsvp.http
+      version: 1
+      project: runtime
+      service: web
+      endpoint:
+        scope: same_host
+        scheme: http
+        alias: rsvp-web
+        port: 8080
+      health:
+        protocol: http
+        path: /
+        expected_status: 200
+    - kind: caddy_route
+      id: public
+      hostname: rsvp.mprlab.com
+      listener: https
+      handlers:
+        - id: web
+          path_prefix: /
+          upstream: rsvp.http
+      tls:
+        mode: automatic
+    - kind: health_check
+      id: public-health
+      protocol: http
+      url: https://rsvp.mprlab.com/
+      expected_status: 200
