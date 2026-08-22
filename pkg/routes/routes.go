@@ -107,6 +107,7 @@ func (appRoutes *Routes) RegisterMiddleware(mux *http.ServeMux) {
 		appRoutes.EnvConfig.GoogleClientSecret,
 		appRoutes.EnvConfig.GoogleOauth2Base,
 		config.WebEvents,
+		nil,
 		landingTemplatePath,
 	)
 	if authServiceError != nil {
