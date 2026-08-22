@@ -10,6 +10,96 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 ## Improvements
 
+- [x] [I001] (P0) {P001} Add RSVP contract tests
+  Goal:
+  This issue adds test evidence for current RSVP behavior before the temporal data migration.
+
+  Requirements:
+  - Add isolated SQLite test fixtures that do not share state.
+  - Do a test of owner checks for events, venues, and RSVPs.
+  - Do a test of event and venue transactions.
+  - Do a test of the public RSVP response route and response update.
+  - Do a test of database initialization with an empty database.
+  - Do a test of the current QR code URL contract.
+  - Keep all tests deterministic and independent.
+
+  Deliverables:
+  - Add Go tests for handlers, models, and database services.
+  - Add reusable test builders for users, events, venues, and RSVPs.
+  - Keep `make test` as the canonical test command.
+
+  Validation:
+  - Run `make ci`.
+  - Run `go test -count=1 ./...`.
+  - Confirm that named tests cover each specified behavior.
+
+- [ ] [I002] (P0) {P001,I001} Migrate events to calendar lanes
+  Goal:
+  This issue replaces the event-only temporal schema with the approved calendar and lane schema.
+
+  Requirements:
+  - Add calendar, lane, probe, and attention policy domain types.
+  - Represent an open lane with no end time.
+  - Add a required `lane_id` field to each event.
+  - Store each timestamp with explicit IANA timezone context.
+  - Enforce valid lane, event, probe, and attention policy states at construction.
+  - Give each independent event one lane.
+  - Put all occurrences of one event series on one lane.
+  - Permit distinct events on one lane only through an explicit dependency chain.
+  - Put each probe on the lane for the related attention policy.
+  - Enforce ownership through the calendar and lane relationships.
+  - Remove the duplicate event owner field from the canonical schema.
+  - Create one `RSVP Events` calendar for each current user.
+  - Create one finite lane for each current event.
+  - Preserve event identifiers, RSVP codes, responses, and venue relationships.
+  - Before the migration starts, require one explicit legacy timezone.
+  - Implement the migration as an explicit one-time operation.
+  - After the target database migration completes, remove embedded startup migrations.
+  - After the operation completes, remove the one-time migration code.
+
+  Deliverables:
+  - Add the canonical GORM models and database constraints.
+  - Add a tested one-time migration command and operator runbook.
+  - Update all ownership queries for the canonical relationship chain.
+
+  Validation:
+  - Migrate a fixture database that contains events, venues, and RSVP responses.
+  - After migration, compare all preserved identifiers and relationships.
+  - Confirm that invalid open and finite lane states fail.
+  - Confirm that an event without a lane fails.
+  - Confirm that two independent events in one calendar use different lanes.
+  - Confirm that dependent events use the anchor event lane.
+  - Confirm that all occurrences of one event series use one lane.
+  - After the migration code is removed, run `make ci`.
+
+- [ ] [I003] (P1) {F004,F006,F007,F009} Complete time horizon acceptance
+  Goal:
+  This issue supplies integrated acceptance evidence for the complete time horizon capability.
+
+  Requirements:
+  - Create representative data for independent events, event series, dependency chains, open lanes, and calendars.
+  - Rehearse the one-time migration with a production-like SQLite fixture.
+  - Do a test of the horizon view on desktop and mobile browser sizes.
+  - Verify the current QR code and public RSVP response flows.
+  - Verify initial and incremental Google Calendar synchronization.
+  - Verify attention policies, probes, derived markers, and ingestion drafts.
+  - Review keyboard access, focus order, labels, and color-independent meaning.
+  - Remove obsolete temporal code paths and unused interface assets.
+  - Update the architecture document, user guide, and operator runbook.
+
+  Deliverables:
+  - Add one deterministic end-to-end acceptance suite.
+  - Add one migration rehearsal record with row-count and relationship checks.
+  - Add current technical documentation for the complete capability.
+
+  Validation:
+  - Run `make ci`.
+  - Run the complete browser test target.
+  - Run the adapter tests with the deterministic test server.
+  - Run the migration rehearsal from a clean database copy.
+  - Run the documentation language checker on each changed technical document.
+  - Confirm that no legacy temporal schema or compatibility path remains.
+
 ## Maintenance
 
 - [ ] [M400R] (P2) Backlog hygiene and archive
@@ -191,4 +281,373 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 ## Features
 
+- [ ] [F001] (P0) {I002} Add the horizon projection
+  Goal:
+  This issue adds the authenticated read interface for calendars, lanes, events, and probes in one time window.
+
+  Requirements:
+  - Add an authenticated horizon route.
+  - Accept validated window start and end parameters.
+  - Apply the approved maximum window size.
+  - Return calendars in their display order.
+  - Return each finite lane that intersects the requested window.
+  - Return each active open lane that starts before the window ends.
+  - Include open lanes that have no marker in the window.
+  - Return events and probes as typed markers.
+  - Preserve one projection row for each lane.
+  - Keep calendar membership separate from lane membership.
+  - Enforce owner scope in each database query.
+  - Provide HTML and JSON representations from one projection service.
+  - Reject invalid windows with the canonical validation response.
+
+  Deliverables:
+  - Add the horizon projection service and response types.
+  - Add the horizon route and handlers.
+  - Add query tests for ownership, ordering, windows, and empty lanes.
+
+  Validation:
+  - Request a window that contains no events for an active open lane.
+  - Confirm that the response contains the open lane.
+  - Request data for a different owner.
+  - Confirm that the response contains no resources from the other owner.
+  - Request two independent events from one calendar.
+  - Confirm that the response contains two lanes.
+  - Run `make ci`.
+
+- [ ] [F002] (P0) {F001} Add the interactive horizon view
+  Goal:
+  This issue makes temporal lanes the primary organizer interface.
+
+  Requirements:
+  - Render each lane as a 12-to-16-pixel horizontal line.
+  - Render each marker as a 20-to-24-pixel dot.
+  - Give each interactive marker a minimum 44-pixel target.
+  - Show a cap at each finite lane end.
+  - Show an arrow at each open lane continuation.
+  - When the window contains no markers, render active lanes.
+  - Show sticky lane labels, a time scale, and a today line.
+  - Add horizontal pan and scale controls.
+  - Add keyboard operations for pan, scale, calendar visibility, and marker selection.
+  - Add calendar controls that show or hide complete calendars.
+  - Store each calendar visibility choice for the current user.
+  - Use text and symbols with color to identify calendars.
+  - Render one row for each independent event lane.
+  - Render one row for each event series.
+  - Render one row for each dependency chain.
+  - Link each RSVP event marker to its event and RSVP controls.
+  - Make the horizon view the authenticated home route.
+  - Put horizon styles and scripts in dedicated static assets.
+
+  Deliverables:
+  - Add the server-rendered horizon template and view data.
+  - Add the horizon style and JavaScript modules.
+  - Add the static asset route.
+  - Add real-browser tests for the specified interactions.
+
+  Validation:
+  - Confirm that an empty open lane spans the visible window.
+  - Confirm that calendar controls hide and show all related lanes.
+  - Confirm that finite and open lanes use different end symbols.
+  - Confirm that three independent birthdays use three lanes.
+  - Confirm that two independent holidays use two lanes.
+  - Confirm that dependent travel events use one lane.
+  - Confirm that marker targets meet the minimum target size.
+  - Confirm that keyboard operations work without a pointer.
+  - Confirm that the view works at the supported mobile width.
+  - Run `make ci`.
+  - Run the browser test target.
+
+- [ ] [F003] (P1) {F002} Add calendar and lane management
+  Goal:
+  This issue lets an organizer create and maintain the temporal structure shown in the horizon view.
+
+  Requirements:
+  - Add resource routes for calendars and lanes.
+  - Add calendar create, update, reorder, visibility, and delete operations.
+  - Add lane create, update, reorder, resolve, and delete operations.
+  - Support finite and open lane creation.
+  - When an organizer creates an independent event, create a new lane.
+  - When an organizer creates a dependent event, require an anchor event.
+  - Put each dependent event on the anchor event lane.
+  - Put each new event occurrence on the related event series lane.
+  - Use calendar selection only for calendar membership.
+  - Apply the approved deletion rules in one database transaction.
+  - Validate all request data at the HTTP boundary.
+  - After request validation, construct only valid domain types.
+  - Enforce ownership for each read and write operation.
+  - Keep RSVP event identifiers and public response routes unchanged.
+
+  Deliverables:
+  - Add calendar and lane handlers, forms, and domain services.
+  - Add lane controls to the horizon view.
+  - Add integration tests for each resource operation.
+
+  Validation:
+  - Create one finite lane and one open lane from the horizon view.
+  - Create two independent events in one calendar.
+  - Confirm that the independent events use different lanes.
+  - Create one dependent event from an anchor event.
+  - Confirm that the dependent event uses the anchor event lane.
+  - Reorder calendars and lanes.
+  - After a new session starts, confirm that the saved order appears.
+  - Resolve an open lane.
+  - Confirm that the resolved lane has a finite end.
+  - Confirm that one owner cannot change another owner's resources.
+  - Run `make ci`.
+  - Run the browser test target.
+
+- [ ] [F004] (P1) {F003} Add attention policies and probes
+  Goal:
+  This issue gives unresolved lanes a durable review and escalation workflow.
+
+  Requirements:
+  - Add attention policy create, update, and delete operations.
+  - Store the next probe time and the review interval.
+  - Store an optional escalation time.
+  - Create no more than one pending probe for each policy occurrence.
+  - Record completed and missed probes.
+  - After probe completion, advance the next probe time.
+  - When the lane becomes resolved, stop future probes.
+  - Render pending and missed probes as distinct markers.
+  - Show the next attention time in the lane details.
+
+  Deliverables:
+  - Add the attention policy service and probe state transitions.
+  - Add policy and probe controls to the horizon view.
+  - Add deterministic cadence and escalation tests.
+
+  Validation:
+  - Complete a probe.
+  - Confirm that the policy creates the next due time.
+  - Advance the test clock beyond the escalation time.
+  - Confirm that the probe becomes missed.
+  - Resolve the lane.
+  - Confirm that no new probe appears.
+  - Refresh the page.
+  - Confirm that the probe state remains unchanged.
+  - Run `make ci`.
+  - Run the browser test target.
+
+- [ ] [F005] (P1) {I002,F003} Add a Google Calendar connection
+  Goal:
+  This issue lets an organizer authorize read-only access and select source calendars.
+
+  Requirements:
+  - Add a calendar connection resource.
+  - Use a consent flow that is separate from Google sign-in.
+  - Request read-only Google Calendar access.
+  - Before database storage, encrypt refresh credentials.
+  - Keep the credential encryption key in private deployment values.
+  - Exclude credentials and authorization codes from logs.
+  - After authorization, list the provider calendars.
+  - Let the organizer select the source calendars.
+  - Map each selected source calendar to one RSVP calendar.
+  - Show the connection state and provider errors.
+  - When the organizer deletes the connection, delete stored credentials.
+  - Limit this issue to connection and source selection.
+
+  Deliverables:
+  - Add the Google Calendar adapter and authorization handlers.
+  - Add encrypted credential storage and private value configuration.
+  - Add the connection and source selection interface.
+  - Add adapter tests with a deterministic test server.
+
+  Validation:
+  - Complete authorization with the deterministic test server.
+  - Confirm that the stored credential data is encrypted.
+  - Confirm that logs contain no credential values.
+  - Select two source calendars.
+  - Confirm that two RSVP calendars appear.
+  - Delete the connection.
+  - Confirm that stored credentials for the connection are absent.
+  - Run `make ci`.
+  - Run the browser test target.
+
+- [ ] [F006] (P1) {F001,F005} Synchronize Google Calendar markers
+  Goal:
+  This issue imports selected Google Calendar events into the horizon view without duplicate markers.
+
+  Requirements:
+  - Do an initial synchronization for each selected source calendar.
+  - Store one sync cursor for each source calendar.
+  - Use the sync cursor for each later incremental synchronization.
+  - Store one external event link for each imported event.
+  - Make each synchronization idempotent.
+  - Import timed, all-day, and recurring event instances.
+  - Preserve the source event timezone.
+  - Apply provider updates and deletions to imported markers.
+  - Protect provider-owned marker fields from local updates.
+  - Create one lane for each independent provider event.
+  - Create one lane for each provider event series.
+  - Put each recurring event occurrence on the related event series lane.
+  - Use the source calendar only for calendar membership.
+  - Record the last successful synchronization time and the current error.
+  - Show synchronization state in the calendar controls.
+
+  Deliverables:
+  - Add initial and incremental synchronization services.
+  - Add external event link persistence.
+  - Add presentation for source-owned markers.
+  - Add synchronization status controls.
+  - Add synchronization tests for updates, deletions, recurrence, and timezones.
+
+  Validation:
+  - Synchronize the same initial data two times.
+  - Confirm that the second operation creates no duplicate marker.
+  - Apply an incremental update.
+  - Confirm that the imported marker contains the update.
+  - Confirm that unchanged markers retain their stored values.
+  - Delete a provider event.
+  - Confirm that the imported marker for the provider event is absent.
+  - Confirm that an imported all-day event appears on the correct local date.
+  - Synchronize three independent birthdays from one source calendar.
+  - Confirm that the birthdays use three lanes.
+  - Synchronize two independent holidays from one source calendar.
+  - Confirm that the holidays use two lanes.
+  - Synchronize two occurrences from one event series.
+  - Confirm that the occurrences use one lane.
+  - Run `make ci`.
+  - Run the adapter tests.
+
+- [ ] [F007] (P2) {F003} Add derived markers
+  Goal:
+  This issue creates markers at typed time offsets from anchor markers.
+
+  Requirements:
+  - Add a resource for each derived marker rule.
+  - Support offsets before and after an anchor marker.
+  - Support anchor start and anchor end as offset bases.
+  - Recalculate derived marker times in the anchor update transaction.
+  - Before persistence, reject relation cycles.
+  - Prevent direct time changes to a derived marker.
+  - Put each derived marker on the anchor marker lane.
+  - When a derived marker rule is deleted, remove the related derived marker.
+  - Show the anchor relationship in marker details.
+  - Show each derived marker on the assigned lane.
+
+  Deliverables:
+  - Add the derived marker domain service and resource handlers.
+  - Add derived marker controls to event details.
+  - Add transaction, offset, and cycle tests.
+
+  Validation:
+  - Create markers before departure and after arrival anchors.
+  - Confirm that the anchor and derived markers use one lane.
+  - Change each anchor time.
+  - Confirm that the related marker time changes.
+  - Attempt to create a cycle.
+  - Confirm that validation rejects the cycle.
+  - Delete a rule.
+  - Confirm that the derived marker for the rule is absent.
+  - Run `make ci`.
+  - Run the browser test target.
+
+- [ ] [F008] (P1) {F003,F004} Add quick ingestion drafts
+  Goal:
+  This issue provides a short, confirmable workflow for new events and unresolved lanes.
+
+  Requirements:
+  - Add an available quick-add control to the horizon view.
+  - Accept a dated event mode and an open lane mode.
+  - Accept calendar, title, date, time, end, and attention inputs.
+  - Convert each valid input into an ingestion draft.
+  - For an independent event draft, propose a new lane.
+  - For a dependent event draft, require an anchor event.
+  - For a dependent event draft, propose the anchor event lane.
+  - Use calendar selection only for calendar membership.
+  - Before confirmation, show the proposed calendar, lane, marker, and attention policy.
+  - Let the organizer correct each proposed value.
+  - Use the organizer timezone for date interpretation.
+  - Use explicit confirmation as the persistence boundary.
+  - Keep draft creation separate from temporal resource creation.
+
+  Deliverables:
+  - Add the ingestion draft resource and validation service.
+  - Add the quick-add and confirmation interfaces.
+  - Add tests for both input modes and all confirmation outcomes.
+
+  Validation:
+  - Create an open waiting lane with a weekly attention policy.
+  - Create an independent birthday in the Birthdays calendar.
+  - Confirm that the birthday receives a new lane.
+  - Create a dependent travel event from a flight anchor.
+  - Confirm that the travel event uses the flight lane.
+  - Cancel each draft.
+  - Confirm that no temporal data changes.
+  - Correct a draft timezone.
+  - Confirm that the marker uses the corrected time.
+  - Run `make ci`.
+  - Run the browser test target.
+
+- [ ] [F009] (P2) {F007,F008} Add natural-language ingestion
+  Goal:
+  This issue converts natural-language temporal requests into confirmable ingestion drafts.
+
+  Requirements:
+  - Add one provider adapter for natural-language parsing.
+  - Validate each provider response against the ingestion draft schema.
+  - Parse independent events, dated anchors, open lanes, attention intervals, and relative marker rules.
+  - Use one explicit reference time and the organizer timezone.
+  - Identify each missing required value.
+  - Before confirmation, let the organizer supply each missing value.
+  - Show each inferred value in the confirmation interface.
+  - Use explicit confirmation as the temporal resource persistence boundary.
+  - Keep provider credentials in private deployment values.
+  - Exclude input text and credentials from application logs.
+
+  Deliverables:
+  - Add the parser adapter and validated response schema.
+  - Add natural-language input to the quick-add interface.
+  - Add deterministic parser fixtures for waiting and travel requests.
+  - Add error and incomplete-input tests.
+
+  Validation:
+  - Parse an unresolved appeal with a weekly check interval.
+  - Confirm that the draft contains an open lane and an attention policy.
+  - Parse a flight with relative departure and arrival markers.
+  - Confirm that the draft contains the anchor and derived marker rules.
+  - Confirm that the draft creates one dependency chain for the flight markers.
+  - Reject an invalid provider response without a database change.
+  - Run `make ci`.
+  - Run the browser test target.
+
 ## Planning
+
+- [ ] [P001] (P0) Specify the time horizon contract
+  Goal:
+  The time horizon needs one approved contract for data, interfaces, migration, and user behavior.
+  This issue gives the required decisions and does not authorize implementation.
+
+  Requirements:
+  - Define calendars, lanes, markers, probes, attention policies, and RSVP relationships.
+  - Define a calendar as a visibility family that contains independent lanes.
+  - Define one lane for each independent event.
+  - Define one lane for each event series.
+  - Permit distinct events on one lane only through an explicit dependency chain.
+  - Keep each dependent event on the anchor event lane.
+  - Define calendar membership without control of lane membership.
+  - Define open, finite, active, and resolved lane states.
+  - Define point, interval, all-day, and timezone rules for markers.
+  - Define ownership without duplicate owner fields.
+  - Record the required operator decision for the legacy event timezone.
+  - Define the default horizon window and maximum window size.
+  - Define calendar visibility, lane order, and empty-lane behavior.
+  - Define resource routes and response schemas for new interfaces.
+  - Define Google Calendar authorization, source mapping, and synchronization ownership.
+  - Define derived marker recalculation rules.
+  - Define ingestion draft confirmation rules.
+  - Define the migration and production cutover sequence.
+
+  Deliverables:
+  - Add one approved time horizon architecture document.
+  - Add one acceptance matrix that maps each contract behavior to an implementation issue.
+  - Record each unresolved product choice as a blocker.
+
+  Validation:
+  - Review each decision against the current Event, RSVP, Venue, and User contracts.
+  - Confirm that independent birthdays in one calendar use different lanes.
+  - Confirm that independent holidays in one calendar use different lanes.
+  - Confirm that dependent travel events use the anchor event lane.
+  - Confirm that each later issue uses the approved terms and relationships.
+  - Confirm that the design has no dual data contract or compatibility path.
+  - Run the documentation language checker on each changed technical document.
