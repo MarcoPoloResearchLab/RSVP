@@ -10,7 +10,7 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 ## Improvements
 
-- [x] [I001] (P0) {P001} Add RSVP contract tests
+- [x] [I001] (P0) Add RSVP contract tests
   Goal:
   This issue adds test evidence for current RSVP behavior before the temporal data migration.
 
@@ -31,16 +31,20 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   Validation:
   - Run `make ci`.
   - Run `go test -count=1 ./...`.
-  - Confirm that named tests cover each specified behavior.
+  - Confirm that named tests verify each specified behavior.
 
 - [ ] [I002] (P0) {P001,I001} Migrate events to calendar lanes
   Goal:
   This issue replaces the event-only temporal schema with the approved calendar and lane schema.
 
   Requirements:
-  - Add calendar, lane, probe, and attention policy domain types.
+  - Add calendar, lane, event series, probe, and attention policy domain types.
+  - Add one required organizer timezone with an IANA timezone name.
+  - For a new organizer, require timezone confirmation before the first temporal write.
   - Represent an open lane with no end time.
   - Add a required `lane_id` field to each event.
+  - Start each lane when RSVP starts to track its temporal subject.
+  - Keep each marker within its lane bounds.
   - Store each timestamp with explicit IANA timezone context.
   - Enforce valid lane, event, probe, and attention policy states at construction.
   - Give each independent event one lane.
@@ -51,8 +55,13 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Remove the duplicate event owner field from the canonical schema.
   - Create one `RSVP Events` calendar for each current user.
   - Create one finite lane for each current event.
+  - Start each migrated lane at the earlier event creation time or event start time.
+  - End each migrated lane at the event end time.
   - Preserve event identifiers, RSVP codes, responses, and venue relationships.
   - Before the migration starts, require one explicit legacy timezone.
+  - Assign the legacy timezone to each current organizer and event.
+  - Interpret each legacy timestamp as a local wall time in the legacy timezone.
+  - Reject each invalid or ambiguous daylight time during migration.
   - Implement the migration as an explicit one-time operation.
   - After the target database migration completes, remove embedded startup migrations.
   - After the operation completes, remove the one-time migration code.
@@ -70,7 +79,7 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Confirm that two independent events in one calendar use different lanes.
   - Confirm that dependent events use the anchor event lane.
   - Confirm that all occurrences of one event series use one lane.
-  - After the migration code is removed, run `make ci`.
+  - After you remove the migration code, run `make ci`.
 
 - [ ] [I003] (P1) {F004,F006,F007,F009} Complete time horizon acceptance
   Goal:
@@ -98,7 +107,7 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Run the adapter tests with the deterministic test server.
   - Run the migration rehearsal from a clean database copy.
   - Run the documentation language checker on each changed technical document.
-  - Confirm that no legacy temporal schema or compatibility path remains.
+  - Confirm that the repository contains no legacy temporal schema or compatibility path.
 
 ## Maintenance
 
@@ -294,10 +303,12 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Return each active open lane that starts before the window ends.
   - Include open lanes that have no marker in the window.
   - Return events and probes as typed markers.
+  - Filter each marker with the approved half-open window rules.
   - Preserve one projection row for each lane.
   - Keep calendar membership separate from lane membership.
   - Enforce owner scope in each database query.
-  - Provide HTML and JSON representations from one projection service.
+  - Supply HTML and JSON representations from one projection service.
+  - Add the approved representation and cache headers.
   - Reject invalid windows with the canonical validation response.
 
   Deliverables:
@@ -325,6 +336,7 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Show a cap at each finite lane end.
   - Show an arrow at each open lane continuation.
   - When the window contains no markers, render active lanes.
+  - Clip each lane line to its visible start and end.
   - Show sticky lane labels, a time scale, and a today line.
   - Add horizontal pan and scale controls.
   - Add keyboard operations for pan, scale, calendar visibility, and marker selection.
@@ -352,8 +364,8 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Confirm that two independent holidays use two lanes.
   - Confirm that dependent travel events use one lane.
   - Confirm that marker targets meet the minimum target size.
-  - Confirm that keyboard operations work without a pointer.
-  - Confirm that the view works at the supported mobile width.
+  - Confirm that keyboard operations control the view without a pointer.
+  - Confirm that the browser renders the view at the supported mobile width.
   - Run `make ci`.
   - Run the browser test target.
 
@@ -367,9 +379,11 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Add lane create, update, reorder, resolve, and delete operations.
   - Support finite and open lane creation.
   - When an organizer creates an independent event, create a new lane.
+  - Start each new local lane at the request reference time.
   - When an organizer creates a dependent event, require an anchor event.
   - Put each dependent event on the anchor event lane.
   - Put each new event occurrence on the related event series lane.
+  - Recalculate finite lane bounds in each related marker transaction.
   - Use calendar selection only for calendar membership.
   - Apply the approved deletion rules in one database transaction.
   - Validate all request data at the HTTP boundary.
@@ -389,7 +403,7 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Create one dependent event from an anchor event.
   - Confirm that the dependent event uses the anchor event lane.
   - Reorder calendars and lanes.
-  - After a new session starts, confirm that the saved order appears.
+  - After a new session starts, confirm that the browser shows the saved order.
   - Resolve an open lane.
   - Confirm that the resolved lane has a finite end.
   - Confirm that one owner cannot change another owner's resources.
@@ -406,7 +420,7 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Store an optional escalation time.
   - Create no more than one pending probe for each policy occurrence.
   - Record completed and missed probes.
-  - After probe completion, advance the next probe time.
+  - After probe completion, set the next probe time.
   - When the lane becomes resolved, stop future probes.
   - Render pending and missed probes as distinct markers.
   - Show the next attention time in the lane details.
@@ -419,12 +433,12 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   Validation:
   - Complete a probe.
   - Confirm that the policy creates the next due time.
-  - Advance the test clock beyond the escalation time.
+  - Move the test clock past the escalation time.
   - Confirm that the probe becomes missed.
   - Resolve the lane.
-  - Confirm that no new probe appears.
+  - Confirm that the policy creates no new probe.
   - Refresh the page.
-  - Confirm that the probe state remains unchanged.
+  - Confirm that the probe state does not change.
   - Run `make ci`.
   - Run the browser test target.
 
@@ -435,13 +449,17 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   Requirements:
   - Add a calendar connection resource.
   - Use a consent flow that is separate from Google sign-in.
-  - Request read-only Google Calendar access.
+  - Request only the `calendar.calendarlist.readonly` and `calendar.events.readonly` scopes.
+  - Store one expiring authorization request with a state value hash.
+  - Keep the authorization callback free of database changes.
+  - Add no-store and no-referrer headers to the authorization callback.
   - Before database storage, encrypt refresh credentials.
   - Keep the credential encryption key in private deployment values.
-  - Exclude credentials and authorization codes from logs.
+  - Do not write credentials or authorization codes to logs.
   - After authorization, list the provider calendars.
   - Let the organizer select the source calendars.
-  - Map each selected source calendar to one RSVP calendar.
+  - Connect each selected source calendar to one RSVP calendar.
+  - Require an idempotency key for connection creation.
   - Show the connection state and provider errors.
   - When the organizer deletes the connection, delete stored credentials.
   - Limit this issue to connection and source selection.
@@ -454,10 +472,10 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
   Validation:
   - Complete authorization with the deterministic test server.
-  - Confirm that the stored credential data is encrypted.
+  - Confirm that RSVP encrypts the stored credential data.
   - Confirm that logs contain no credential values.
   - Select two source calendars.
-  - Confirm that two RSVP calendars appear.
+  - Confirm that the response contains two RSVP calendars.
   - Delete the connection.
   - Confirm that stored credentials for the connection are absent.
   - Run `make ci`.
@@ -470,8 +488,11 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   Requirements:
   - Do an initial synchronization for each selected source calendar.
   - Store one sync cursor for each source calendar.
+  - Store a new sync cursor only after the last response page commits.
   - Use the sync cursor for each later incremental synchronization.
+  - When the provider rejects a sync cursor, do a complete source reconciliation.
   - Store one external event link for each imported event.
+  - Store one external event series link for each imported event series.
   - Make each synchronization idempotent.
   - Import timed, all-day, and recurring event instances.
   - Preserve the source event timezone.
@@ -479,10 +500,12 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Protect provider-owned marker fields from local updates.
   - Create one lane for each independent provider event.
   - Create one lane for each provider event series.
+  - Start each source-owned lane at the earlier first synchronization time or earliest marker time.
   - Put each recurring event occurrence on the related event series lane.
   - Use the source calendar only for calendar membership.
   - Record the last successful synchronization time and the current error.
   - Show synchronization state in the calendar controls.
+  - Require an idempotency key for synchronization creation.
 
   Deliverables:
   - Add initial and incremental synchronization services.
@@ -499,7 +522,7 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Confirm that unchanged markers retain their stored values.
   - Delete a provider event.
   - Confirm that the imported marker for the provider event is absent.
-  - Confirm that an imported all-day event appears on the correct local date.
+  - Confirm that the projection shows an imported all-day event on the correct local date.
   - Synchronize three independent birthdays from one source calendar.
   - Confirm that the birthdays use three lanes.
   - Synchronize two independent holidays from one source calendar.
@@ -517,11 +540,12 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Add a resource for each derived marker rule.
   - Support offsets before and after an anchor marker.
   - Support anchor start and anchor end as offset bases.
+  - Reject an all-day anchor marker.
   - Recalculate derived marker times in the anchor update transaction.
   - Before persistence, reject relation cycles.
   - Prevent direct time changes to a derived marker.
   - Put each derived marker on the anchor marker lane.
-  - When a derived marker rule is deleted, remove the related derived marker.
+  - When you delete a derived marker rule, remove the related derived marker.
   - Show the anchor relationship in marker details.
   - Show each derived marker on the assigned lane.
 
@@ -544,7 +568,7 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 - [ ] [F008] (P1) {F003,F004} Add quick ingestion drafts
   Goal:
-  This issue provides a short, confirmable workflow for new events and unresolved lanes.
+  This issue supplies a short, confirmable workflow for new events and unresolved lanes.
 
   Requirements:
   - Add an available quick-add control to the horizon view.
@@ -559,6 +583,7 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Let the organizer correct each proposed value.
   - Use the organizer timezone for date interpretation.
   - Use explicit confirmation as the persistence boundary.
+  - Require an idempotency key for draft confirmation.
   - Keep draft creation separate from temporal resource creation.
 
   Deliverables:
@@ -593,7 +618,8 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Show each inferred value in the confirmation interface.
   - Use explicit confirmation as the temporal resource persistence boundary.
   - Keep provider credentials in private deployment values.
-  - Exclude input text and credentials from application logs.
+  - Do not write input text or credentials to application logs.
+  - Do not store the original input text.
 
   Deliverables:
   - Add the parser adapter and validated response schema.
@@ -613,7 +639,7 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 ## Planning
 
-- [ ] [P001] (P0) Specify the time horizon contract
+- [x] [P001] (P0) Specify the time horizon contract
   Goal:
   The time horizon needs one approved contract for data, interfaces, migration, and user behavior.
   This issue gives the required decisions and does not authorize implementation.
@@ -639,8 +665,8 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Define the migration and production cutover sequence.
 
   Deliverables:
-  - Add one approved time horizon architecture document.
-  - Add one acceptance matrix that maps each contract behavior to an implementation issue.
+  - Add `ARCHITECTURE.md` as the approved time horizon architecture document.
+  - Add `TIME_HORIZON_ACCEPTANCE.md` as the contract acceptance matrix.
   - Record each unresolved product choice as a blocker.
 
   Validation:

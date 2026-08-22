@@ -88,35 +88,54 @@ Add repository-specific technical nouns below this line.
 ```
 
 - `anchor marker`: A marker that supplies the base time for a derived marker.
+- `active lane`: A lane that can receive state changes and future markers.
+- `all-day marker`: A marker that uses a local date range without a time of day.
 - `all-day event`: An event that uses a local date without a time of day.
 - `attention policy`: Rules that specify the next probe and its escalation time for a lane.
 - `browser test`: An automated test that operates the browser frontend.
 - `calendar`: A user-owned visibility family that groups lanes without control of lane membership.
+- `calendar authorization request`: A resource that starts Google Calendar consent without a calendar connection.
 - `calendar connection`: An authorized link between RSVP and an external calendar provider.
 - `calendar provider`: An external service that supplies source calendars and provider events.
+- `calendar synchronization`: An operation that imports changes from one source calendar.
+- `calendar visibility`: A saved choice that shows or hides one calendar in the horizon view.
+- `daylight time`: A local clock change that an IANA timezone defines.
 - `dependency chain`: An anchor event and related dependent events on one lane.
 - `dependent event`: An event with an explicit dependency that shares a lane with its anchor event.
+- `draft confirmation`: A resource that creates temporal resources from one approved ingestion draft.
 - `derived marker`: A marker whose time uses an offset from an anchor marker.
+- `derived marker rule`: A stored offset relationship between an anchor marker and a derived marker.
 - `event occurrence`: One dated instance of an event series.
 - `event series`: One recurring event with all event occurrences on one lane.
 - `external event link`: A relationship between one RSVP event and one provider event.
 - `finite lane`: A lane with an end time.
 - `horizon projection`: Structured calendar, lane, and marker data for one time window.
 - `horizon view`: The browser frontend that shows calendars, lanes, and markers on a time axis.
+- `idempotency record`: A temporary record that connects one request key to one operation result.
 - `ingestion draft`: Validated proposed temporal data that has not changed persisted data.
 - `independent event`: An event without an explicit dependency that owns one lane.
+- `interval marker`: A timed marker with a start time and an end time.
 - `lane`: A timeline row for one independent event, one event series, or one dependency chain.
 - `lane membership`: The relationship of one independent event, event series, or dependency chain to one lane.
-- `marker`: A visible point or interval for one event occurrence or probe.
+- `local wall time`: A local clock date and time that does not contain timezone rules.
+- `marker`: A visible point or interval for one event occurrence, probe, or derived marker.
+- `natural-language parser`: An adapter that changes text into an ingestion draft.
 - `open lane`: A lane without an end time.
+- `opaque identifier`: A resource identifier whose value has no client-visible meaning.
 - `organizer`: An authenticated RSVP user who owns temporal resources.
+- `organizer timezone`: The IANA timezone that RSVP uses for an organizer's local dates and default time window.
+- `point marker`: A timed marker with a start time and no end time.
 - `probe`: A dated review action for a lane.
 - `provider event`: An event that a calendar provider owns.
+- `resolved lane`: A lane with a recorded resolution time and no future probe.
 - `source calendar`: An external calendar that an organizer selects for import.
+- `source calendar mapping`: A relationship between one source calendar and one RSVP calendar.
+- `source reconciliation`: A complete synchronization that compares provider data with source-owned RSVP resources.
 - `source-owned marker`: An imported marker with fields that a calendar provider owns.
 - `sync cursor`: Provider data that identifies the next incremental calendar synchronization position.
 - `temporal resource`: A calendar, lane, event, probe, attention policy, or derived marker.
 - `time horizon`: The product contract that represents dated events and unresolved temporal subjects.
+- `time shape`: One closed marker time representation for a point, interval, or all-day date range.
 - `time window`: A bounded interval for one horizon projection.
 - `timezone`: A named IANA rule set for local time interpretation.
 
@@ -157,3 +176,42 @@ Add repository-specific technical verbs below this line.
 ```text
 - `term`: Definition with one meaning and the approved verb forms.
 ```
+
+- `approve`: Accept a contract or draft as the current choice. Approved forms: `approve`, `approves`, `approved`.
+- `assign`: Connect one resource to its required owner or parent resource. Approved forms: `assign`, `assigns`, `assigned`.
+- `belong`: Have one required parent resource. Approved forms: `belong`, `belongs`, `belonged`.
+- `cancel`: Stop a pending probe or ingestion draft. Approved forms: `cancel`, `cancels`, `canceled`.
+- `confirm`: Accept an ingestion draft and create its temporal resources. Approved forms: `confirm`, `confirms`, `confirmed`.
+- `construct`: Create a valid domain type. Approved forms: `construct`, `constructs`, `constructed`.
+- `create`: Add one new persisted resource. Approved forms: `create`, `creates`, `created`.
+- `define`: Specify one canonical meaning or contract. Approved forms: `define`, `defines`, `defined`.
+- `delete`: Make one persisted resource absent. Approved forms: `delete`, `deletes`, `deleted`.
+- `derive`: Calculate a marker time from an anchor marker. Approved forms: `derive`, `derives`, `derived`.
+- `encrypt`: Protect a credential with authenticated encryption. Approved forms: `encrypt`, `encrypts`, `encrypted`.
+- `enforce`: Reject a state or operation that does not obey a contract. Approved forms: `enforce`, `enforces`, `enforced`.
+- `exchange`: Send an authorization code and receive provider credentials. Approved forms: `exchange`, `exchanges`, `exchanged`.
+- `fail`: End an operation without its required result. Approved forms: `fail`, `fails`, `failed`.
+- `group`: Put related lanes in one calendar. Approved forms: `group`, `groups`, `grouped`.
+- `hide`: Remove a calendar from the current horizon presentation. Approved forms: `hide`, `hides`, `hidden`.
+- `implement`: Add source code for an approved contract. Approved forms: `implement`, `implements`, `implemented`.
+- `import`: Create RSVP temporal resources from provider events. Approved forms: `import`, `imports`, `imported`.
+- `interpret`: Apply timezone rules to a local wall time. Approved forms: `interpret`, `interprets`, `interpreted`.
+- `intersect`: Share one or more instants with a time window. Approved forms: `intersect`, `intersects`, `intersected`.
+- `migrate`: Change persisted data to the canonical schema. Approved forms: `migrate`, `migrates`, `migrated`.
+- `own`: Have authorization control of a resource. Approved forms: `own`, `owns`, `owned`.
+- `permit`: Accept a specified state or operation. Approved forms: `permit`, `permits`, `permitted`.
+- `preserve`: Keep a value or relationship unchanged during migration. Approved forms: `preserve`, `preserves`, `preserved`.
+- `propose`: Put a candidate value in an ingestion draft. Approved forms: `propose`, `proposes`, `proposed`.
+- `recalculate`: Calculate a derived marker again after an anchor change. Approved forms: `recalculate`, `recalculates`, `recalculated`.
+- `reconcile`: Compare provider data with source-owned RSVP resources and apply the differences. Approved forms: `reconcile`, `reconciles`, `reconciled`.
+- `reference`: Store an explicit relationship to another resource. Approved forms: `reference`, `references`, `referenced`.
+- `represent`: Supply a specified model or visible form for a resource. Approved forms: `represent`, `represents`, `represented`.
+- `redirect`: Send an HTTP client to another route. Approved forms: `redirect`, `redirects`, `redirected`.
+- `reorder`: Change the display order of resources. Approved forms: `reorder`, `reorders`, `reordered`.
+- `require`: Make a field, input, or relationship necessary. Approved forms: `require`, `requires`, `required`.
+- `resolve`: Close an active open lane at one resolution time. Approved forms: `resolve`, `resolves`, `resolved`.
+- `return`: Send an HTTP response to a client. Approved forms: `return`, `returns`, `returned`.
+- `store`: Write a resource or value to the database. Approved forms: `store`, `stores`, `stored`.
+- `support`: Accept an approved resource shape or operation. Approved forms: `support`, `supports`, `supported`.
+- `synchronize`: Apply source calendar changes to RSVP temporal resources. Approved forms: `synchronize`, `synchronizes`, `synchronized`.
+- `update`: Change one persisted resource. Approved forms: `update`, `updates`, `updated`.
