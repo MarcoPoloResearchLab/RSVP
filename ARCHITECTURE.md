@@ -3,7 +3,7 @@
 Status: Approved contract for P001.
 
 This document defines the target time horizon architecture for RSVP.
-The current runtime stays event-only until I002 completes.
+The current runtime uses the canonical calendar and lane schema.
 The [acceptance matrix](TIME_HORIZON_ACCEPTANCE.md) assigns each contract behavior to an implementation issue.
 
 ## Product Contract
@@ -64,6 +64,9 @@ An event keeps its optional venue relationship.
 
 Each persisted resource uses an opaque identifier and standard audit timestamps.
 Conditional fields use database constraints and validated domain constructors.
+An organizer can exist before timezone confirmation.
+The first temporal write must have a client-supplied timezone.
+RSVP stores that value as the organizer timezone.
 
 | Resource | Canonical fields |
 |---|---|
@@ -159,7 +162,6 @@ The lane start does not have to equal its first marker time.
 Thus, a future event has a visible lane before its event marker.
 
 For a local lane, `starts_at` uses the request reference time.
-For a migrated event, `starts_at` uses the earlier event creation time or event start time.
 For a source-owned lane, `starts_at` uses the earlier first synchronization time or earliest imported marker time.
 
 Each marker must be at or after the lane start.
@@ -243,14 +245,16 @@ A derived marker adds `rule_id` and `anchor_marker_id`.
 Each organizer has one required organizer timezone.
 RSVP stores the organizer timezone as an IANA timezone name.
 RSVP does not use a fixed UTC offset as a timezone.
+RSVP applies no server-side timezone default.
 
 The organizer timezone controls default windows and local quick-add input.
 A marker timezone controls that marker's local display and all-day dates.
 A provider event keeps the timezone from its calendar provider.
 
-RSVP must reject a temporal write when the organizer timezone is absent or invalid.
-For a new organizer, RSVP can propose a browser timezone during organizer setup.
-The new organizer must confirm the proposed timezone before the first temporal write.
+The client must supply a timezone for each temporal write.
+The browser client can supply its IANA timezone.
+RSVP stores that value as the organizer timezone with the first temporal write.
+RSVP rejects a temporal write when the supplied timezone is absent or invalid.
 
 ## Horizon Window
 
@@ -535,58 +539,32 @@ An invalid parser response changes no temporal resource.
 The natural-language parser uses one explicit reference time and the organizer timezone.
 RSVP does not store the original natural-language input.
 
-## Migration Contract
+## Fresh Schema Contract
 
-I002 implements the event-to-lane migration as one explicit operation.
-The operation requires a database path and one `--legacy-timezone` IANA value.
-The operation rejects an absent or invalid timezone before migration.
+RSVP initializes an empty SQLite database with the complete canonical schema.
+Schema initialization occurs in one database transaction.
 
-The migration treats each current event timestamp as a local wall time.
-The supplied legacy timezone gives each local wall time its timezone rules.
-The migration then stores the related UTC timestamp and IANA timezone.
+RSVP opens an existing database only when each canonical table and required column is present.
+The event table must use lane ownership and the closed event constraints.
+An event-only database is outside the current runtime contract.
 
-The migration preserves the current displayed local date and time.
-The migration does not preserve the old UTC instant that encoded the local wall time.
-The migration fails when a daylight time transition makes a local time invalid or ambiguous.
-
-The operator stops application writes and creates a recoverable database copy.
-The migration then completes these changes in one database transaction:
-
-1. Add the canonical calendar, lane, event series, probe, and attention policy schema.
-2. Add the required organizer timezone field.
-3. Create one `RSVP Events` calendar for each current organizer.
-4. Create one finite lane for each current event.
-5. Set each lane start to the earlier event creation time or event start time.
-6. Set each lane end to the event end time.
-7. Assign the supplied legacy timezone to each migrated event and organizer.
-8. Add the required lane relationship to each event.
-9. Remove the duplicate event organizer field.
-10. Preserve event identifiers, RSVP codes, responses, venues, and displayed local times.
-
-The migration verifies row counts and all preserved relationships before commit.
-Any verification failure rolls back the complete transaction.
-
-After migration, the application uses only the canonical schema.
-Startup does not run an embedded legacy migration.
-The operator removes the one-time migration code after the target database operation.
+The runtime contains no schema conversion operation.
+Startup contains no data repair or schema update path.
 
 ## Cutover Sequence
 
 1. Complete I001 contract coverage.
 2. Approve this P001 contract and its acceptance matrix.
-3. Stop writes to the target database.
-4. Create and verify a recoverable database copy.
-5. Run the I002 migration with the required legacy timezone.
-6. Verify identifiers, counts, and relationships.
-7. Start the canonical application build.
-8. Verify the protected RSVP response and QR flows.
-9. Verify the horizon projection and owner boundaries.
-10. Remove the one-time migration code.
+3. Start with an empty database or a complete canonical database.
+4. Initialize the canonical schema in one transaction when the database is empty.
+5. Use the client timezone for the first temporal write.
+6. Make sure that calendar, lane, event, RSVP, and venue relationships are correct.
+7. Make sure that the protected RSVP response and QR flows operate correctly.
+8. Make sure that the horizon projection and owner boundaries are correct.
 
 ## Product Decisions
 
 This contract has no unresolved product choice.
-The migration operator must supply the legacy timezone for the target database.
-That required input is an operation choice and not a P001 blocker.
+The client supplies each timezone default and sends one explicit IANA timezone.
 
 Any later contract change requires an issue and an atomic update to this document.
