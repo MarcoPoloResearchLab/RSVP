@@ -1,5 +1,5 @@
 # Build stage (Debian-based Go image)
-FROM golang:1.24-bullseye AS builder
+FROM golang:1.27.0-trixie AS builder
 WORKDIR /app
 
 COPY go.mod go.sum ./
@@ -8,7 +8,7 @@ RUN go mod download
 COPY . .
 RUN GOOS=linux GOARCH=amd64 go build -o myapp cmd/web/main.go
 
-FROM debian:bullseye-slim
+FROM debian:trixie-slim
 WORKDIR /app
 
 # Install certificates if needed
