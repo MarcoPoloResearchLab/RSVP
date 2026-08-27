@@ -133,6 +133,19 @@ test('creates, reorders, resolves, and persists calendar lanes', async ({context
     await expect(page.locator(`[data-calendar-id="${calendarID}"] [data-lane-id]`, {hasText: 'Browser open lane'})).toHaveAttribute('data-lane-open', 'false');
 });
 
+test('shows and completes a durable attention probe', async ({page}) => {
+    const waitingLane = page.locator('[data-lane-id="LANATTN0"]');
+    await waitingLane.locator('.horizon-lane-controls > summary').click();
+    await expect(waitingLane.getByText('Next attention:')).toBeVisible();
+    const pendingProbe = waitingLane.locator('[data-probe-state="pending"]');
+    await expect(pendingProbe).toBeVisible();
+    await pendingProbe.click();
+    await waitingLane.getByRole('button', {name: 'Complete probe'}).click();
+
+    await expect(waitingLane.locator('[data-probe-state="completed"]')).toBeVisible();
+    await expect(waitingLane.locator('[data-probe-state="pending"]')).toBeVisible();
+});
+
 test('supports keyboard pan, scale, visibility, and marker selection', async ({page}) => {
     const viewport = page.locator('[data-horizon-viewport]');
     const board = page.locator('[data-horizon-board]');

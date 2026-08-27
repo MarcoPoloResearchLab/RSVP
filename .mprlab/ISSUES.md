@@ -406,7 +406,7 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Run `make ci`.
   - Run the browser test target.
 
-- [ ] [F004] (P1) {F003} Add attention policies and probes
+- [x] [F004] (P1) {F003} Add attention policies and probes
   Goal:
   This issue gives unresolved lanes a durable review and escalation workflow.
 

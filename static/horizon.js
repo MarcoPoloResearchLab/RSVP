@@ -47,14 +47,16 @@ if (horizonView instanceof HTMLElement) {
 
     /** @param {HTMLFormElement} form */
     const formPayload = (form) => {
-        /** @type {Record<string, string>} */
+        /** @type {Record<string, string|number>} */
         const payload = {};
         for (const [name, rawValue] of new FormData(form).entries()) {
             if (typeof rawValue !== 'string' || rawValue === '') {
                 continue;
             }
-            if (name === 'ends_at') {
+            if (name === 'ends_at' || name === 'next_probe_at') {
                 payload[name] = new Date(rawValue).toISOString();
+            } else if (name.endsWith('_seconds')) {
+                payload[name] = Number(rawValue);
             } else {
                 payload[name] = rawValue;
             }
@@ -134,6 +136,9 @@ if (horizonView instanceof HTMLElement) {
             }
             if (actionButton.hasAttribute('data-resolve-lane')) {
                 payload.resolved_at = new Date().toISOString();
+            }
+            if (actionButton.hasAttribute('data-complete-probe')) {
+                payload.state = 'completed';
             }
             actionButton.disabled = true;
             try {

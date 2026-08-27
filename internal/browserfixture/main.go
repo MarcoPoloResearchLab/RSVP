@@ -163,6 +163,33 @@ func seedBrowserFixture(database *gorm.DB) error {
 		if createError := transaction.Create(waitingLane).Error; createError != nil {
 			return fmt.Errorf("create open waiting lane: %w", createError)
 		}
+		attentionLane, attentionLaneError := models.NewOpenLane(waiting.ID, "Appeal review", browserReferenceTime.AddDate(0, 0, -10), 1)
+		if attentionLaneError != nil {
+			return attentionLaneError
+		}
+		attentionLane.BaseModel.ID = "LANATTN0"
+		if createError := transaction.Create(attentionLane).Error; createError != nil {
+			return fmt.Errorf("create attention lane: %w", createError)
+		}
+		reviewInterval := 7 * 24 * time.Hour
+		escalationInterval := 24 * time.Hour
+		policy, policyError := models.NewAttentionPolicy(attentionLane.ID, reviewInterval, browserReferenceTime.AddDate(0, 0, 3), &escalationInterval)
+		if policyError != nil {
+			return policyError
+		}
+		policy.BaseModel.ID = "POLWAIT0"
+		if createError := transaction.Create(policy).Error; createError != nil {
+			return fmt.Errorf("create waiting attention policy: %w", createError)
+		}
+		escalatesAt := policy.NextProbeAt.Add(escalationInterval)
+		pendingProbe, probeError := models.NewProbe(policy.ID, attentionLane.ID, policy.NextProbeAt, &escalatesAt)
+		if probeError != nil {
+			return probeError
+		}
+		pendingProbe.BaseModel.ID = "PRBWAIT0"
+		if createError := transaction.Create(pendingProbe).Error; createError != nil {
+			return fmt.Errorf("create waiting probe: %w", createError)
+		}
 
 		seriesLane, seriesLaneError := createBrowserFiniteLane(
 			transaction, work.ID, "LANSER00", "Design review series", browserReferenceTime.AddDate(0, 0, -2), browserReferenceTime.AddDate(0, 0, 52), 0,

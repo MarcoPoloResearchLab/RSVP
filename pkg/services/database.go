@@ -79,6 +79,7 @@ var canonicalUniqueIndexes = map[string][][]string{
 	config.TableLanes:             {{"calendar_id", "display_order"}},
 	config.TableEventSeries:       {{"lane_id"}},
 	config.TableAttentionPolicies: {{"lane_id"}},
+	config.TableProbes:            {{"policy_id", "due_at"}},
 }
 
 var canonicalCheckConstraints = map[string][]string{

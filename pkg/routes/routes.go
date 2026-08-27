@@ -6,10 +6,12 @@ import (
 	"github.com/tyemirov/GAuss/pkg/gauss"
 	"github.com/tyemirov/GAuss/pkg/session"
 	"github.com/tyemirov/RSVP/pkg/config"
+	"github.com/tyemirov/RSVP/pkg/handlers/attentionpolicy"
 	"github.com/tyemirov/RSVP/pkg/handlers/calendar"
 	"github.com/tyemirov/RSVP/pkg/handlers/event"
 	"github.com/tyemirov/RSVP/pkg/handlers/horizon"
 	"github.com/tyemirov/RSVP/pkg/handlers/lane"
+	"github.com/tyemirov/RSVP/pkg/handlers/probe"
 	"github.com/tyemirov/RSVP/pkg/handlers/response"
 	"github.com/tyemirov/RSVP/pkg/handlers/rsvp"
 	"github.com/tyemirov/RSVP/pkg/handlers/venue"
@@ -159,7 +161,9 @@ func (appRoutes *Routes) RegisterRoutes(mux *http.ServeMux) {
 	})
 	mux.Handle(config.WebEvents, protectedChain(eventBaseDispatcher))
 	mux.Handle(config.WebCalendars, protectedChain(calendar.Handler(appRoutes.ApplicationContext)))
+	mux.Handle(config.WebAttentionPolicies, protectedChain(attentionpolicy.Handler(appRoutes.ApplicationContext, time.Now)))
 	mux.Handle(config.WebLanes, protectedChain(lane.Handler(appRoutes.ApplicationContext, time.Now)))
+	mux.Handle(config.WebProbes, protectedChain(probe.Handler(appRoutes.ApplicationContext, time.Now)))
 	horizonHandler := horizon.Handler(appRoutes.ApplicationContext, time.Now)
 	mux.Handle(config.WebHorizon, horizon.AuthenticationMiddleware(appRoutes.ApplicationContext, addUserMiddleware(applyOverrides(horizonHandler))))
 	mux.Handle(config.WebRSVPQR, authRequired(addUserMiddleware(http.HandlerFunc(rsvp.ShowHandler(appRoutes.ApplicationContext)))))

@@ -147,6 +147,26 @@
                                             {{ if .CanResolve }}<button type="button" data-resource-action="PATCH" data-resource-url="{{ .ManagementURL }}" data-resolve-lane>Resolve lane</button>{{ end }}
                                             <button type="button" data-resource-action="DELETE" data-resource-url="{{ .ManagementURL }}">Delete lane</button>
                                         </div>
+                                        {{ if .CanResolve }}
+                                            {{ if .Attention }}
+                                                <p>Next attention: <time datetime="{{ .Attention.NextProbeAt }}">{{ .Attention.NextProbeInput }}</time></p>
+                                                <form data-resource-form data-method="PATCH" data-resource-url="{{ .Attention.ManagementURL }}">
+                                                    <label>Review interval seconds <input name="review_interval_seconds" type="number" min="1" value="{{ .Attention.ReviewIntervalSeconds }}" required></label>
+                                                    <label>Next probe <input name="next_probe_at" type="datetime-local" value="{{ .Attention.NextProbeInput }}" required></label>
+                                                    <label>Escalation interval seconds <input name="escalation_interval_seconds" type="number" min="1" {{ if .Attention.EscalationSeconds }}value="{{ .Attention.EscalationSeconds }}"{{ end }}></label>
+                                                    <button type="submit">Save attention</button>
+                                                </form>
+                                                <button type="button" data-resource-action="DELETE" data-resource-url="{{ .Attention.ManagementURL }}">Delete attention</button>
+                                            {{ else }}
+                                                <form data-resource-form data-method="POST" data-resource-url="{{ $.AttentionCreateURL }}">
+                                                    <input name="lane_id" type="hidden" value="{{ .ID }}">
+                                                    <label>Review interval seconds <input name="review_interval_seconds" type="number" min="1" value="604800" required></label>
+                                                    <label>Next probe <input name="next_probe_at" type="datetime-local" required></label>
+                                                    <label>Escalation interval seconds <input name="escalation_interval_seconds" type="number" min="1"></label>
+                                                    <button type="submit">Add attention</button>
+                                                </form>
+                                            {{ end }}
+                                        {{ end }}
                                     </details>
                                 </div>
                                 <div class="horizon-lane-track">
@@ -165,6 +185,7 @@
                                             style="--marker-position: {{ .Position }}"
                                             data-marker-id="{{ .ID }}"
                                             data-marker-type="{{ .Type }}"
+                                            {{ if .ProbeState }}data-probe-state="{{ .ProbeState }}"{{ end }}
                                             aria-label="{{ .Title }}. {{ .Type }} marker."
                                             aria-describedby="marker-details-{{ .ID }}"
                                         >
@@ -173,9 +194,13 @@
                                         <aside class="horizon-marker-details" id="marker-details-{{ .ID }}" data-marker-details="{{ .ID }}" hidden>
                                             <strong>{{ .Title }}</strong>
                                             <span>{{ .Type }}</span>
+                                            {{ if .ProbeState }}<span>{{ .ProbeState }}</span>{{ end }}
                                             {{ if .IsEvent }}
                                                 <a href="{{ .EventURL }}">Event controls</a>
                                                 <a href="{{ .RSVPURL }}">RSVP controls</a>
+                                            {{ end }}
+                                            {{ if .CanComplete }}
+                                                <button type="button" data-resource-action="PATCH" data-resource-url="{{ .ProbeURL }}" data-complete-probe>Complete probe</button>
                                             {{ end }}
                                         </aside>
                                     {{ end }}

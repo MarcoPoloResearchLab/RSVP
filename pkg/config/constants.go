@@ -1,17 +1,19 @@
 package config
 
 const (
-	WebRoot             = "/"
-	WebCalendars        = "/calendars/"
-	WebEvents           = "/events/"
-	WebHorizon          = "/horizon/"
-	WebLanes            = "/lanes/"
-	WebStatic           = "/static/"
-	WebRSVPs            = "/rsvps/"
-	WebRSVPQR           = "/rsvps/qr/"
-	WebResponse         = "/response/"
-	WebResponseThankYou = "/response/thankyou"
-	WebVenues           = "/venues/"
+	WebRoot              = "/"
+	WebCalendars         = "/calendars/"
+	WebAttentionPolicies = "/attention-policies/"
+	WebEvents            = "/events/"
+	WebHorizon           = "/horizon/"
+	WebLanes             = "/lanes/"
+	WebProbes            = "/probes/"
+	WebStatic            = "/static/"
+	WebRSVPs             = "/rsvps/"
+	WebRSVPQR            = "/rsvps/qr/"
+	WebResponse          = "/response/"
+	WebResponseThankYou  = "/response/thankyou"
+	WebVenues            = "/venues/"
 )
 
 const (
@@ -168,6 +170,7 @@ const (
 )
 
 const (
+	AttentionClockInterval        = 60 * 1e9
 	ServerHTTPPort                = 8080
 	ServerHTTPAddress             = "0.0.0.0"
 	ServerGracefulShutdownTimeout = 10 * 1e9

@@ -556,3 +556,13 @@ main:has(.horizon-view) {
         transition: none;
     }
 }
+
+.horizon-marker-target[data-probe-state="pending"] .horizon-marker-dot {
+    border: 3px solid var(--surface, white);
+    box-shadow: 0 0 0 2px var(--calendar-color);
+}
+
+.horizon-marker-target[data-probe-state="missed"] .horizon-marker-dot {
+    background: transparent;
+    border: 4px solid var(--calendar-color);
+}

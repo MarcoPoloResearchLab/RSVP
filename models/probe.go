@@ -28,9 +28,9 @@ var (
 // Probe is one dated review action for a lane.
 type Probe struct {
 	BaseModel
-	PolicyID    string    `gorm:"type:varchar(8);not null;index"`
+	PolicyID    string    `gorm:"type:varchar(8);not null;index;uniqueIndex:probe_occurrence"`
 	LaneID      string    `gorm:"type:varchar(8);not null;index"`
-	DueAt       time.Time `gorm:"not null"`
+	DueAt       time.Time `gorm:"not null;uniqueIndex:probe_occurrence"`
 	EscalatesAt *time.Time
 	State       ProbeState `gorm:"type:text;not null;check:probe_state,((state = 'pending' AND completed_at IS NULL) OR (state = 'completed' AND completed_at IS NOT NULL) OR (state IN ('missed','canceled') AND completed_at IS NULL))"`
 	CompletedAt *time.Time

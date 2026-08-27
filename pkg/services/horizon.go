@@ -112,13 +112,22 @@ type HorizonCalendarProjection struct {
 
 // HorizonLaneProjection contains one lane and its markers in the window.
 type HorizonLaneProjection struct {
-	ID           string                    `json:"id"`
-	Title        string                    `json:"title"`
-	Status       models.LaneStatus         `json:"status"`
-	StartsAt     string                    `json:"starts_at"`
-	EndsAt       *string                   `json:"ends_at"`
-	DisplayOrder int                       `json:"display_order"`
-	Markers      []HorizonMarkerProjection `json:"markers"`
+	ID           string                      `json:"id"`
+	Title        string                      `json:"title"`
+	Status       models.LaneStatus           `json:"status"`
+	StartsAt     string                      `json:"starts_at"`
+	EndsAt       *string                     `json:"ends_at"`
+	DisplayOrder int                         `json:"display_order"`
+	Attention    *HorizonAttentionProjection `json:"attention_policy,omitempty"`
+	Markers      []HorizonMarkerProjection   `json:"markers"`
+}
+
+// HorizonAttentionProjection contains one lane attention policy.
+type HorizonAttentionProjection struct {
+	ID                        string `json:"id"`
+	ReviewIntervalSeconds     int64  `json:"review_interval_seconds"`
+	NextProbeAt               string `json:"next_probe_at"`
+	EscalationIntervalSeconds *int64 `json:"escalation_interval_seconds"`
 }
 
 // HorizonMarkerTimeProjection is one closed marker time shape.
@@ -273,6 +282,9 @@ func (service *HorizonProjectionService) project(ctx context.Context, organizerI
 		laneIDs = append(laneIDs, laneID)
 	}
 
+	if attentionError := service.addAttentionPolicies(ctx, organizerID, laneIDs, lanePositions, &projection); attentionError != nil {
+		return HorizonProjection{}, attentionError
+	}
 	if eventError := service.addEventMarkers(ctx, organizerID, window, laneIDs, lanePositions, &projection); eventError != nil {
 		return HorizonProjection{}, eventError
 	}
@@ -280,6 +292,35 @@ func (service *HorizonProjectionService) project(ctx context.Context, organizerI
 		return HorizonProjection{}, probeError
 	}
 	return projection, nil
+}
+
+func (service *HorizonProjectionService) addAttentionPolicies(
+	ctx context.Context,
+	organizerID string,
+	laneIDs []string,
+	lanePositions map[string]horizonLanePosition,
+	projection *HorizonProjection,
+) error {
+	var policies []models.AttentionPolicy
+	queryError := service.database.WithContext(ctx).Model(&models.AttentionPolicy{}).
+		Joins("JOIN "+config.TableLanes+" ON "+config.TableLanes+".id = "+config.TableAttentionPolicies+".lane_id AND "+config.TableLanes+".deleted_at IS NULL").
+		Joins("JOIN "+config.TableCalendars+" ON "+config.TableCalendars+".id = "+config.TableLanes+".calendar_id AND "+config.TableCalendars+".deleted_at IS NULL").
+		Where(config.TableCalendars+".organizer_id = ?", organizerID).
+		Where(config.TableAttentionPolicies+".lane_id IN ?", laneIDs).
+		Find(&policies).Error
+	if queryError != nil {
+		return fmt.Errorf("read horizon attention policies for organizer %s: %w", organizerID, queryError)
+	}
+	for policyIndex := range policies {
+		policy := &policies[policyIndex]
+		position := lanePositions[policy.LaneID]
+		lane := &projection.Calendars[position.calendarIndex].Lanes[position.laneIndex]
+		lane.Attention = &HorizonAttentionProjection{
+			ID: policy.ID, ReviewIntervalSeconds: policy.ReviewIntervalSeconds,
+			NextProbeAt: formatHorizonTime(policy.NextProbeAt), EscalationIntervalSeconds: policy.EscalationIntervalSeconds,
+		}
+	}
+	return nil
 }
 
 func (service *HorizonProjectionService) addEventMarkers(
