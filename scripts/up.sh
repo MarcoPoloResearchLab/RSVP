@@ -5,6 +5,7 @@ repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 source_environment="${repository_root}/.env.docker"
 runtime_directory="${repository_root}/.cache/rsvp-local"
 calendar_key_file="${runtime_directory}/calendar-credential-encryption-key"
+calendar_key_tool="${repository_root}/scripts/calendar-key.sh"
 public_origin="http://localhost:8080"
 compose_project="rsvp-local"
 
@@ -63,9 +64,9 @@ umask 077
 mkdir -p "${runtime_directory}"
 chmod 700 "${runtime_directory}"
 if [[ ! -f "${calendar_key_file}" ]]; then
-  openssl rand -hex 32 >"${calendar_key_file}"
+  "${calendar_key_tool}" generate "${calendar_key_file}"
 fi
-chmod 600 "${calendar_key_file}"
+"${calendar_key_tool}" validate "${calendar_key_file}"
 
 rm -f "${runtime_directory}/app.env"
 export RSVP_RUNTIME_ENV_FILE="${source_environment}"
