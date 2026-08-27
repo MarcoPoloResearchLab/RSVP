@@ -260,6 +260,9 @@ The client must supply a timezone for each temporal write.
 The browser client can supply its IANA timezone.
 RSVP stores that value as the organizer timezone with the first temporal write.
 RSVP rejects a temporal write when the supplied timezone is absent or invalid.
+Before the first temporal write, the HTML Horizon shows setup for the first calendar.
+The setup sends the browser IANA timezone with calendar creation.
+The JSON Horizon returns `organizer_timezone_required` until that write completes.
 
 ## Horizon Window
 
@@ -358,10 +361,12 @@ The same operations stay available at the supported mobile width.
 
 New routes use resource nouns and opaque identifiers.
 Each organizer route requires authentication and owner authorization.
+The machine-readable contract is `api/horizon.openapi.json`.
 
 | Method | Path | Result |
 |---|---|---|
-| `GET` | `/horizon/` | Read the HTML or JSON horizon projection. |
+| `GET` | `/horizon/` | Read the HTML or JSON Horizon projection. |
+| `HEAD` | `/horizon/` | Read the Horizon projection metadata without a body. |
 | `POST` | `/calendars/` | Create a calendar. |
 | `GET` | `/calendars/{calendar_id}` | Read one calendar. |
 | `PATCH` | `/calendars/{calendar_id}` | Change calendar fields, order, or visibility. |
@@ -384,12 +389,16 @@ Each organizer route requires authentication and owner authorization.
 | `POST` | `/derived-marker-rules/` | Create one derived marker rule. |
 | `PATCH` | `/derived-marker-rules/{rule_id}` | Change one derived marker rule. |
 | `DELETE` | `/derived-marker-rules/{rule_id}` | Delete one derived marker rule. |
-| `POST` | `/ingestion-drafts/` | Create one ingestion draft. |
+| `POST` | `/ingestion-drafts/` | Create one quick or natural-language ingestion draft. |
 | `GET` | `/ingestion-drafts/{draft_id}` | Read one ingestion draft. |
 | `PATCH` | `/ingestion-drafts/{draft_id}` | Correct one ingestion draft. |
 | `DELETE` | `/ingestion-drafts/{draft_id}` | Cancel one ingestion draft. |
 | `POST` | `/ingestion-drafts/{draft_id}/confirmations/` | Confirm one draft and create temporal resources. |
-| `POST` | `/natural-language-ingestion/` | Parse text and create one ingestion draft. |
+
+Horizon resources accept only their declared standard HTTP methods.
+They do not accept an `_method` override.
+Draft creation requires a `source` value of `quick` or `natural_language`.
+Both representations create the resource at `/ingestion-drafts/{draft_id}`.
 
 An authenticated request to `/` redirects to `/horizon/`.
 An unauthenticated request to `/` keeps the public landing page.
@@ -403,6 +412,7 @@ A malformed request returns `400 Bad Request`.
 A semantically invalid time window returns `422 Unprocessable Content`.
 An unsupported representation returns `406 Not Acceptable`.
 An unsupported request media type returns `415 Unsupported Media Type`.
+Each Horizon API error uses the typed error representation.
 
 The connection, synchronization, and draft confirmation routes require an `Idempotency-Key` header.
 RSVP keeps the related idempotency record for 24 hours.
