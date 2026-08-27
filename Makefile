@@ -1,7 +1,7 @@
 SHELL := /bin/bash
 .DEFAULT_GOAL := ci
 
-.PHONY: ci fmt lint test release publish deploy
+.PHONY: ci fmt lint test browser-test release publish deploy
 
 ci: fmt lint test
 
@@ -17,6 +17,11 @@ lint:
 
 test:
 	go test ./...
+
+browser-test:
+	npm ci
+	npx playwright install chromium
+	npm run test:browser
 
 release publish deploy:
 	@application_root="$$(git rev-parse --show-toplevel)"; \
