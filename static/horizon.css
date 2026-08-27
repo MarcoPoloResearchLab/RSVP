@@ -183,6 +183,11 @@ main:has(.horizon-view) {
     padding: 0.75rem;
 }
 
+.horizon-setup-form {
+    margin-top: 1.5rem;
+    max-width: 28rem;
+}
+
 .horizon-resource-form h2 {
     font-size: 0.85rem;
     margin: 0;

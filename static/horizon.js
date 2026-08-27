@@ -1,5 +1,59 @@
 // @ts-check
 
+const horizonSetup = document.querySelector('[data-horizon-setup]');
+
+if (horizonSetup instanceof HTMLElement) {
+    const form = horizonSetup.querySelector('[data-horizon-setup-form]');
+    const status = horizonSetup.querySelector('[data-horizon-setup-status]');
+    const timezoneInput = horizonSetup.querySelector('[data-client-timezone]');
+    if (!(form instanceof HTMLFormElement) || !(status instanceof HTMLElement) || !(timezoneInput instanceof HTMLInputElement)) {
+        throw new Error('The Horizon setup contract is incomplete.');
+    }
+    const browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (!browserTimezone) {
+        throw new Error('The browser did not supply an IANA timezone.');
+    }
+    timezoneInput.value = browserTimezone;
+    form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const resourceURL = form.dataset.resourceUrl;
+        if (!resourceURL) {
+            throw new Error('The calendar resource URL is absent.');
+        }
+        const submitButton = form.querySelector('button[type="submit"]');
+        if (!(submitButton instanceof HTMLButtonElement)) {
+            throw new Error('The Horizon setup action is absent.');
+        }
+        submitButton.disabled = true;
+        const payload = Object.fromEntries(new FormData(form).entries());
+        try {
+            const response = await fetch(resourceURL, {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(payload),
+            });
+            if (!response.ok) {
+                let message = `Horizon setup failed with status ${response.status}.`;
+                try {
+                    const body = await response.json();
+                    if (body && body.error && typeof body.error.message === 'string') {
+                        message = body.error.message;
+                    }
+                } catch (_error) {
+                    // The status message remains the canonical browser error.
+                }
+                throw new Error(message);
+            }
+            window.location.assign('/horizon/');
+        } catch (error) {
+            status.classList.remove('visually-hidden');
+            status.textContent = error instanceof Error ? error.message : 'Horizon setup failed.';
+            submitButton.disabled = false;
+        }
+    });
+}
+
 const horizonView = document.querySelector('[data-horizon-view]');
 
 if (horizonView instanceof HTMLElement) {
