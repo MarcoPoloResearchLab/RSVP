@@ -54,6 +54,55 @@
             {{ end }}
         </div>
 
+        <details class="horizon-management" data-horizon-management>
+            <summary>Manage calendars and lanes</summary>
+            <div class="horizon-management-grid">
+                <form class="horizon-resource-form" data-resource-form data-method="POST" data-resource-url="{{ .CalendarCreateURL }}">
+                    <h2>Create calendar</h2>
+                    <label>Name <input name="name" required></label>
+                    <label>Symbol <input name="symbol" required maxlength="8"></label>
+                    <label>Color token <input name="color_token" required></label>
+                    <input type="hidden" name="timezone" data-client-timezone>
+                    <button type="submit">Create calendar</button>
+                </form>
+                <form class="horizon-resource-form" data-resource-form data-method="POST" data-resource-url="{{ .LaneCreateURL }}">
+                    <h2>Create lane</h2>
+                    <label>Calendar
+                        <select name="calendar_id" required>
+                            {{ range .Calendars }}<option value="{{ .ID }}">{{ .Symbol }} {{ .Name }}</option>{{ end }}
+                        </select>
+                    </label>
+                    <label>Title <input name="title" required></label>
+                    <label>Kind
+                        <select name="kind" data-lane-kind>
+                            <option value="open">Open</option>
+                            <option value="finite">Finite</option>
+                        </select>
+                    </label>
+                    <label>End <input type="datetime-local" name="ends_at" data-lane-end></label>
+                    <input type="hidden" name="timezone" data-client-timezone>
+                    <button type="submit">Create lane</button>
+                </form>
+            </div>
+            <div class="horizon-resource-list">
+                {{ range .Calendars }}
+                    <section class="horizon-resource-card" data-calendar-management="{{ .ID }}">
+                        <form data-resource-form data-method="PATCH" data-resource-url="{{ .ManagementURL }}">
+                            <label>Calendar name <input name="name" value="{{ .Name }}" required></label>
+                            <label>Symbol <input name="symbol" value="{{ .Symbol }}" required maxlength="8"></label>
+                            <label>Color token <input name="color_token" value="{{ .ColorToken }}" required></label>
+                            <button type="submit">Save calendar</button>
+                        </form>
+                        <div class="horizon-resource-actions">
+                            {{ if .CanMoveUp }}<button type="button" data-resource-action="PATCH" data-resource-url="{{ .ManagementURL }}" data-display-order="{{ .PreviousOrder }}">Move calendar up</button>{{ end }}
+                            {{ if .CanMoveDown }}<button type="button" data-resource-action="PATCH" data-resource-url="{{ .ManagementURL }}" data-display-order="{{ .NextOrder }}">Move calendar down</button>{{ end }}
+                            <button type="button" data-resource-action="DELETE" data-resource-url="{{ .ManagementURL }}">Delete calendar</button>
+                        </div>
+                    </section>
+                {{ end }}
+            </div>
+        </details>
+
         <p class="horizon-shortcuts">
             Keyboard: H/L pan, −/+ scale, J/K select markers, and 1–9 toggle calendars.
         </p>
@@ -83,10 +132,23 @@
                     >
                         {{ range $calendar.Lanes }}
                             <div class="horizon-lane-row" data-lane-id="{{ .ID }}" data-lane-open="{{ .IsOpen }}">
-                                <h2 class="horizon-lane-label">
+                                <div class="horizon-lane-label">
                                     <span class="horizon-lane-symbol" aria-hidden="true">{{ $calendar.Symbol }}</span>
                                     <span>{{ .Title }}</span>
-                                </h2>
+                                    <details class="horizon-lane-controls">
+                                        <summary aria-label="Manage {{ .Title }}">•••</summary>
+                                        <form data-resource-form data-method="PATCH" data-resource-url="{{ .ManagementURL }}">
+                                            <label>Lane title <input name="title" value="{{ .Title }}" required></label>
+                                            <button type="submit">Save lane</button>
+                                        </form>
+                                        <div class="horizon-resource-actions">
+                                            {{ if .CanMoveUp }}<button type="button" data-resource-action="PATCH" data-resource-url="{{ .ManagementURL }}" data-display-order="{{ .PreviousOrder }}">Move lane up</button>{{ end }}
+                                            {{ if .CanMoveDown }}<button type="button" data-resource-action="PATCH" data-resource-url="{{ .ManagementURL }}" data-display-order="{{ .NextOrder }}">Move lane down</button>{{ end }}
+                                            {{ if .CanResolve }}<button type="button" data-resource-action="PATCH" data-resource-url="{{ .ManagementURL }}" data-resolve-lane>Resolve lane</button>{{ end }}
+                                            <button type="button" data-resource-action="DELETE" data-resource-url="{{ .ManagementURL }}">Delete lane</button>
+                                        </div>
+                                    </details>
+                                </div>
                                 <div class="horizon-lane-track">
                                     {{ if $.TodayPosition }}
                                         <span class="horizon-today-line" style="--today-position: {{ $.TodayPosition }}" aria-hidden="true"></span>

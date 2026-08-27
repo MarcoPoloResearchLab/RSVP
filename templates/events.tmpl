@@ -98,6 +98,24 @@
             }
             applyClientTimezoneDefaults();
 
+            const calendarSelect = document.getElementById("calendarSelect");
+            const anchorEventSelect = document.getElementById("anchorEventSelect");
+            if (calendarSelect instanceof HTMLSelectElement && anchorEventSelect instanceof HTMLSelectElement) {
+                const applyAnchorSelection = () => {
+                    const anchorOption = anchorEventSelect.selectedOptions[0];
+                    const anchorCalendarID = anchorOption ? anchorOption.dataset.calendarId : "";
+                    if (anchorCalendarID) {
+                        calendarSelect.value = anchorCalendarID;
+                    }
+                    calendarSelect.disabled = Boolean(anchorCalendarID);
+                };
+                anchorEventSelect.addEventListener("change", applyAnchorSelection);
+                anchorEventSelect.form?.addEventListener("reset", () => {
+                    window.setTimeout(applyAnchorSelection, 0);
+                });
+                applyAnchorSelection();
+            }
+
             function initMDE(id) {
                 const el = document.getElementById(id);
                 if (el) {

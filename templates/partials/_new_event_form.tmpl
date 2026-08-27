@@ -35,6 +35,29 @@
                     <input type="text" class="form-control client-timezone" id="timezoneInput"
                            name="{{ .ParamNameTimezone }}" autocomplete="off" required>
                 </div>
+                <div class="row mb-3">
+                    <div class="form-group col-md-6">
+                        <label for="calendarSelect" class="form-label">Calendar:</label>
+                        <select class="form-select" id="calendarSelect" name="{{ .ParamNameCalendarID }}">
+                            {{ if .CalendarList }}
+                                {{ range .CalendarList }}
+                                    <option value="{{ .ID }}">{{ .Symbol }} {{ .Name }}</option>
+                                {{ end }}
+                            {{ else }}
+                                <option value="">RSVP Events</option>
+                            {{ end }}
+                        </select>
+                    </div>
+                    <div class="form-group col-md-6">
+                        <label for="anchorEventSelect" class="form-label">Anchor event:</label>
+                        <select class="form-select" id="anchorEventSelect" name="{{ .ParamNameAnchorEventID }}">
+                            <option value="">Independent event</option>
+                            {{ range .AnchorEventList }}
+                                <option value="{{ .ID }}" data-calendar-id="{{ .CalendarID }}">{{ .Title }}</option>
+                            {{ end }}
+                        </select>
+                    </div>
+                </div>
             </div>
             <div class="form-footer-row">
                 <button type="button" id="cancelNewEventButton" class="btn btn-outline-secondary">Cancel New Event
