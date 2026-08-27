@@ -27,8 +27,10 @@ const (
 	browserFixtureAddress      = "127.0.0.1:18080"
 	browserOrganizerID         = "USRBRWSR"
 	browserOrganizerEmail      = "horizon@example.test"
+	browserNewOrganizerEmail   = "new-horizon@example.test"
 	browserTimezoneName        = "America/Los_Angeles"
 	browserLoginPath           = "/browser-login/"
+	browserNewLoginPath        = "/browser-new-login/"
 	browserGoogleAuthorizePath = "/browser-google/authorize"
 	browserGoogleTokenPath     = "/browser-google/token"
 	browserGoogleCalendarsPath = "/browser-google/calendars"
@@ -60,19 +62,10 @@ func main() {
 	applicationContext := &config.ApplicationContext{Database: database, Logger: logger, AppBaseURL: "http://" + browserFixtureAddress + "/"}
 	mux := http.NewServeMux()
 	mux.HandleFunc(browserLoginPath, func(responseWriter http.ResponseWriter, request *http.Request) {
-		webSession, sessionError := session.Store().Get(request, gaussConstants.SessionName)
-		if sessionError != nil {
-			http.Error(responseWriter, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-			return
-		}
-		webSession.Values[gaussConstants.SessionKeyUserEmail] = browserOrganizerEmail
-		webSession.Values[gaussConstants.SessionKeyUserName] = "Horizon Browser"
-		webSession.Values[gaussConstants.SessionKeyUserPicture] = ""
-		if saveError := webSession.Save(request, responseWriter); saveError != nil {
-			http.Error(responseWriter, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-			return
-		}
-		http.Redirect(responseWriter, request, config.WebRoot, http.StatusFound)
+		setBrowserSession(responseWriter, request, browserOrganizerEmail, "Horizon Browser")
+	})
+	mux.HandleFunc(browserNewLoginPath, func(responseWriter http.ResponseWriter, request *http.Request) {
+		setBrowserSession(responseWriter, request, browserNewOrganizerEmail, "New Horizon Browser")
 	})
 	mux.HandleFunc(browserGoogleAuthorizePath, func(responseWriter http.ResponseWriter, request *http.Request) {
 		redirectURI := request.URL.Query().Get("redirect_uri")
@@ -163,6 +156,22 @@ func main() {
 	if serveError := http.ListenAndServe(browserFixtureAddress, mux); serveError != nil {
 		logger.Fatalf("Serve browser fixture: %v", serveError)
 	}
+}
+
+func setBrowserSession(responseWriter http.ResponseWriter, request *http.Request, email string, name string) {
+	webSession, sessionError := session.Store().Get(request, gaussConstants.SessionName)
+	if sessionError != nil {
+		http.Error(responseWriter, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+	webSession.Values[gaussConstants.SessionKeyUserEmail] = email
+	webSession.Values[gaussConstants.SessionKeyUserName] = name
+	webSession.Values[gaussConstants.SessionKeyUserPicture] = ""
+	if saveError := webSession.Save(request, responseWriter); saveError != nil {
+		http.Error(responseWriter, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(responseWriter, request, config.WebRoot, http.StatusFound)
 }
 
 func seedBrowserFixture(database *gorm.DB) error {
