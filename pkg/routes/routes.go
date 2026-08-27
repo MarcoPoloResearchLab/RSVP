@@ -168,6 +168,7 @@ func (appRoutes *Routes) RegisterRoutes(mux *http.ServeMux) {
 		mux.Handle(config.WebCalendarAuthorizationRequests, protectedChain(calendarConnectionResources.AuthorizationRequests()))
 		mux.Handle(config.WebCalendarConnectionCallbacksGoogle, protectedChain(calendarConnectionResources.Callback()))
 		mux.Handle(config.WebCalendarConnections, protectedChain(calendarConnectionResources.Connections()))
+		mux.Handle(config.WebCalendarSyncs, protectedChain(calendarConnectionResources.CalendarSyncs()))
 	} else {
 		unavailable := http.HandlerFunc(func(responseWriter http.ResponseWriter, _ *http.Request) {
 			if responseError := handlers.WriteTypedError(responseWriter, http.StatusServiceUnavailable, "calendar_connection_unavailable", "Calendar connection is unavailable."); responseError != nil {
@@ -177,6 +178,7 @@ func (appRoutes *Routes) RegisterRoutes(mux *http.ServeMux) {
 		mux.Handle(config.WebCalendarAuthorizationRequests, protectedChain(unavailable))
 		mux.Handle(config.WebCalendarConnectionCallbacksGoogle, protectedChain(unavailable))
 		mux.Handle(config.WebCalendarConnections, protectedChain(unavailable))
+		mux.Handle(config.WebCalendarSyncs, protectedChain(unavailable))
 	}
 	mux.Handle(config.WebAttentionPolicies, protectedChain(attentionpolicy.Handler(appRoutes.ApplicationContext, time.Now)))
 	mux.Handle(config.WebLanes, protectedChain(lane.Handler(appRoutes.ApplicationContext, time.Now)))

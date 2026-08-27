@@ -25,6 +25,7 @@ const requestBodyBytes = 8192
 type Resources struct {
 	applicationContext *config.ApplicationContext
 	service            *services.CalendarConnectionService
+	syncService        *services.CalendarSyncService
 }
 
 // New constructs the Google Calendar connection resources.
@@ -40,6 +41,9 @@ func New(applicationContext *config.ApplicationContext, environmentConfig config
 	if environmentConfig.GoogleCalendarListEndpoint != "" {
 		adapterConfig.CalendarListEndpoint = environmentConfig.GoogleCalendarListEndpoint
 	}
+	if environmentConfig.GoogleCalendarEventsEndpoint != "" {
+		adapterConfig.EventsEndpoint = environmentConfig.GoogleCalendarEventsEndpoint
+	}
 	adapter, adapterError := googlecalendar.New(adapterConfig, httpClient, now)
 	if adapterError != nil {
 		return nil, adapterError
@@ -52,7 +56,73 @@ func New(applicationContext *config.ApplicationContext, environmentConfig config
 	if serviceError != nil {
 		return nil, serviceError
 	}
-	return &Resources{applicationContext: applicationContext, service: service}, nil
+	syncService, syncServiceError := services.NewCalendarSyncService(applicationContext.Database, adapter, credentialCipher, now)
+	if syncServiceError != nil {
+		return nil, syncServiceError
+	}
+	return &Resources{applicationContext: applicationContext, service: service, syncService: syncService}, nil
+}
+
+// CalendarSyncs returns the synchronization collection and item handler.
+func (resources *Resources) CalendarSyncs() http.Handler {
+	return http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
+		setPrivateHeaders(responseWriter)
+		currentUser, userFound := currentOrganizer(request)
+		if !userFound {
+			writeError(resources.applicationContext, responseWriter, http.StatusUnauthorized, "authentication_required", "Authentication is required.", nil)
+			return
+		}
+		if resources.syncService == nil {
+			writeError(resources.applicationContext, responseWriter, http.StatusServiceUnavailable, "calendar_sync_unavailable", "Calendar synchronization is unavailable.", nil)
+			return
+		}
+		if request.URL.Path == config.WebCalendarSyncs {
+			if request.Method != http.MethodPost {
+				responseWriter.Header().Set("Allow", http.MethodPost)
+				writeError(resources.applicationContext, responseWriter, http.StatusMethodNotAllowed, "method_not_allowed", http.StatusText(http.StatusMethodNotAllowed), nil)
+				return
+			}
+			var body struct {
+				MappingID string `json:"mapping_id"`
+			}
+			if decodeError := handlers.DecodeJSON(responseWriter, request, requestBodyBytes, &body); decodeError != nil {
+				writeDecodeError(resources.applicationContext, responseWriter, decodeError)
+				return
+			}
+			synchronization, reused, createError := resources.syncService.Create(request.Context(), currentUser.ID, body.MappingID, request.Header.Get(config.IdempotencyKeyHeader))
+			if createError != nil {
+				writeServiceError(resources.applicationContext, responseWriter, createError)
+				return
+			}
+			statusCode := http.StatusAccepted
+			if reused {
+				statusCode = http.StatusOK
+			}
+			responseWriter.Header().Set("Location", config.WebCalendarSyncs+synchronization.ID)
+			if encodeError := handlers.WriteJSON(responseWriter, statusCode, synchronization); encodeError != nil {
+				resources.applicationContext.Logger.Printf("ERROR: Write calendar synchronization response: %v", encodeError)
+			}
+			return
+		}
+		syncID := strings.Trim(strings.TrimPrefix(request.URL.Path, config.WebCalendarSyncs), "/")
+		if syncID == "" || strings.Contains(syncID, "/") {
+			http.NotFound(responseWriter, request)
+			return
+		}
+		if request.Method != http.MethodGet {
+			responseWriter.Header().Set("Allow", http.MethodGet)
+			writeError(resources.applicationContext, responseWriter, http.StatusMethodNotAllowed, "method_not_allowed", http.StatusText(http.StatusMethodNotAllowed), nil)
+			return
+		}
+		synchronization, readError := resources.syncService.Read(request.Context(), currentUser.ID, syncID)
+		if readError != nil {
+			writeServiceError(resources.applicationContext, responseWriter, readError)
+			return
+		}
+		if encodeError := handlers.WriteJSON(responseWriter, http.StatusOK, synchronization); encodeError != nil {
+			resources.applicationContext.Logger.Printf("ERROR: Write calendar synchronization response: %v", encodeError)
+		}
+	})
 }
 
 // NewWithService constructs connection resources with an existing service.
@@ -342,6 +412,8 @@ func writeServiceError(applicationContext *config.ApplicationContext, responseWr
 		writeError(applicationContext, responseWriter, http.StatusUnprocessableEntity, "calendar_authorization_invalid", "Calendar authorization is invalid or expired.", serviceError)
 	case errors.Is(serviceError, services.ErrSourceCalendarSelectionInvalid), errors.Is(serviceError, models.ErrTimezoneInvalid), errors.Is(serviceError, models.ErrTimezoneRequired):
 		writeError(applicationContext, responseWriter, http.StatusUnprocessableEntity, "source_calendar_selection_invalid", "Source calendar selection is invalid.", serviceError)
+	case errors.Is(serviceError, services.ErrCalendarConnectionHasLocalUse), errors.Is(serviceError, services.ErrSourceOwnedMarker):
+		writeError(applicationContext, responseWriter, http.StatusConflict, "source_calendar_conflict", serviceError.Error(), serviceError)
 	default:
 		writeError(applicationContext, responseWriter, http.StatusBadGateway, "calendar_provider_failed", "Google Calendar did not complete the request.", serviceError)
 	}

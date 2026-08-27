@@ -29,6 +29,9 @@ func (*callbackAdapter) ExchangeCode(context.Context, string, string) (services.
 func (*callbackAdapter) ListCalendars(context.Context, services.CalendarProviderCredential) ([]services.ProviderCalendar, error) {
 	return nil, nil
 }
+func (*callbackAdapter) SynchronizeEvents(context.Context, services.CalendarProviderCredential, string, string) (services.ProviderEventBatch, error) {
+	return services.ProviderEventBatch{}, nil
+}
 
 func TestCallbackHasNoStoreNoReferrerAndNoDatabaseChange(testingContext *testing.T) {
 	fixture := testsupport.NewFixture(testingContext)

@@ -247,6 +247,29 @@ if (horizonView instanceof HTMLElement) {
         });
     }
 
+    for (const syncButton of horizonView.querySelectorAll('[data-calendar-sync]')) {
+        if (!(syncButton instanceof HTMLButtonElement)) {
+            throw new TypeError('A calendar synchronization control is invalid.');
+        }
+        syncButton.addEventListener('click', async () => {
+            const resourceURL = syncButton.dataset.resourceUrl;
+            const mappingID = syncButton.dataset.mappingId;
+            if (!resourceURL || !mappingID) {
+                throw new Error('The calendar synchronization contract is incomplete.');
+            }
+            syncButton.disabled = true;
+            try {
+                const response = await fetch(resourceURL, {method: 'POST', credentials: 'same-origin', headers: {'Content-Type': 'application/json', 'Idempotency-Key': crypto.randomUUID()}, body: JSON.stringify({mapping_id: mappingID})});
+                await requireResourceResponse(response);
+                window.location.reload();
+            } catch (error) {
+                status.classList.remove('visually-hidden');
+                status.textContent = error instanceof Error ? error.message : 'Calendar synchronization failed.';
+                syncButton.disabled = false;
+            }
+        });
+    }
+
     /** @param {string} token */
     const colorForToken = (token) => {
         let hash = 0;

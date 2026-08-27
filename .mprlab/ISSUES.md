@@ -477,7 +477,7 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Run `make ci`.
   - Run the browser test target.
 
-- [ ] [F006] (P1) {F001,F005} Synchronize Google Calendar markers
+- [x] [F006] (P1) {F001,F005} Synchronize Google Calendar markers
   Goal:
   This issue imports selected Google Calendar events into the horizon view without duplicate markers.
 

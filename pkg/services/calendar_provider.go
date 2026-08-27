@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"errors"
 	"time"
 )
 
@@ -20,9 +21,34 @@ type ProviderCalendar struct {
 	ColorToken string `json:"color_token"`
 }
 
+// ProviderEvent contains one provider-owned event occurrence or deletion.
+type ProviderEvent struct {
+	ID          string
+	SeriesID    string
+	Title       string
+	Description string
+	Timezone    string
+	Status      string
+	At          *time.Time
+	StartsAt    *time.Time
+	EndsAt      *time.Time
+	StartDate   string
+	EndDate     string
+}
+
+// ProviderEventBatch contains all pages for one cursor transition.
+type ProviderEventBatch struct {
+	Events         []ProviderEvent
+	NextSyncCursor string
+}
+
+// ErrCalendarSyncCursorRejected indicates that the provider requires a complete reconciliation.
+var ErrCalendarSyncCursorRejected = errors.New("calendar sync cursor was rejected")
+
 // CalendarProviderAdapter defines the external consent and calendar-list boundary.
 type CalendarProviderAdapter interface {
 	AuthorizationURL(state string, redirectURI string) (string, error)
 	ExchangeCode(ctx context.Context, code string, redirectURI string) (CalendarProviderCredential, error)
 	ListCalendars(ctx context.Context, credential CalendarProviderCredential) ([]ProviderCalendar, error)
+	SynchronizeEvents(ctx context.Context, credential CalendarProviderCredential, providerCalendarID string, syncCursor string) (ProviderEventBatch, error)
 }

@@ -164,6 +164,12 @@ test('connects Google Calendar and selects two source calendars', async ({page})
     await expect(page.locator('.horizon-calendar-toggle', {hasText: 'Google Work'})).toBeVisible();
 
     await page.locator('[data-horizon-management] > summary').click();
+    await page.getByRole('button', {name: 'Synchronize Google Personal'}).click();
+    await expect(page.locator('[data-lane-id]', {hasText: 'Ada provider birthday'})).toBeVisible();
+    await expect(page.locator('[data-lane-id]', {hasText: 'Lin provider birthday'})).toBeVisible();
+    await expect(page.locator('[data-lane-id]', {hasText: 'Maya provider birthday'})).toBeVisible();
+
+    await page.locator('[data-horizon-management] > summary').click();
     await page.getByRole('button', {name: 'Delete connection'}).click();
     await page.locator('[data-horizon-management] > summary').click();
     await expect(page.getByRole('button', {name: 'Connect Google Calendar'})).toBeVisible();

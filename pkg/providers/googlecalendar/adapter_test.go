@@ -2,6 +2,7 @@ package googlecalendar_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/tyemirov/RSVP/pkg/config"
 	"github.com/tyemirov/RSVP/pkg/providers/googlecalendar"
+	"github.com/tyemirov/RSVP/pkg/services"
 )
 
 func TestAdapterUsesReadOnlyConsentAndListsEveryCalendarPage(testingContext *testing.T) {
@@ -45,7 +47,7 @@ func TestAdapterUsesReadOnlyConsentAndListsEveryCalendarPage(testingContext *tes
 
 	adapter, adapterError := googlecalendar.New(googlecalendar.Config{
 		ClientID: "client-id", ClientSecret: "client-secret", AuthorizationEndpoint: server.URL + "/authorize",
-		TokenEndpoint: server.URL + "/token", CalendarListEndpoint: server.URL + "/calendars",
+		TokenEndpoint: server.URL + "/token", CalendarListEndpoint: server.URL + "/calendars", EventsEndpoint: server.URL + "/events",
 	}, server.Client(), func() time.Time { return referenceTime })
 	if adapterError != nil {
 		testingContext.Fatalf("construct adapter: %v", adapterError)
@@ -87,12 +89,46 @@ func TestAdapterProviderErrorDoesNotExposeResponseBody(testingContext *testing.T
 		fmt.Fprint(responseWriter, "secret-refresh")
 	}))
 	defer server.Close()
-	adapter, adapterError := googlecalendar.New(googlecalendar.Config{ClientID: "id", ClientSecret: "secret", AuthorizationEndpoint: server.URL, TokenEndpoint: server.URL, CalendarListEndpoint: server.URL}, server.Client(), time.Now)
+	adapter, adapterError := googlecalendar.New(googlecalendar.Config{ClientID: "id", ClientSecret: "secret", AuthorizationEndpoint: server.URL, TokenEndpoint: server.URL, CalendarListEndpoint: server.URL, EventsEndpoint: server.URL}, server.Client(), time.Now)
 	if adapterError != nil {
 		testingContext.Fatalf("construct adapter: %v", adapterError)
 	}
 	_, exchangeError := adapter.ExchangeCode(context.Background(), "code", "https://rsvp.example.test/callback")
 	if exchangeError == nil || strings.Contains(exchangeError.Error(), "secret-refresh") {
 		testingContext.Fatalf("provider error = %v", exchangeError)
+	}
+}
+
+func TestAdapterPaginatesEventsAndReportsRejectedCursor(testingContext *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
+		if request.URL.Query().Get("syncToken") == "expired" {
+			responseWriter.WriteHeader(http.StatusGone)
+			return
+		}
+		if request.URL.Query().Get("singleEvents") != "true" || request.URL.Query().Get("showDeleted") != "true" {
+			testingContext.Errorf("sync query = %v", request.URL.Query())
+		}
+		responseWriter.Header().Set("Content-Type", "application/json")
+		if request.URL.Query().Get("pageToken") == "page-2" {
+			fmt.Fprint(responseWriter, `{"timeZone":"America/Los_Angeles","items":[{"id":"occurrence","recurringEventId":"series","status":"confirmed","summary":"Review","start":{"dateTime":"2026-09-02T09:00:00-07:00","timeZone":"America/Los_Angeles"},"end":{"dateTime":"2026-09-02T10:00:00-07:00","timeZone":"America/Los_Angeles"}}],"nextSyncToken":"cursor-1"}`)
+			return
+		}
+		fmt.Fprint(responseWriter, `{"timeZone":"America/Los_Angeles","items":[{"id":"birthday","status":"confirmed","summary":"Birthday","start":{"date":"2026-09-01"},"end":{"date":"2026-09-02"}}],"nextPageToken":"page-2"}`)
+	}))
+	defer server.Close()
+	adapter, adapterError := googlecalendar.New(googlecalendar.Config{ClientID: "id", ClientSecret: "secret", AuthorizationEndpoint: server.URL, TokenEndpoint: server.URL, CalendarListEndpoint: server.URL, EventsEndpoint: server.URL}, server.Client(), time.Now)
+	if adapterError != nil {
+		testingContext.Fatalf("construct adapter: %v", adapterError)
+	}
+	credential := services.CalendarProviderCredential{AccessToken: "access", RefreshToken: "refresh", ExpiresAt: time.Now().Add(time.Hour)}
+	batch, syncError := adapter.SynchronizeEvents(context.Background(), credential, "source/calendar", "")
+	if syncError != nil {
+		testingContext.Fatalf("synchronize events: %v", syncError)
+	}
+	if len(batch.Events) != 2 || batch.NextSyncCursor != "cursor-1" || batch.Events[0].StartDate != "2026-09-01" || batch.Events[1].SeriesID != "series" {
+		testingContext.Fatalf("batch = %#v", batch)
+	}
+	if _, rejectedError := adapter.SynchronizeEvents(context.Background(), credential, "source/calendar", "expired"); !errors.Is(rejectedError, services.ErrCalendarSyncCursorRejected) {
+		testingContext.Fatalf("rejected cursor error = %v", rejectedError)
 	}
 }

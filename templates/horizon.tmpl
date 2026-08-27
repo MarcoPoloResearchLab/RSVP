@@ -64,6 +64,12 @@
                         <button type="button" data-load-source-calendars data-source-url="{{ .CalendarConnection.SourceCalendarURL }}">Select source calendars</button>
                         <div data-source-calendar-list></div>
                         <button type="button" data-save-source-calendars data-source-url="{{ .CalendarConnection.SourceCalendarURL }}" hidden>Save source calendars</button>
+                        {{ range .CalendarConnection.Synchronizations }}
+                        <div data-calendar-sync-state="{{ .MappingID }}">
+                            <span>{{ .CalendarName }} synchronization: {{ .State }}{{ if .ErrorCode }} ({{ .ErrorCode }}){{ end }}</span>
+                            <button type="button" data-calendar-sync data-mapping-id="{{ .MappingID }}" data-resource-url="{{ .CreateURL }}">Synchronize {{ .CalendarName }}</button>
+                        </div>
+                        {{ end }}
                         <button type="button" data-resource-action="DELETE" data-resource-url="{{ .CalendarConnection.ManagementURL }}">Delete connection</button>
                     {{ else }}
                         <button type="button" data-calendar-authorize data-resource-url="{{ .CalendarAuthorizationURL }}">Connect Google Calendar</button>

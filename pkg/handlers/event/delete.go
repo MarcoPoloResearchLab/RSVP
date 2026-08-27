@@ -50,6 +50,17 @@ func DeleteHandler(applicationContext *config.ApplicationContext) http.HandlerFu
 			tx.Rollback()
 			return
 		}
+		var sourceLinkCount int64
+		if countError := tx.Model(&models.ExternalEventLink{}).Where("event_id = ?", eventRecord.ID).Count(&sourceLinkCount).Error; countError != nil {
+			tx.Rollback()
+			baseHttpHandler.HandleError(httpResponseWriter, countError, utils.DatabaseError, "Failed to inspect event ownership.")
+			return
+		}
+		if sourceLinkCount != 0 {
+			tx.Rollback()
+			baseHttpHandler.HandleError(httpResponseWriter, services.ErrSourceOwnedMarker, utils.ConflictError, services.ErrSourceOwnedMarker.Error())
+			return
+		}
 		var independentLane *models.Lane
 		if eventRecord.RelationType == models.EventRelationIndependent {
 			hasDependents, dependentsError := eventRecord.HasDependentEvents(tx)

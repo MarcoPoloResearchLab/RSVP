@@ -42,6 +42,10 @@ func (adapter *deterministicCalendarAdapter) ListCalendars(_ context.Context, cr
 	}, nil
 }
 
+func (adapter *deterministicCalendarAdapter) SynchronizeEvents(context.Context, services.CalendarProviderCredential, string, string) (services.ProviderEventBatch, error) {
+	return services.ProviderEventBatch{}, nil
+}
+
 func TestCalendarConnectionConsentEncryptionSelectionAndDeletion(testingContext *testing.T) {
 	fixture := testsupport.NewFixture(testingContext)
 	owner := fixture.CreateUser(testsupport.OwnerUserID)

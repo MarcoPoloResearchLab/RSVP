@@ -31,6 +31,7 @@ const (
 	browserGoogleAuthorizePath = "/browser-google/authorize"
 	browserGoogleTokenPath     = "/browser-google/token"
 	browserGoogleCalendarsPath = "/browser-google/calendars"
+	browserGoogleEventsPath    = "/browser-google/events"
 )
 
 var browserReferenceTime = time.Now().UTC()
@@ -105,6 +106,14 @@ func main() {
 		responseWriter.Header().Set("Content-Type", "application/json")
 		fmt.Fprint(responseWriter, `{"items":[{"id":"google-personal","summary":"Google Personal","timeZone":"America/Los_Angeles","backgroundColor":"#405060"},{"id":"google-work","summary":"Google Work","timeZone":"America/Los_Angeles","backgroundColor":"#102030"}]}`)
 	})
+	mux.HandleFunc(browserGoogleEventsPath+"/", func(responseWriter http.ResponseWriter, request *http.Request) {
+		if request.Header.Get("Authorization") != "Bearer browser-access" || request.URL.Query().Get("singleEvents") != "true" || request.URL.Query().Get("showDeleted") != "true" {
+			http.Error(responseWriter, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+			return
+		}
+		responseWriter.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(responseWriter, `{"timeZone":"America/Los_Angeles","items":[{"id":"birthday-ada","status":"confirmed","summary":"Ada provider birthday","start":{"date":"2026-09-15"},"end":{"date":"2026-09-16"}},{"id":"birthday-lin","status":"confirmed","summary":"Lin provider birthday","start":{"date":"2026-10-01"},"end":{"date":"2026-10-02"}},{"id":"birthday-maya","status":"confirmed","summary":"Maya provider birthday","start":{"date":"2026-10-20"},"end":{"date":"2026-10-21"}}],"nextSyncToken":"browser-sync-1"}`)
+	})
 	browserBaseURL := "http://" + browserFixtureAddress
 	routes.New(applicationContext, config.EnvConfig{
 		CalendarCredentialEncryptionKey: base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{0x42}, 32)),
@@ -112,6 +121,7 @@ func main() {
 		GoogleCalendarAuthorizationEndpoint: browserBaseURL + browserGoogleAuthorizePath,
 		GoogleCalendarTokenEndpoint:         browserBaseURL + browserGoogleTokenPath,
 		GoogleCalendarListEndpoint:          browserBaseURL + browserGoogleCalendarsPath,
+		GoogleCalendarEventsEndpoint:        browserBaseURL + browserGoogleEventsPath,
 	}).RegisterRoutes(mux)
 	logger.Printf("Listening on http://%s", browserFixtureAddress)
 	if serveError := http.ListenAndServe(browserFixtureAddress, mux); serveError != nil {

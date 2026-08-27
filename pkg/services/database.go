@@ -35,6 +35,9 @@ var canonicalModels = []any{
 	&models.CalendarConnection{},
 	&models.SourceCalendarMapping{},
 	&models.IdempotencyRecord{},
+	&models.ExternalEventSeriesLink{},
+	&models.ExternalEventLink{},
+	&models.CalendarSync{},
 }
 
 var canonicalTableNames = []string{
@@ -51,6 +54,9 @@ var canonicalTableNames = []string{
 	config.TableCalendarConnections,
 	config.TableSourceCalendarMappings,
 	config.TableIdempotencyRecords,
+	config.TableExternalEventSeriesLinks,
+	config.TableExternalEventLinks,
+	config.TableCalendarSyncs,
 }
 
 var canonicalColumns = map[string][]string{
@@ -67,6 +73,9 @@ var canonicalColumns = map[string][]string{
 	config.TableCalendarConnections:           {"id", "created_at", "updated_at", "deleted_at", "organizer_id", "provider", "credential_nonce", "credential_ciphertext", "status"},
 	config.TableSourceCalendarMappings:        {"id", "created_at", "updated_at", "deleted_at", "connection_id", "calendar_id", "provider_calendar_id", "sync_cursor"},
 	config.TableIdempotencyRecords:            {"id", "created_at", "updated_at", "deleted_at", "organizer_id", "operation", "key_hash", "request_hash", "response_status", "resource_type", "resource_id", "expires_at"},
+	config.TableExternalEventSeriesLinks:      {"id", "created_at", "updated_at", "deleted_at", "mapping_id", "event_series_id", "provider_series_id"},
+	config.TableExternalEventLinks:            {"id", "created_at", "updated_at", "deleted_at", "mapping_id", "event_id", "provider_event_id", "provider_series_id"},
+	config.TableCalendarSyncs:                 {"id", "created_at", "updated_at", "deleted_at", "mapping_id", "state", "started_at", "finished_at", "error_code"},
 }
 
 type canonicalForeignKey struct {
@@ -87,6 +96,9 @@ var canonicalForeignKeys = map[string][]canonicalForeignKey{
 	config.TableCalendarConnections:           {{"organizer_id", config.TableUsers, "id"}},
 	config.TableSourceCalendarMappings:        {{"connection_id", config.TableCalendarConnections, "id"}, {"calendar_id", config.TableCalendars, "id"}},
 	config.TableIdempotencyRecords:            {{"organizer_id", config.TableUsers, "id"}},
+	config.TableExternalEventSeriesLinks:      {{"mapping_id", config.TableSourceCalendarMappings, "id"}, {"event_series_id", config.TableEventSeries, "id"}},
+	config.TableExternalEventLinks:            {{"mapping_id", config.TableSourceCalendarMappings, "id"}, {"event_id", config.TableEvents, "id"}},
+	config.TableCalendarSyncs:                 {{"mapping_id", config.TableSourceCalendarMappings, "id"}},
 }
 
 var canonicalUniqueIndexes = map[string][][]string{
@@ -100,6 +112,8 @@ var canonicalUniqueIndexes = map[string][][]string{
 	config.TableCalendarConnections:           {{"organizer_id", "provider"}},
 	config.TableSourceCalendarMappings:        {{"connection_id", "provider_calendar_id"}, {"calendar_id"}},
 	config.TableIdempotencyRecords:            {{"organizer_id", "operation", "key_hash"}},
+	config.TableExternalEventSeriesLinks:      {{"mapping_id", "provider_series_id"}, {"event_series_id"}},
+	config.TableExternalEventLinks:            {{"mapping_id", "provider_event_id"}, {"event_id"}},
 }
 
 var canonicalCheckConstraints = map[string][]string{
@@ -111,6 +125,7 @@ var canonicalCheckConstraints = map[string][]string{
 	config.TableProbes:                        {"probe_state"},
 	config.TableCalendarAuthorizationRequests: {"calendar_authorization_provider"},
 	config.TableCalendarConnections:           {"calendar_connection_provider", "calendar_connection_status"},
+	config.TableCalendarSyncs:                 {"calendar_sync_state"},
 }
 
 // InitDatabase opens a canonical database or stops application startup.

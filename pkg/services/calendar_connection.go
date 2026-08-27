@@ -38,6 +38,8 @@ var (
 	ErrIdempotencyConflict = errors.New("idempotency key identifies a different request")
 	// ErrSourceCalendarSelectionInvalid indicates that a selected provider calendar is unavailable.
 	ErrSourceCalendarSelectionInvalid = errors.New("source calendar selection is invalid")
+	// ErrCalendarConnectionHasLocalUse indicates that local data depends on imported events.
+	ErrCalendarConnectionHasLocalUse = errors.New("calendar connection has RSVP or local dependency data")
 )
 
 // CredentialCipher encrypts calendar credentials with AES-256-GCM.
@@ -359,6 +361,22 @@ func (service *CalendarConnectionService) DeleteConnection(ctx context.Context, 
 			return findError
 		}
 		for _, mapping := range mappings {
+			var rsvpCount int64
+			if countError := transaction.Model(&models.RSVP{}).
+				Joins("JOIN events ON events.id = rsvps.event_id AND events.deleted_at IS NULL").
+				Joins("JOIN external_event_links ON external_event_links.event_id = events.id AND external_event_links.deleted_at IS NULL").
+				Where("external_event_links.mapping_id = ?", mapping.ID).Count(&rsvpCount).Error; countError != nil {
+				return countError
+			}
+			var dependencyCount int64
+			if countError := transaction.Model(&models.Event{}).
+				Joins("JOIN external_event_links ON external_event_links.event_id = events.anchor_event_id AND external_event_links.deleted_at IS NULL").
+				Where("external_event_links.mapping_id = ? AND events.relation_type = ?", mapping.ID, models.EventRelationDependent).Count(&dependencyCount).Error; countError != nil {
+				return countError
+			}
+			if rsvpCount != 0 || dependencyCount != 0 {
+				return ErrCalendarConnectionHasLocalUse
+			}
 			if deleteError := transaction.Unscoped().Delete(&mapping).Error; deleteError != nil {
 				return fmt.Errorf("delete source calendar mapping %s: %w", mapping.ID, deleteError)
 			}

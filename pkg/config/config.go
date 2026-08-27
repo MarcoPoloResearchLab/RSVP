@@ -43,6 +43,8 @@ type EnvConfig struct {
 	GoogleCalendarTokenEndpoint string
 	// GoogleCalendarListEndpoint lists available Google calendars.
 	GoogleCalendarListEndpoint string
+	// GoogleCalendarEventsEndpoint lists event changes for one Google calendar.
+	GoogleCalendarEventsEndpoint string
 	// CertificateFilePath is the path to the TLS certificate file (optional).
 	CertificateFilePath string
 	// KeyFilePath is the path to the TLS private key file (optional).
@@ -77,6 +79,7 @@ func NewEnvConfig(applicationLogger *log.Logger) *EnvConfig {
 		GoogleCalendarAuthorizationEndpoint: GoogleCalendarAuthorizationEndpoint,
 		GoogleCalendarTokenEndpoint:         GoogleCalendarTokenEndpoint,
 		GoogleCalendarListEndpoint:          GoogleCalendarListEndpoint,
+		GoogleCalendarEventsEndpoint:        GoogleCalendarEventsEndpoint,
 		CertificateFilePath:                 os.Getenv("TLS_CERT_PATH"),
 		KeyFilePath:                         os.Getenv("TLS_KEY_PATH"),
 		AppBaseURL:                          appBaseURL, // Use the processed base URL
