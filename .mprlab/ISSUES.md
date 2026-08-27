@@ -321,7 +321,7 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Confirm that the response contains two lanes.
   - Run `make ci`.
 
-- [ ] [F002] (P0) {F001} Add the interactive horizon view
+- [x] [F002] (P0) {F001} Add the interactive horizon view
   Goal:
   This issue makes temporal lanes the primary organizer interface.
 
