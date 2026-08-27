@@ -165,13 +165,13 @@ func (horizonHandler *handler) serveHTTP(responseWriter http.ResponseWriter, req
 		horizonHandler.baseHandler.HandleError(responseWriter, draftsError, utils.DatabaseError, utils.ErrMsgInternalServer)
 		return
 	}
-	location, locationError := time.LoadLocation(viewData.Window.Timezone)
-	if locationError != nil {
-		horizonHandler.baseHandler.HandleError(responseWriter, locationError, utils.ServerError, utils.ErrMsgInternalServer)
-		return
-	}
 	for draftIndex := range drafts {
 		draft := &drafts[draftIndex]
+		location, locationError := time.LoadLocation(draft.Timezone)
+		if locationError != nil {
+			horizonHandler.baseHandler.HandleError(responseWriter, locationError, utils.ServerError, utils.ErrMsgInternalServer)
+			return
+		}
 		missingFields, missingError := draft.MissingFields()
 		if missingError != nil {
 			horizonHandler.baseHandler.HandleError(responseWriter, missingError, utils.DatabaseError, utils.ErrMsgInternalServer)

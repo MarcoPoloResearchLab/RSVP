@@ -17,9 +17,11 @@ import (
 )
 
 type synchronizationAdapter struct {
-	batches  map[string]services.ProviderEventBatch
-	rejected map[string]bool
-	cursors  []string
+	batches                 map[string]services.ProviderEventBatch
+	rejected                map[string]bool
+	cursors                 []string
+	refreshCount            int
+	synchronizedCredentials []services.CalendarProviderCredential
 }
 
 func (*synchronizationAdapter) AuthorizationURL(state string, redirectURI string) (string, error) {
@@ -27,16 +29,21 @@ func (*synchronizationAdapter) AuthorizationURL(state string, redirectURI string
 	return "https://provider.example.test/authorize?" + query.Encode(), nil
 }
 func (*synchronizationAdapter) ExchangeCode(context.Context, string, string) (services.CalendarProviderCredential, error) {
-	return services.CalendarProviderCredential{AccessToken: "access", RefreshToken: "refresh", ExpiresAt: time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC)}, nil
+	return services.CalendarProviderCredential{AccessToken: "access", RefreshToken: "refresh", ExpiresAt: time.Date(2026, time.August, 26, 14, 0, 0, 0, time.UTC)}, nil
+}
+func (adapter *synchronizationAdapter) RefreshCredential(_ context.Context, credential services.CalendarProviderCredential) (services.CalendarProviderCredential, error) {
+	adapter.refreshCount++
+	return services.CalendarProviderCredential{AccessToken: "renewed-access", RefreshToken: credential.RefreshToken, ExpiresAt: time.Date(2026, time.August, 26, 16, 0, 0, 0, time.UTC)}, nil
 }
 func (*synchronizationAdapter) ListCalendars(context.Context, services.CalendarProviderCredential) ([]services.ProviderCalendar, error) {
 	return []services.ProviderCalendar{{ID: "source", Name: "Source", Timezone: testsupport.TimezoneName, ColorToken: "source"}}, nil
 }
-func (adapter *synchronizationAdapter) SynchronizeEvents(_ context.Context, _ services.CalendarProviderCredential, providerCalendarID string, cursor string) (services.ProviderEventBatch, error) {
+func (adapter *synchronizationAdapter) SynchronizeEvents(_ context.Context, credential services.CalendarProviderCredential, providerCalendarID string, cursor string) (services.ProviderEventBatch, error) {
 	if providerCalendarID != "source" {
 		return services.ProviderEventBatch{}, errors.New("unexpected provider calendar")
 	}
 	adapter.cursors = append(adapter.cursors, cursor)
+	adapter.synchronizedCredentials = append(adapter.synchronizedCredentials, credential)
 	if adapter.rejected[cursor] {
 		return services.ProviderEventBatch{}, services.ErrCalendarSyncCursorRejected
 	}
@@ -51,6 +58,7 @@ func TestCalendarSynchronizationIsIdempotentIncrementalAndReconcilesRejectedCurs
 	fixture := testsupport.NewFixture(testingContext)
 	owner := fixture.CreateUser(testsupport.OwnerUserID)
 	referenceTime := time.Date(2026, time.August, 26, 12, 0, 0, 0, time.UTC)
+	currentTime := referenceTime
 	timedStart := time.Date(2026, time.September, 2, 16, 0, 0, 0, time.UTC)
 	timedEnd := timedStart.Add(time.Hour)
 	seriesStartOne := time.Date(2026, time.September, 3, 16, 0, 0, 0, time.UTC)
@@ -75,7 +83,7 @@ func TestCalendarSynchronizationIsIdempotentIncrementalAndReconcilesRejectedCurs
 	if cipherError != nil {
 		testingContext.Fatalf("construct cipher: %v", cipherError)
 	}
-	connectionService, connectionError := services.NewCalendarConnectionService(fixture.Database, adapter, cipher, func() time.Time { return referenceTime }, bytes.NewReader(bytes.Repeat([]byte{0x32}, 512)))
+	connectionService, connectionError := services.NewCalendarConnectionService(fixture.Database, adapter, cipher, func() time.Time { return currentTime }, bytes.NewReader(bytes.Repeat([]byte{0x32}, 512)))
 	if connectionError != nil {
 		testingContext.Fatalf("construct connection service: %v", connectionError)
 	}
@@ -97,7 +105,8 @@ func TestCalendarSynchronizationIsIdempotentIncrementalAndReconcilesRejectedCurs
 	if mappingError != nil {
 		testingContext.Fatalf("select source: %v", mappingError)
 	}
-	syncService, syncServiceError := services.NewCalendarSyncService(fixture.Database, adapter, cipher, func() time.Time { return referenceTime })
+	currentTime = referenceTime.Add(119*time.Minute + 30*time.Second)
+	syncService, syncServiceError := services.NewCalendarSyncService(fixture.Database, adapter, cipher, func() time.Time { return currentTime })
 	if syncServiceError != nil {
 		testingContext.Fatalf("construct sync service: %v", syncServiceError)
 	}
@@ -106,12 +115,36 @@ func TestCalendarSynchronizationIsIdempotentIncrementalAndReconcilesRejectedCurs
 	if initialError != nil || reused || initial.State != models.CalendarSyncSucceeded {
 		testingContext.Fatalf("initial sync = %#v, reused = %t, error = %v", initial, reused, initialError)
 	}
+	if adapter.refreshCount != 1 || len(adapter.synchronizedCredentials) != 1 || adapter.synchronizedCredentials[0].AccessToken != "renewed-access" {
+		testingContext.Fatalf("refreshes = %d, synchronized credentials = %#v", adapter.refreshCount, adapter.synchronizedCredentials)
+	}
 	assertSourceCounts(testingContext, fixture.Database, 4, 3, 1)
 	repeated, repeatedReuse, repeatedError := syncService.Create(context.Background(), owner.ID, mappings[0].ID, "initial")
 	if repeatedError != nil || !repeatedReuse || repeated.ID != initial.ID || len(adapter.cursors) != 1 {
 		testingContext.Fatalf("repeated sync = %#v, reused = %t, cursors = %#v, error = %v", repeated, repeatedReuse, adapter.cursors, repeatedError)
 	}
 
+	var holidayLink models.ExternalEventLink
+	if findError := fixture.Database.First(&holidayLink, "provider_event_id = ?", "holiday").Error; findError != nil {
+		testingContext.Fatalf("find holiday link: %v", findError)
+	}
+	protectedRSVP := fixture.CreateRSVP("PROTECT1", holidayLink.EventID)
+	if _, _, incrementalError := syncService.Create(context.Background(), owner.ID, mappings[0].ID, "incremental"); !errors.Is(incrementalError, services.ErrCalendarConnectionHasLocalUse) {
+		testingContext.Fatalf("protected incremental sync error = %v", incrementalError)
+	}
+	if findError := fixture.Database.First(&models.ExternalEventLink{}, "id = ? AND event_id = ?", holidayLink.ID, holidayLink.EventID).Error; findError != nil {
+		testingContext.Fatalf("protected event link was removed: %v", findError)
+	}
+	if findError := fixture.Database.First(&models.RSVP{}, "id = ? AND event_id = ?", protectedRSVP.ID, holidayLink.EventID).Error; findError != nil {
+		testingContext.Fatalf("protected RSVP was removed: %v", findError)
+	}
+	var protectedMapping models.SourceCalendarMapping
+	if findError := fixture.Database.First(&protectedMapping, "id = ?", mappings[0].ID).Error; findError != nil || protectedMapping.SyncCursor == nil || *protectedMapping.SyncCursor != "cursor-1" {
+		testingContext.Fatalf("protected mapping = %#v, error = %v", protectedMapping, findError)
+	}
+	if deleteError := fixture.Database.Unscoped().Delete(&protectedRSVP).Error; deleteError != nil {
+		testingContext.Fatalf("remove protected RSVP fixture: %v", deleteError)
+	}
 	if _, _, incrementalError := syncService.Create(context.Background(), owner.ID, mappings[0].ID, "incremental"); incrementalError != nil {
 		testingContext.Fatalf("incremental sync: %v", incrementalError)
 	}
@@ -136,7 +169,7 @@ func TestCalendarSynchronizationIsIdempotentIncrementalAndReconcilesRejectedCurs
 		testingContext.Fatalf("reconcile sync: %v", reconciliationError)
 	}
 	assertSourceCounts(testingContext, fixture.Database, 1, 1, 0)
-	if !reflect.DeepEqual(adapter.cursors, []string{"", "cursor-1", "cursor-2", ""}) {
+	if !reflect.DeepEqual(adapter.cursors, []string{"", "cursor-1", "cursor-1", "cursor-2", ""}) {
 		testingContext.Fatalf("sync cursors = %#v", adapter.cursors)
 	}
 	var mapping models.SourceCalendarMapping

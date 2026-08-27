@@ -139,7 +139,8 @@ test('shows and completes a durable attention probe', async ({page}) => {
     await expect(waitingLane.getByText('Next attention:')).toBeVisible();
     const pendingProbe = waitingLane.locator('[data-probe-state="pending"]');
     await expect(pendingProbe).toBeVisible();
-    await pendingProbe.click();
+    await pendingProbe.focus();
+    await page.keyboard.press('Enter');
     await waitingLane.getByRole('button', {name: 'Complete probe'}).click();
 
     await expect(waitingLane.locator('[data-probe-state="completed"]')).toBeVisible();
@@ -198,6 +199,7 @@ test('supports keyboard pan, scale, visibility, and marker selection', async ({p
     await page.keyboard.press('j');
     await expect(page.locator('[data-marker-id].is-selected')).toHaveCount(1);
     await expect(page.locator('[data-marker-id].is-selected')).toBeFocused();
+    await viewport.focus();
     await page.keyboard.press('2');
     await expect(page.locator('[data-calendar-id="CALHOLID"]')).toBeVisible();
 });
@@ -211,6 +213,9 @@ test('provides labeled controls, focus order, and color-independent meaning', as
     }
     const parserInput = page.locator('form[data-resource-url="/natural-language-ingestion/"] [name="input_text"]');
     await parserInput.focus();
+    await parserInput.pressSequentially('high-jolt link 1+1=2');
+    await expect(parserInput).toHaveValue('high-jolt link 1+1=2');
+    await parserInput.clear();
     await page.keyboard.press('Tab');
     await expect(page.locator('form[data-resource-url="/natural-language-ingestion/"] [name="calendar_id"]')).toBeFocused();
     await page.keyboard.press('Tab');
@@ -266,6 +271,7 @@ test('previews, corrects, confirms, and cancels quick ingestion drafts', async (
     await page.locator('[data-quick-add] > summary').click();
     const correctedDraft = page.locator('[data-ingestion-draft]', {hasText: 'Corrected browser waiting lane'});
     await expect(correctedDraft.locator('[name="timezone"]')).toHaveValue('America/New_York');
+    await expect(correctedDraft.locator('[name="next_probe_at"]')).toHaveValue(nextProbe);
     await correctedDraft.getByRole('button', {name: 'Confirm draft'}).click();
     await expect(page.locator('[data-calendar-id="CALWAIT0"] [data-lane-id]', {hasText: 'Corrected browser waiting lane'})).toBeVisible();
 

@@ -129,7 +129,7 @@ func (service *CalendarSyncService) mappingCredential(ctx context.Context, organ
 	if mapping.Connection.OrganizerID != organizerID {
 		return nil, CalendarProviderCredential{}, ErrResourceForbidden
 	}
-	credential, credentialError := service.cipher.decrypt(mapping.Connection.CredentialNonce, mapping.Connection.CredentialCiphertext)
+	credential, credentialError := currentCalendarCredential(ctx, service.database, service.adapter, service.cipher, &mapping.Connection, service.now())
 	return &mapping, credential, credentialError
 }
 
@@ -406,6 +406,9 @@ func deleteExternalEvent(database *gorm.DB, mappingID string, providerEventID st
 	var event models.Event
 	if eventError := database.First(&event, "id = ?", link.EventID).Error; eventError != nil {
 		return eventError
+	}
+	if useError := requireSourceEventUnused(database, event.ID); useError != nil {
+		return useError
 	}
 	laneID := event.LaneID
 	if derivedDeleteError := DeleteDerivedMarkersForAnchor(database, models.DerivedAnchorEvent, event.ID); derivedDeleteError != nil {

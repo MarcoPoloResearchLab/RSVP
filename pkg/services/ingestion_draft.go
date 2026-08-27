@@ -135,7 +135,11 @@ func (service *IngestionDraftService) Confirm(ctx context.Context, organizerID s
 		if findError := transaction.First(&existing, "draft_id = ?", draft.ID).Error; findError == nil {
 			confirmation = &existing
 			reusedConfirmation = true
-			return nil
+			record, recordError := models.NewIdempotencyRecord(organizerID, confirmIngestionDraftOperation, keyHash[:], requestHash[:], http.StatusOK, "draft_confirmation", confirmation.ID, service.now().UTC().Add(idempotencyLifetime))
+			if recordError != nil {
+				return recordError
+			}
+			return transaction.Create(record).Error
 		} else if !errors.Is(findError, gorm.ErrRecordNotFound) {
 			return findError
 		}

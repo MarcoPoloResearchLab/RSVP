@@ -26,6 +26,9 @@ func (*callbackAdapter) AuthorizationURL(state string, _ string) (string, error)
 func (*callbackAdapter) ExchangeCode(context.Context, string, string) (services.CalendarProviderCredential, error) {
 	return services.CalendarProviderCredential{}, nil
 }
+func (*callbackAdapter) RefreshCredential(_ context.Context, credential services.CalendarProviderCredential) (services.CalendarProviderCredential, error) {
+	return credential, nil
+}
 func (*callbackAdapter) ListCalendars(context.Context, services.CalendarProviderCredential) ([]services.ProviderCalendar, error) {
 	return nil, nil
 }

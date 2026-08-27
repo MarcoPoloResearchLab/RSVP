@@ -115,6 +115,41 @@ func (adapter *Adapter) ExchangeCode(ctx context.Context, code string, redirectU
 	return services.CalendarProviderCredential{AccessToken: body.AccessToken, RefreshToken: body.RefreshToken, ExpiresAt: adapter.now().UTC().Add(time.Duration(body.ExpiresIn) * time.Second)}, nil
 }
 
+// RefreshCredential renews one expired Google Calendar access grant.
+func (adapter *Adapter) RefreshCredential(ctx context.Context, credential services.CalendarProviderCredential) (services.CalendarProviderCredential, error) {
+	if credential.RefreshToken == "" {
+		return services.CalendarProviderCredential{}, errors.New("Google Calendar refresh token is required")
+	}
+	form := url.Values{
+		"client_id": {adapter.config.ClientID}, "client_secret": {adapter.config.ClientSecret},
+		"refresh_token": {credential.RefreshToken}, "grant_type": {"refresh_token"},
+	}
+	request, requestError := http.NewRequestWithContext(ctx, http.MethodPost, adapter.config.TokenEndpoint, strings.NewReader(form.Encode()))
+	if requestError != nil {
+		return services.CalendarProviderCredential{}, fmt.Errorf("create Google Calendar refresh request: %w", requestError)
+	}
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	response, responseError := adapter.client.Do(request)
+	if responseError != nil {
+		return services.CalendarProviderCredential{}, fmt.Errorf("refresh Google Calendar credential: %w", responseError)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return services.CalendarProviderCredential{}, fmt.Errorf("refresh Google Calendar credential: provider status %d", response.StatusCode)
+	}
+	var body struct {
+		AccessToken string `json:"access_token"`
+		ExpiresIn   int64  `json:"expires_in"`
+	}
+	if decodeError := json.NewDecoder(response.Body).Decode(&body); decodeError != nil {
+		return services.CalendarProviderCredential{}, fmt.Errorf("decode Google Calendar refresh response: %w", decodeError)
+	}
+	if body.AccessToken == "" || body.ExpiresIn <= 0 {
+		return services.CalendarProviderCredential{}, errors.New("Google Calendar refresh response is invalid")
+	}
+	return services.CalendarProviderCredential{AccessToken: body.AccessToken, RefreshToken: credential.RefreshToken, ExpiresAt: adapter.now().UTC().Add(time.Duration(body.ExpiresIn) * time.Second)}, nil
+}
+
 // ListCalendars returns each provider calendar available to the credential.
 func (adapter *Adapter) ListCalendars(ctx context.Context, credential services.CalendarProviderCredential) ([]services.ProviderCalendar, error) {
 	if credential.AccessToken == "" {

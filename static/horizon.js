@@ -451,7 +451,7 @@ if (horizonView instanceof HTMLElement) {
     };
 
     horizonView.addEventListener('keydown', (event) => {
-        if (event.target instanceof HTMLInputElement || event.target instanceof HTMLAnchorElement) {
+        if (event.target instanceof HTMLElement && (event.target.isContentEditable || event.target.matches('input, textarea, select, button, a'))) {
             return;
         }
         const key = event.key.toLowerCase();

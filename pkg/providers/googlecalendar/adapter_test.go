@@ -24,11 +24,24 @@ func TestAdapterUsesReadOnlyConsentAndListsEveryCalendarPage(testingContext *tes
 			if parseError := request.ParseForm(); parseError != nil {
 				testingContext.Errorf("parse token form: %v", parseError)
 			}
-			if request.Form.Get("code") != "secret-code" || request.Form.Get("client_secret") != "client-secret" {
-				testingContext.Errorf("token form is invalid")
+			if request.Form.Get("client_secret") != "client-secret" {
+				testingContext.Errorf("token client secret is invalid")
 			}
 			responseWriter.Header().Set("Content-Type", "application/json")
-			fmt.Fprint(responseWriter, `{"access_token":"secret-access","refresh_token":"secret-refresh","expires_in":3600,"token_type":"Bearer"}`)
+			switch request.Form.Get("grant_type") {
+			case "authorization_code":
+				if request.Form.Get("code") != "secret-code" {
+					testingContext.Errorf("authorization code is invalid")
+				}
+				fmt.Fprint(responseWriter, `{"access_token":"secret-access","refresh_token":"secret-refresh","expires_in":3600,"token_type":"Bearer"}`)
+			case "refresh_token":
+				if request.Form.Get("refresh_token") != "secret-refresh" {
+					testingContext.Errorf("refresh token is invalid")
+				}
+				fmt.Fprint(responseWriter, `{"access_token":"renewed-access","expires_in":7200,"token_type":"Bearer"}`)
+			default:
+				testingContext.Errorf("token grant type is invalid")
+			}
 		case "/calendars":
 			if request.Header.Get("Authorization") != "Bearer secret-access" {
 				testingContext.Errorf("authorization header is invalid")
@@ -80,6 +93,13 @@ func TestAdapterUsesReadOnlyConsentAndListsEveryCalendarPage(testingContext *tes
 	}
 	if len(calendars) != 2 || calendars[0].ID != "personal" || calendars[1].ID != "work" {
 		testingContext.Fatalf("calendars = %#v", calendars)
+	}
+	refreshed, refreshError := adapter.RefreshCredential(context.Background(), credential)
+	if refreshError != nil {
+		testingContext.Fatalf("refresh credential: %v", refreshError)
+	}
+	if refreshed.AccessToken != "renewed-access" || refreshed.RefreshToken != "secret-refresh" || !refreshed.ExpiresAt.Equal(referenceTime.Add(2*time.Hour)) {
+		testingContext.Fatalf("refreshed credential = %#v", refreshed)
 	}
 }
 

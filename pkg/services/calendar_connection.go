@@ -23,6 +23,7 @@ import (
 
 const (
 	calendarAuthorizationLifetime     = 10 * time.Minute
+	calendarCredentialRefreshSkew     = time.Minute
 	idempotencyLifetime               = 24 * time.Hour
 	createCalendarConnectionOperation = "create_calendar_connection"
 )
@@ -39,7 +40,7 @@ var (
 	// ErrSourceCalendarSelectionInvalid indicates that a selected provider calendar is unavailable.
 	ErrSourceCalendarSelectionInvalid = errors.New("source calendar selection is invalid")
 	// ErrCalendarConnectionHasLocalUse indicates that local data depends on imported events.
-	ErrCalendarConnectionHasLocalUse = errors.New("calendar connection has RSVP or local dependency data")
+	ErrCalendarConnectionHasLocalUse = errors.New("source calendar has local data")
 )
 
 // CredentialCipher encrypts calendar credentials with AES-256-GCM.
@@ -257,9 +258,9 @@ func (service *CalendarConnectionService) ListSourceCalendars(ctx context.Contex
 	if connectionError != nil {
 		return nil, connectionError
 	}
-	credential, decryptionError := service.cipher.decrypt(connection.CredentialNonce, connection.CredentialCiphertext)
-	if decryptionError != nil {
-		return nil, decryptionError
+	credential, credentialError := currentCalendarCredential(ctx, service.database, service.adapter, service.cipher, connection, service.now())
+	if credentialError != nil {
+		return nil, credentialError
 	}
 	return service.adapter.ListCalendars(ctx, credential)
 }
@@ -305,6 +306,9 @@ func (service *CalendarConnectionService) ReplaceSourceCalendars(ctx context.Con
 			existingByProviderID[mapping.ProviderCalendarID] = mapping
 			if _, selected := selectedIDs[mapping.ProviderCalendarID]; selected {
 				continue
+			}
+			if useError := requireSourceMappingUnused(transaction, mapping.ID); useError != nil {
+				return useError
 			}
 			if deleteError := transaction.Unscoped().Delete(&mapping).Error; deleteError != nil {
 				return fmt.Errorf("delete source calendar mapping %s: %w", mapping.ID, deleteError)
@@ -361,21 +365,8 @@ func (service *CalendarConnectionService) DeleteConnection(ctx context.Context, 
 			return findError
 		}
 		for _, mapping := range mappings {
-			var rsvpCount int64
-			if countError := transaction.Model(&models.RSVP{}).
-				Joins("JOIN events ON events.id = rsvps.event_id AND events.deleted_at IS NULL").
-				Joins("JOIN external_event_links ON external_event_links.event_id = events.id AND external_event_links.deleted_at IS NULL").
-				Where("external_event_links.mapping_id = ?", mapping.ID).Count(&rsvpCount).Error; countError != nil {
-				return countError
-			}
-			var dependencyCount int64
-			if countError := transaction.Model(&models.Event{}).
-				Joins("JOIN external_event_links ON external_event_links.event_id = events.anchor_event_id AND external_event_links.deleted_at IS NULL").
-				Where("external_event_links.mapping_id = ? AND events.relation_type = ?", mapping.ID, models.EventRelationDependent).Count(&dependencyCount).Error; countError != nil {
-				return countError
-			}
-			if rsvpCount != 0 || dependencyCount != 0 {
-				return ErrCalendarConnectionHasLocalUse
+			if useError := requireSourceMappingUnused(transaction, mapping.ID); useError != nil {
+				return useError
 			}
 			if deleteError := transaction.Unscoped().Delete(&mapping).Error; deleteError != nil {
 				return fmt.Errorf("delete source calendar mapping %s: %w", mapping.ID, deleteError)
@@ -392,6 +383,72 @@ func (service *CalendarConnectionService) DeleteConnection(ctx context.Context, 
 		}
 		return normalizeCalendarOrder(transaction, organizerID)
 	})
+}
+
+func currentCalendarCredential(ctx context.Context, database *gorm.DB, adapter CalendarProviderAdapter, credentialCipher *CredentialCipher, connection *models.CalendarConnection, now time.Time) (CalendarProviderCredential, error) {
+	credential, credentialError := credentialCipher.decrypt(connection.CredentialNonce, connection.CredentialCiphertext)
+	if credentialError != nil {
+		return CalendarProviderCredential{}, credentialError
+	}
+	if credential.ExpiresAt.After(now.UTC().Add(calendarCredentialRefreshSkew)) {
+		return credential, nil
+	}
+	refreshed, refreshError := adapter.RefreshCredential(ctx, credential)
+	if refreshError != nil {
+		return CalendarProviderCredential{}, refreshError
+	}
+	if refreshed.AccessToken == "" || refreshed.RefreshToken == "" || !refreshed.ExpiresAt.After(now.UTC()) {
+		return CalendarProviderCredential{}, errors.New("refreshed calendar credential is invalid")
+	}
+	nonce, ciphertext, encryptionError := credentialCipher.encrypt(refreshed)
+	if encryptionError != nil {
+		return CalendarProviderCredential{}, encryptionError
+	}
+	connection.CredentialNonce = nonce
+	connection.CredentialCiphertext = ciphertext
+	if updateError := database.WithContext(ctx).Model(connection).Updates(map[string]any{"credential_nonce": nonce, "credential_ciphertext": ciphertext}).Error; updateError != nil {
+		return CalendarProviderCredential{}, fmt.Errorf("store refreshed calendar credential: %w", updateError)
+	}
+	return refreshed, nil
+}
+
+func requireSourceMappingUnused(database *gorm.DB, mappingID string) error {
+	var eventIDs []string
+	if findError := database.Model(&models.ExternalEventLink{}).Where("mapping_id = ?", mappingID).Pluck("event_id", &eventIDs).Error; findError != nil {
+		return findError
+	}
+	return requireSourceEventsUnused(database, eventIDs)
+}
+
+func requireSourceEventUnused(database *gorm.DB, eventID string) error {
+	return requireSourceEventsUnused(database, []string{eventID})
+}
+
+func requireSourceEventsUnused(database *gorm.DB, eventIDs []string) error {
+	if len(eventIDs) == 0 {
+		return nil
+	}
+	checks := []struct {
+		model  any
+		query  string
+		values []any
+	}{
+		{model: &models.Event{}, query: "id IN ? AND venue_id IS NOT NULL", values: []any{eventIDs}},
+		{model: &models.RSVP{}, query: "event_id IN ?", values: []any{eventIDs}},
+		{model: &models.Event{}, query: "anchor_event_id IN ? AND relation_type = ?", values: []any{eventIDs, models.EventRelationDependent}},
+		{model: &models.DerivedMarkerRule{}, query: "anchor_type = ? AND anchor_id IN ?", values: []any{models.DerivedAnchorEvent, eventIDs}},
+		{model: &models.IngestionDraft{}, query: "anchor_event_id IN ? AND status IN ?", values: []any{eventIDs, []models.IngestionDraftStatus{models.IngestionDraftIncomplete, models.IngestionDraftReady}}},
+	}
+	for _, check := range checks {
+		var count int64
+		if countError := database.Model(check.model).Where(check.query, check.values...).Count(&count).Error; countError != nil {
+			return countError
+		}
+		if count != 0 {
+			return ErrCalendarConnectionHasLocalUse
+		}
+	}
+	return nil
 }
 
 func (service *CalendarConnectionService) readIdempotentConnection(ctx context.Context, organizerID string, keyHash []byte, requestHash []byte) (*models.CalendarConnection, bool, error) {

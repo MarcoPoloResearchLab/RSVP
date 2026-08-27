@@ -18,6 +18,7 @@ import (
 
 type deterministicCalendarAdapter struct {
 	exchangeCount    int
+	refreshCount     int
 	listedCredential services.CalendarProviderCredential
 }
 
@@ -32,6 +33,14 @@ func (adapter *deterministicCalendarAdapter) ExchangeCode(_ context.Context, cod
 		return services.CalendarProviderCredential{}, errors.New("provider status 400")
 	}
 	return services.CalendarProviderCredential{AccessToken: "secret-access", RefreshToken: "secret-refresh", ExpiresAt: time.Date(2030, time.January, 1, 14, 0, 0, 0, time.UTC)}, nil
+}
+
+func (adapter *deterministicCalendarAdapter) RefreshCredential(_ context.Context, credential services.CalendarProviderCredential) (services.CalendarProviderCredential, error) {
+	adapter.refreshCount++
+	if credential.RefreshToken != "secret-refresh" {
+		return services.CalendarProviderCredential{}, errors.New("unexpected refresh token")
+	}
+	return services.CalendarProviderCredential{AccessToken: "renewed-access", RefreshToken: credential.RefreshToken, ExpiresAt: time.Date(2030, time.January, 1, 16, 0, 0, 0, time.UTC)}, nil
 }
 
 func (adapter *deterministicCalendarAdapter) ListCalendars(_ context.Context, credential services.CalendarProviderCredential) ([]services.ProviderCalendar, error) {
@@ -50,13 +59,14 @@ func TestCalendarConnectionConsentEncryptionSelectionAndDeletion(testingContext 
 	fixture := testsupport.NewFixture(testingContext)
 	owner := fixture.CreateUser(testsupport.OwnerUserID)
 	referenceTime := time.Date(2030, time.January, 1, 12, 0, 0, 0, time.UTC)
+	currentTime := referenceTime
 	adapter := &deterministicCalendarAdapter{}
 	encodedKey := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{0x42}, 32))
 	cipher, cipherError := services.NewCredentialCipher(encodedKey, bytes.NewReader(bytes.Repeat([]byte{0x17}, 128)))
 	if cipherError != nil {
 		testingContext.Fatalf("construct credential cipher: %v", cipherError)
 	}
-	service, serviceError := services.NewCalendarConnectionService(fixture.Database, adapter, cipher, func() time.Time { return referenceTime }, bytes.NewReader(bytes.Repeat([]byte{0x33}, 256)))
+	service, serviceError := services.NewCalendarConnectionService(fixture.Database, adapter, cipher, func() time.Time { return currentTime }, bytes.NewReader(bytes.Repeat([]byte{0x33}, 256)))
 	if serviceError != nil {
 		testingContext.Fatalf("construct connection service: %v", serviceError)
 	}
@@ -111,6 +121,24 @@ func TestCalendarConnectionConsentEncryptionSelectionAndDeletion(testingContext 
 	if len(mappings) != 2 || adapter.listedCredential.RefreshToken != "secret-refresh" {
 		testingContext.Fatalf("mappings = %#v, listed credential = %#v", mappings, adapter.listedCredential)
 	}
+	currentTime = referenceTime.Add(119*time.Minute + 30*time.Second)
+	if _, listError := service.ListSourceCalendars(context.Background(), owner.ID, connection.ID); listError != nil {
+		testingContext.Fatalf("list source calendars with expiring credential: %v", listError)
+	}
+	if adapter.refreshCount != 1 || adapter.listedCredential.AccessToken != "renewed-access" || adapter.listedCredential.RefreshToken != "secret-refresh" {
+		testingContext.Fatalf("refreshes = %d, listed credential = %#v", adapter.refreshCount, adapter.listedCredential)
+	}
+	var refreshedConnection models.CalendarConnection
+	if findError := fixture.Database.First(&refreshedConnection, "id = ?", connection.ID).Error; findError != nil {
+		testingContext.Fatalf("read refreshed connection: %v", findError)
+	}
+	refreshedCredentialBytes := append(append([]byte(nil), refreshedConnection.CredentialNonce...), refreshedConnection.CredentialCiphertext...)
+	if bytes.Equal(credentialBytes, refreshedCredentialBytes) {
+		testingContext.Fatal("refreshed credential was not re-encrypted")
+	}
+	if _, listError := service.ListSourceCalendars(context.Background(), owner.ID, connection.ID); listError != nil || adapter.refreshCount != 1 {
+		testingContext.Fatalf("repeat source list refreshes = %d, error = %v", adapter.refreshCount, listError)
+	}
 	var calendarCount int64
 	if countError := fixture.Database.Model(&models.Calendar{}).Where("organizer_id = ?", owner.ID).Count(&calendarCount).Error; countError != nil {
 		testingContext.Fatalf("count RSVP calendars: %v", countError)
@@ -120,6 +148,64 @@ func TestCalendarConnectionConsentEncryptionSelectionAndDeletion(testingContext 
 	}
 	if _, selectionError := service.ReplaceSourceCalendars(context.Background(), &owner, timezone, connection.ID, []string{"absent"}); !errors.Is(selectionError, services.ErrSourceCalendarSelectionInvalid) {
 		testingContext.Fatalf("invalid selection error = %v", selectionError)
+	}
+	var protectedMapping models.SourceCalendarMapping
+	for mappingIndex := range mappings {
+		if mappings[mappingIndex].ProviderCalendarID == "personal" {
+			protectedMapping = mappings[mappingIndex]
+			break
+		}
+	}
+	lane, laneError := models.NewFiniteLane(protectedMapping.CalendarID, "Imported event", referenceTime, referenceTime.Add(time.Hour), 0)
+	if laneError != nil {
+		testingContext.Fatalf("create imported lane: %v", laneError)
+	}
+	if createError := fixture.Database.Create(lane).Error; createError != nil {
+		testingContext.Fatalf("persist imported lane: %v", createError)
+	}
+	eventTime, eventTimeError := models.NewIntervalEventTime(referenceTime, referenceTime.Add(time.Hour), timezone)
+	if eventTimeError != nil {
+		testingContext.Fatalf("construct imported event time: %v", eventTimeError)
+	}
+	event, eventError := models.NewEvent(lane.ID, "Imported event", "", nil, models.IndependentEventRelation(), eventTime)
+	if eventError != nil {
+		testingContext.Fatalf("create imported event: %v", eventError)
+	}
+	if createError := fixture.Database.Create(event).Error; createError != nil {
+		testingContext.Fatalf("persist imported event: %v", createError)
+	}
+	venue := fixture.CreateVenue("VENUE001", owner.ID)
+	if updateError := fixture.Database.Model(event).Update("venue_id", venue.ID).Error; updateError != nil {
+		testingContext.Fatalf("add local venue to imported event: %v", updateError)
+	}
+	link, linkError := models.NewExternalEventLink(protectedMapping.ID, event.ID, "provider-event", nil)
+	if linkError != nil {
+		testingContext.Fatalf("create imported event link: %v", linkError)
+	}
+	if createError := fixture.Database.Create(link).Error; createError != nil {
+		testingContext.Fatalf("persist imported event link: %v", createError)
+	}
+	rsvp := fixture.CreateRSVP("LOCAL001", event.ID)
+	if _, selectionError := service.ReplaceSourceCalendars(context.Background(), &owner, timezone, connection.ID, []string{"work"}); !errors.Is(selectionError, services.ErrCalendarConnectionHasLocalUse) {
+		testingContext.Fatalf("deselect protected source error = %v", selectionError)
+	}
+	if findError := fixture.Database.First(&models.SourceCalendarMapping{}, "id = ?", protectedMapping.ID).Error; findError != nil {
+		testingContext.Fatalf("protected mapping was removed: %v", findError)
+	}
+	if findError := fixture.Database.First(&models.RSVP{}, "id = ? AND event_id = ?", rsvp.ID, event.ID).Error; findError != nil {
+		testingContext.Fatalf("protected RSVP was removed: %v", findError)
+	}
+	if deleteError := fixture.Database.Unscoped().Delete(&rsvp).Error; deleteError != nil {
+		testingContext.Fatalf("remove protected RSVP fixture: %v", deleteError)
+	}
+	if _, selectionError := service.ReplaceSourceCalendars(context.Background(), &owner, timezone, connection.ID, []string{"work"}); !errors.Is(selectionError, services.ErrCalendarConnectionHasLocalUse) {
+		testingContext.Fatalf("deselect source with local venue error = %v", selectionError)
+	}
+	if updateError := fixture.Database.Model(event).Update("venue_id", nil).Error; updateError != nil {
+		testingContext.Fatalf("remove local venue fixture: %v", updateError)
+	}
+	if _, selectionError := service.ReplaceSourceCalendars(context.Background(), &owner, timezone, connection.ID, []string{"work"}); selectionError != nil {
+		testingContext.Fatalf("deselect unused source: %v", selectionError)
 	}
 
 	if deleteError := service.DeleteConnection(context.Background(), owner.ID, connection.ID); deleteError != nil {

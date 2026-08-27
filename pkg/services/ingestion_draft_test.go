@@ -91,6 +91,20 @@ func TestIngestionDraftConfirmsOpenLaneAttentionAndReplaysIdempotently(testingCo
 	if replayError != nil || !replayedReuse || replayed.ID != confirmation.ID {
 		testingContext.Fatalf("replayed confirmation = %#v, reused = %t, error = %v", replayed, replayedReuse, replayError)
 	}
+	rebound, reboundReuse, reboundError := service.Confirm(context.Background(), owner.ID, draft.ID, "confirmed-draft-key")
+	if reboundError != nil || !reboundReuse || rebound.ID != confirmation.ID {
+		testingContext.Fatalf("rebound confirmation = %#v, reused = %t, error = %v", rebound, reboundReuse, reboundError)
+	}
+	secondDraft, secondDraftError := service.Create(context.Background(), owner.ID, models.IngestionDraftProposal{
+		Mode: models.IngestionModeOpenLane, CalendarID: calendarID, Title: "Another waiting lane",
+		ReviewIntervalSeconds: &reviewSeconds, NextProbeAt: &nextProbe, ReferenceTime: now, Timezone: testsupport.TimezoneName,
+	})
+	if secondDraftError != nil {
+		testingContext.Fatalf("create second open-lane draft: %v", secondDraftError)
+	}
+	if _, _, conflictError := service.Confirm(context.Background(), owner.ID, secondDraft.ID, "confirmed-draft-key"); !errors.Is(conflictError, services.ErrIdempotencyConflict) {
+		testingContext.Fatalf("rebound idempotency conflict error = %v", conflictError)
+	}
 }
 
 func TestIngestionDraftCorrectsTimezoneAndAssignsCanonicalEventLanes(testingContext *testing.T) {

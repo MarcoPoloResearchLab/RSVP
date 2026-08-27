@@ -45,10 +45,11 @@ type ProviderEventBatch struct {
 // ErrCalendarSyncCursorRejected indicates that the provider requires a complete reconciliation.
 var ErrCalendarSyncCursorRejected = errors.New("calendar sync cursor was rejected")
 
-// CalendarProviderAdapter defines the external consent and calendar-list boundary.
+// CalendarProviderAdapter defines the external calendar provider boundary.
 type CalendarProviderAdapter interface {
 	AuthorizationURL(state string, redirectURI string) (string, error)
 	ExchangeCode(ctx context.Context, code string, redirectURI string) (CalendarProviderCredential, error)
+	RefreshCredential(ctx context.Context, credential CalendarProviderCredential) (CalendarProviderCredential, error)
 	ListCalendars(ctx context.Context, credential CalendarProviderCredential) ([]ProviderCalendar, error)
 	SynchronizeEvents(ctx context.Context, credential CalendarProviderCredential, providerCalendarID string, syncCursor string) (ProviderEventBatch, error)
 }
