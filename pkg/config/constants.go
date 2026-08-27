@@ -2,8 +2,10 @@ package config
 
 const (
 	WebRoot             = "/"
+	WebCalendars        = "/calendars/"
 	WebEvents           = "/events/"
 	WebHorizon          = "/horizon/"
+	WebStatic           = "/static/"
 	WebRSVPs            = "/rsvps/"
 	WebRSVPQR           = "/rsvps/qr/"
 	WebResponse         = "/response/"
@@ -24,6 +26,8 @@ const (
 	TemplateLanding   = "landing"
 	TemplatesDir      = "templates"
 	PartialsDir       = "partials"
+	HorizonStylesPath = WebStatic + "horizon.css"
+	HorizonScriptPath = WebStatic + "horizon.js"
 )
 
 const (

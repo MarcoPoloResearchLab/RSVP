@@ -2,8 +2,6 @@
 package horizon
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"mime"
@@ -28,23 +26,11 @@ const (
 	horizonAuthenticationErrorMessage = "Authentication is required."
 	horizonErrorCode                  = "invalid_time_window"
 	horizonErrorMessage               = "The time window is invalid."
-	horizonJSONMediaType              = "application/json"
+	horizonJSONMediaType              = handlers.JSONMediaType
 	horizonHTMLMediaType              = "text/html"
-	horizonRequestIDBytes             = 16
 )
 
 var errMalformedHorizonWindow = errors.New("malformed horizon window")
-
-type horizonErrorBody struct {
-	Error horizonError `json:"error"`
-}
-
-type horizonError struct {
-	Code      string            `json:"code"`
-	Message   string            `json:"message"`
-	Details   map[string]string `json:"details"`
-	RequestID string            `json:"request_id"`
-}
 
 type handler struct {
 	baseHandler *handlers.BaseHttpHandler
@@ -83,7 +69,7 @@ func AuthenticationMiddleware(applicationContext *config.ApplicationContext, nex
 			http.Redirect(responseWriter, request, gaussConstants.LoginPath, http.StatusFound)
 			return
 		}
-		if responseError := writeTypedError(
+		if responseError := handlers.WriteTypedError(
 			responseWriter,
 			http.StatusUnauthorized,
 			horizonAuthenticationErrorCode,
@@ -139,8 +125,13 @@ func (horizonHandler *handler) serveHTTP(responseWriter http.ResponseWriter, req
 		}
 		return
 	}
+	viewData, viewDataError := newHorizonViewData(projection, horizonHandler.now())
+	if viewDataError != nil {
+		horizonHandler.baseHandler.HandleError(responseWriter, viewDataError, utils.ServerError, utils.ErrMsgInternalServer)
+		return
+	}
 	responseWriter.Header().Set("Content-Type", horizonHTMLMediaType+"; charset=utf-8")
-	horizonHandler.baseHandler.RenderView(responseWriter, request, config.TemplateHorizon, projection)
+	horizonHandler.baseHandler.RenderView(responseWriter, request, config.TemplateHorizon, viewData)
 }
 
 func (horizonHandler *handler) windowFromRequest(request *http.Request, currentUser *models.User) (services.HorizonWindow, error) {
@@ -172,30 +163,9 @@ func (horizonHandler *handler) windowFromRequest(request *http.Request, currentU
 }
 
 func (horizonHandler *handler) writeInvalidWindow(responseWriter http.ResponseWriter, statusCode int, windowError error) {
-	if responseError := writeTypedError(responseWriter, statusCode, horizonErrorCode, horizonErrorMessage); responseError != nil {
+	if responseError := handlers.WriteTypedError(responseWriter, statusCode, horizonErrorCode, horizonErrorMessage); responseError != nil {
 		horizonHandler.baseHandler.ApplicationContext.Logger.Printf("ERROR: Write invalid horizon window response: %v", errors.Join(windowError, responseError))
 	}
-}
-
-func writeTypedError(responseWriter http.ResponseWriter, statusCode int, errorCode string, errorMessage string) error {
-	requestIDBytes := make([]byte, horizonRequestIDBytes)
-	if _, randomError := rand.Read(requestIDBytes); randomError != nil {
-		http.Error(responseWriter, utils.ErrMsgInternalServer, http.StatusInternalServerError)
-		return randomError
-	}
-	responseBody := horizonErrorBody{Error: horizonError{
-		Code: errorCode, Message: errorMessage, Details: map[string]string{}, RequestID: hex.EncodeToString(requestIDBytes),
-	}}
-	encodedBody, encodeError := json.Marshal(responseBody)
-	if encodeError != nil {
-		http.Error(responseWriter, utils.ErrMsgInternalServer, http.StatusInternalServerError)
-		return encodeError
-	}
-	responseWriter.Header().Set("Content-Type", horizonJSONMediaType)
-	responseWriter.WriteHeader(statusCode)
-	encodedBody = append(encodedBody, '\n')
-	_, writeError := responseWriter.Write(encodedBody)
-	return writeError
 }
 
 func setProjectionHeaders(responseHeaders http.Header) {

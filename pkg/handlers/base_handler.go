@@ -27,6 +27,8 @@ type PageData struct {
 	AppTitle            string
 	EventsManagerLabel  string
 	URLForEventsManager string
+	HorizonLabel        string
+	URLForHorizon       string
 	VenueManagerLabel   string
 	URLForVenueManager  string
 	LabelWelcome        string
@@ -202,6 +204,8 @@ func (handler *BaseHttpHandler) RenderView(
 		AppTitle:            config.AppTitle,
 		EventsManagerLabel:  config.ResourceLabelEventManager,
 		URLForEventsManager: config.WebEvents,
+		HorizonLabel:        config.ResourceNameHorizon,
+		URLForHorizon:       config.WebHorizon,
 		VenueManagerLabel:   config.ResourceLabelVenueManager,
 		URLForVenueManager:  config.WebVenues,
 		LabelWelcome:        config.LabelWelcome,

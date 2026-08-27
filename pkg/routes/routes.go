@@ -6,6 +6,7 @@ import (
 	"github.com/tyemirov/GAuss/pkg/gauss"
 	"github.com/tyemirov/GAuss/pkg/session"
 	"github.com/tyemirov/RSVP/pkg/config"
+	"github.com/tyemirov/RSVP/pkg/handlers/calendar"
 	"github.com/tyemirov/RSVP/pkg/handlers/event"
 	"github.com/tyemirov/RSVP/pkg/handlers/horizon"
 	"github.com/tyemirov/RSVP/pkg/handlers/response"
@@ -13,6 +14,7 @@ import (
 	"github.com/tyemirov/RSVP/pkg/handlers/venue"
 	"github.com/tyemirov/RSVP/pkg/middleware"
 	"github.com/tyemirov/RSVP/pkg/utils"
+	staticassets "github.com/tyemirov/RSVP/static"
 	"html/template"
 	"net/http"
 	"path/filepath"
@@ -50,7 +52,7 @@ func (appRoutes *Routes) LandingPageHandler(responseWriter http.ResponseWriter, 
 		}
 	}
 	if userEmail != "" {
-		http.Redirect(responseWriter, request, config.WebEvents, http.StatusFound)
+		http.Redirect(responseWriter, request, config.WebHorizon, http.StatusFound)
 		return
 	}
 	landingTemplatePath := filepath.Join(config.TemplatesDir, config.TemplateLanding+config.TemplateExtension)
@@ -108,7 +110,7 @@ func (appRoutes *Routes) RegisterMiddleware(mux *http.ServeMux) {
 		appRoutes.EnvConfig.GoogleClientID,
 		appRoutes.EnvConfig.GoogleClientSecret,
 		appRoutes.EnvConfig.GoogleOauth2Base,
-		config.WebEvents,
+		config.WebHorizon,
 		nil,
 		landingTemplatePath,
 	)
@@ -132,6 +134,7 @@ func (appRoutes *Routes) RegisterRoutes(mux *http.ServeMux) {
 		return authRequired(addUserMiddleware(applyOverrides(handler)))
 	}
 	mux.HandleFunc(config.WebRoot, appRoutes.LandingPageHandler)
+	mux.Handle(config.WebStatic, http.StripPrefix(config.WebStatic, staticassets.Handler()))
 	responseBaseDispatcher := http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
 		appRoutes.ApplicationContext.Logger.Printf("Router: Public path %s, method %s", request.URL.Path, request.Method)
 		response.Handler(appRoutes.ApplicationContext).ServeHTTP(responseWriter, request)
@@ -154,6 +157,7 @@ func (appRoutes *Routes) RegisterRoutes(mux *http.ServeMux) {
 		}
 	})
 	mux.Handle(config.WebEvents, protectedChain(eventBaseDispatcher))
+	mux.Handle(config.WebCalendars, protectedChain(calendar.VisibilityHandler(appRoutes.ApplicationContext)))
 	horizonHandler := horizon.Handler(appRoutes.ApplicationContext, time.Now)
 	mux.Handle(config.WebHorizon, horizon.AuthenticationMiddleware(appRoutes.ApplicationContext, addUserMiddleware(applyOverrides(horizonHandler))))
 	mux.Handle(config.WebRSVPQR, authRequired(addUserMiddleware(http.HandlerFunc(rsvp.ShowHandler(appRoutes.ApplicationContext)))))

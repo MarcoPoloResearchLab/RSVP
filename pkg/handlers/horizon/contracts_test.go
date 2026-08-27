@@ -24,6 +24,7 @@ import (
 
 func TestHorizonDefaultWindowUsesOrganizerCalendarDays(testingContext *testing.T) {
 	fixture := testsupport.NewFixture(testingContext)
+	testsupport.LoadTemplates(testingContext)
 	owner := fixture.CreateUser(testsupport.OwnerUserID)
 	confirmTimezone(testingContext, fixture.Database, &owner)
 	referenceTime := time.Date(2030, time.March, 8, 18, 30, 0, 0, time.UTC)
@@ -48,6 +49,10 @@ func TestHorizonDefaultWindowUsesOrganizerCalendarDays(testingContext *testing.T
 	}
 	if projection.Window.Timezone != testsupport.TimezoneName {
 		testingContext.Fatalf("window timezone = %q, want %q", projection.Window.Timezone, testsupport.TimezoneName)
+	}
+	htmlResponse := requestHorizon(testingContext, fixture, owner, config.WebHorizon, horizonHTMLMediaType, referenceTime)
+	if htmlResponse.Code != http.StatusOK || !strings.Contains(htmlResponse.Body.String(), `data-window-days="90"`) {
+		testingContext.Fatalf("default horizon HTML does not contain the 90-day local scale: status = %d", htmlResponse.Code)
 	}
 }
 
@@ -225,6 +230,87 @@ func TestHorizonHTMLAndJSONContainOneProjection(testingContext *testing.T) {
 	}
 	if !strings.HasPrefix(htmlResponse.Header().Get("Content-Type"), horizonHTMLMediaType) {
 		testingContext.Fatalf("HTML content type = %q, want %q", htmlResponse.Header().Get("Content-Type"), horizonHTMLMediaType)
+	}
+}
+
+func TestHorizonHTMLRendersInteractiveLaneContract(testingContext *testing.T) {
+	fixture := testsupport.NewFixture(testingContext)
+	testsupport.LoadTemplates(testingContext)
+	owner := fixture.CreateUser(testsupport.OwnerUserID)
+	confirmTimezone(testingContext, fixture.Database, &owner)
+	calendar := createCalendar(testingContext, fixture.Database, owner.ID, "CAL00001", "Waiting", 0, true)
+	windowStart := time.Date(2030, time.January, 1, 8, 0, 0, 0, time.UTC)
+	openLane := createOpenLane(testingContext, fixture.Database, calendar.ID, "LAN00001", "Passport renewal", windowStart.Add(-24*time.Hour), 0)
+	finiteLane := createFiniteLane(testingContext, fixture.Database, calendar.ID, "LAN00002", "Birthday", windowStart.Add(-24*time.Hour), windowStart.Add(12*time.Hour), 1)
+	createFiniteLane(testingContext, fixture.Database, calendar.ID, "LAN00003", "Continuing", windowStart.Add(-24*time.Hour), windowStart.Add(48*time.Hour), 2)
+	createPointEvent(testingContext, fixture.Database, finiteLane.ID, "EVT00001", "Birthday", windowStart.Add(6*time.Hour))
+	target := config.WebHorizon + "?start=" + windowStart.Format(time.RFC3339) + "&end=" + windowStart.Add(24*time.Hour).Format(time.RFC3339)
+
+	responseRecorder := requestHorizon(testingContext, fixture, owner, target, horizonHTMLMediaType, windowStart)
+	if responseRecorder.Code != http.StatusOK {
+		testingContext.Fatalf("horizon HTML status = %d, want %d; body = %s", responseRecorder.Code, http.StatusOK, responseRecorder.Body.String())
+	}
+	responseBody := responseRecorder.Body.String()
+	for _, requiredFragment := range []string{
+		config.HorizonStylesPath,
+		config.HorizonScriptPath,
+		`data-lane-id="` + openLane.ID + `" data-lane-open="true"`,
+		`class="horizon-lane-line is-open"`,
+		`class="horizon-lane-line is-finite"`,
+		`class="horizon-lane-line is-continuing"`,
+		`data-marker-id="EVT00001"`,
+		`href="/events/?event_id=EVT00001"`,
+		`href="/rsvps/?event_id=EVT00001"`,
+	} {
+		if !strings.Contains(responseBody, requiredFragment) {
+			testingContext.Fatalf("horizon HTML does not contain %q", requiredFragment)
+		}
+	}
+	openLaneStart := strings.Index(responseBody, `data-lane-id="`+openLane.ID+`"`)
+	finiteLaneStart := strings.Index(responseBody, `data-lane-id="`+finiteLane.ID+`"`)
+	if openLaneStart < 0 || finiteLaneStart <= openLaneStart {
+		testingContext.Fatalf("open lane HTML is incomplete")
+	}
+	openLaneHTML := responseBody[openLaneStart:finiteLaneStart]
+	if strings.Contains(openLaneHTML, `data-marker-id=`) {
+		testingContext.Fatalf("empty open lane contains a marker: %s", openLaneHTML)
+	}
+}
+
+func TestAuthenticatedHomeAndStaticAssetRoutesUseHorizon(testingContext *testing.T) {
+	fixture := testsupport.NewFixture(testingContext)
+	owner := fixture.CreateUser(testsupport.OwnerUserID)
+	appRoutes := routes.New(fixture.ApplicationContext, config.EnvConfig{})
+
+	rootRequest := httptest.NewRequest(http.MethodGet, config.WebRoot, nil)
+	sessionRecorder := httptest.NewRecorder()
+	webSession, sessionError := session.Store().Get(rootRequest, gaussConstants.SessionName)
+	if sessionError != nil {
+		testingContext.Fatalf("get root session: %v", sessionError)
+	}
+	webSession.Values[gaussConstants.SessionKeyUserEmail] = owner.Email
+	if saveError := webSession.Save(rootRequest, sessionRecorder); saveError != nil {
+		testingContext.Fatalf("save root session: %v", saveError)
+	}
+	for _, cookie := range sessionRecorder.Result().Cookies() {
+		rootRequest.AddCookie(cookie)
+	}
+	rootResponse := httptest.NewRecorder()
+	appRoutes.LandingPageHandler(rootResponse, rootRequest)
+	if rootResponse.Code != http.StatusFound || rootResponse.Header().Get("Location") != config.WebHorizon {
+		testingContext.Fatalf("authenticated root response = %d %q, want %d %q", rootResponse.Code, rootResponse.Header().Get("Location"), http.StatusFound, config.WebHorizon)
+	}
+
+	mux := http.NewServeMux()
+	appRoutes.RegisterRoutes(mux)
+	assetRequest := httptest.NewRequest(http.MethodGet, config.HorizonStylesPath, nil)
+	assetResponse := httptest.NewRecorder()
+	mux.ServeHTTP(assetResponse, assetRequest)
+	if assetResponse.Code != http.StatusOK {
+		testingContext.Fatalf("horizon stylesheet status = %d, want %d", assetResponse.Code, http.StatusOK)
+	}
+	if !strings.Contains(assetResponse.Header().Get("Content-Type"), "text/css") || !strings.Contains(assetResponse.Body.String(), ".horizon-lane-line") {
+		testingContext.Fatalf("horizon stylesheet response is invalid")
 	}
 }
 

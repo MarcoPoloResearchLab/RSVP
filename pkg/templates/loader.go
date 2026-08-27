@@ -23,6 +23,7 @@ var goldmarkMarkdownRenderer = goldmark.New(
 )
 
 var customTemplateFunctions = template.FuncMap{
+	"addOne":      func(value int) int { return value + 1 },
 	"currentYear": func() int { return time.Now().Year() },
 	"renderMarkdown": func(inputText string) template.HTML {
 		var outputBuffer bytes.Buffer
