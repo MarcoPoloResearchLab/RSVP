@@ -18,6 +18,7 @@ import (
 	"github.com/tyemirov/RSVP/pkg/middleware"
 	"github.com/tyemirov/RSVP/pkg/services"
 	"github.com/tyemirov/RSVP/pkg/utils"
+	"gorm.io/gorm"
 )
 
 const (
@@ -128,6 +129,18 @@ func (horizonHandler *handler) serveHTTP(responseWriter http.ResponseWriter, req
 	viewData, viewDataError := newHorizonViewData(projection, horizonHandler.now())
 	if viewDataError != nil {
 		horizonHandler.baseHandler.HandleError(responseWriter, viewDataError, utils.ServerError, utils.ErrMsgInternalServer)
+		return
+	}
+	var connection models.CalendarConnection
+	connectionError := horizonHandler.baseHandler.ApplicationContext.Database.WithContext(request.Context()).First(&connection, "organizer_id = ?", currentUser.ID).Error
+	if connectionError == nil {
+		viewData.CalendarConnection = &horizonConnectionView{
+			ID: connection.ID, Status: connection.Status,
+			ManagementURL:     config.WebCalendarConnections + connection.ID,
+			SourceCalendarURL: config.WebCalendarConnections + connection.ID + "/source-calendars/",
+		}
+	} else if !errors.Is(connectionError, gorm.ErrRecordNotFound) {
+		horizonHandler.baseHandler.HandleError(responseWriter, connectionError, utils.DatabaseError, utils.ErrMsgInternalServer)
 		return
 	}
 	responseWriter.Header().Set("Content-Type", horizonHTMLMediaType+"; charset=utf-8")

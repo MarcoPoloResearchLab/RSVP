@@ -2,9 +2,12 @@
 package main
 
 import (
+	"bytes"
+	"encoding/base64"
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"time"
@@ -20,11 +23,14 @@ import (
 )
 
 const (
-	browserFixtureAddress = "127.0.0.1:18080"
-	browserOrganizerID    = "USRBRWSR"
-	browserOrganizerEmail = "horizon@example.test"
-	browserTimezoneName   = "America/Los_Angeles"
-	browserLoginPath      = "/browser-login/"
+	browserFixtureAddress      = "127.0.0.1:18080"
+	browserOrganizerID         = "USRBRWSR"
+	browserOrganizerEmail      = "horizon@example.test"
+	browserTimezoneName        = "America/Los_Angeles"
+	browserLoginPath           = "/browser-login/"
+	browserGoogleAuthorizePath = "/browser-google/authorize"
+	browserGoogleTokenPath     = "/browser-google/token"
+	browserGoogleCalendarsPath = "/browser-google/calendars"
 )
 
 var browserReferenceTime = time.Now().UTC()
@@ -65,7 +71,48 @@ func main() {
 		}
 		http.Redirect(responseWriter, request, config.WebRoot, http.StatusFound)
 	})
-	routes.New(applicationContext, config.EnvConfig{}).RegisterRoutes(mux)
+	mux.HandleFunc(browserGoogleAuthorizePath, func(responseWriter http.ResponseWriter, request *http.Request) {
+		redirectURI := request.URL.Query().Get("redirect_uri")
+		state := request.URL.Query().Get("state")
+		if redirectURI == "" || state == "" {
+			http.Error(responseWriter, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+			return
+		}
+		callbackURL, parseError := url.Parse(redirectURI)
+		if parseError != nil {
+			http.Error(responseWriter, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+			return
+		}
+		query := callbackURL.Query()
+		query.Set("state", state)
+		query.Set("code", "browser-authorization-code")
+		callbackURL.RawQuery = query.Encode()
+		http.Redirect(responseWriter, request, callbackURL.String(), http.StatusFound)
+	})
+	mux.HandleFunc(browserGoogleTokenPath, func(responseWriter http.ResponseWriter, request *http.Request) {
+		if request.Method != http.MethodPost {
+			http.Error(responseWriter, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+			return
+		}
+		responseWriter.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(responseWriter, `{"access_token":"browser-access","refresh_token":"browser-refresh","expires_in":3600,"token_type":"Bearer"}`)
+	})
+	mux.HandleFunc(browserGoogleCalendarsPath, func(responseWriter http.ResponseWriter, request *http.Request) {
+		if request.Header.Get("Authorization") != "Bearer browser-access" {
+			http.Error(responseWriter, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+			return
+		}
+		responseWriter.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(responseWriter, `{"items":[{"id":"google-personal","summary":"Google Personal","timeZone":"America/Los_Angeles","backgroundColor":"#405060"},{"id":"google-work","summary":"Google Work","timeZone":"America/Los_Angeles","backgroundColor":"#102030"}]}`)
+	})
+	browserBaseURL := "http://" + browserFixtureAddress
+	routes.New(applicationContext, config.EnvConfig{
+		CalendarCredentialEncryptionKey: base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{0x42}, 32)),
+		GoogleClientID:                  "browser-client", GoogleClientSecret: "browser-secret",
+		GoogleCalendarAuthorizationEndpoint: browserBaseURL + browserGoogleAuthorizePath,
+		GoogleCalendarTokenEndpoint:         browserBaseURL + browserGoogleTokenPath,
+		GoogleCalendarListEndpoint:          browserBaseURL + browserGoogleCalendarsPath,
+	}).RegisterRoutes(mux)
 	logger.Printf("Listening on http://%s", browserFixtureAddress)
 	if serveError := http.ListenAndServe(browserFixtureAddress, mux); serveError != nil {
 		logger.Fatalf("Serve browser fixture: %v", serveError)

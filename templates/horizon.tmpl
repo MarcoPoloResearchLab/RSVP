@@ -57,6 +57,18 @@
         <details class="horizon-management" data-horizon-management>
             <summary>Manage calendars and lanes</summary>
             <div class="horizon-management-grid">
+                <section class="horizon-resource-form" data-calendar-connection>
+                    <h2>Google Calendar</h2>
+                    {{ if .CalendarConnection }}
+                        <p>Connection state: <strong>{{ .CalendarConnection.Status }}</strong></p>
+                        <button type="button" data-load-source-calendars data-source-url="{{ .CalendarConnection.SourceCalendarURL }}">Select source calendars</button>
+                        <div data-source-calendar-list></div>
+                        <button type="button" data-save-source-calendars data-source-url="{{ .CalendarConnection.SourceCalendarURL }}" hidden>Save source calendars</button>
+                        <button type="button" data-resource-action="DELETE" data-resource-url="{{ .CalendarConnection.ManagementURL }}">Delete connection</button>
+                    {{ else }}
+                        <button type="button" data-calendar-authorize data-resource-url="{{ .CalendarAuthorizationURL }}">Connect Google Calendar</button>
+                    {{ end }}
+                </section>
                 <form class="horizon-resource-form" data-resource-form data-method="POST" data-resource-url="{{ .CalendarCreateURL }}">
                     <h2>Create calendar</h2>
                     <label>Name <input name="name" required></label>

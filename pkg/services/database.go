@@ -31,6 +31,10 @@ var canonicalModels = []any{
 	&models.RSVP{},
 	&models.AttentionPolicy{},
 	&models.Probe{},
+	&models.CalendarAuthorizationRequest{},
+	&models.CalendarConnection{},
+	&models.SourceCalendarMapping{},
+	&models.IdempotencyRecord{},
 }
 
 var canonicalTableNames = []string{
@@ -43,18 +47,26 @@ var canonicalTableNames = []string{
 	config.TableRSVPs,
 	config.TableAttentionPolicies,
 	config.TableProbes,
+	config.TableCalendarAuthorizationRequests,
+	config.TableCalendarConnections,
+	config.TableSourceCalendarMappings,
+	config.TableIdempotencyRecords,
 }
 
 var canonicalColumns = map[string][]string{
-	config.TableUsers:             {"id", "created_at", "updated_at", "deleted_at", "email", "name", "picture", "timezone"},
-	config.TableCalendars:         {"id", "created_at", "updated_at", "deleted_at", "organizer_id", "name", "symbol", "color_token", "display_order", "visible"},
-	config.TableLanes:             {"id", "created_at", "updated_at", "deleted_at", "calendar_id", "title", "status", "starts_at", "ends_at", "resolved_at", "display_order"},
-	config.TableEventSeries:       {"id", "created_at", "updated_at", "deleted_at", "lane_id", "timezone", "source_kind", "recurrence_rule"},
-	config.TableVenues:            {"id", "created_at", "updated_at", "deleted_at", "user_id", "name", "address", "capacity", "website", "phone", "email", "description"},
-	config.TableEvents:            {"id", "created_at", "updated_at", "deleted_at", "lane_id", "event_series_id", "anchor_event_id", "relation_type", "time_shape", "at", "starts_at", "ends_at", "start_date", "end_date", "timezone", "title", "description", "venue_id"},
-	config.TableRSVPs:             {"id", "created_at", "updated_at", "deleted_at", "name", "response", "extra_guests", "event_id"},
-	config.TableAttentionPolicies: {"id", "created_at", "updated_at", "deleted_at", "lane_id", "review_interval_seconds", "next_probe_at", "escalation_interval_seconds"},
-	config.TableProbes:            {"id", "created_at", "updated_at", "deleted_at", "policy_id", "lane_id", "due_at", "escalates_at", "state", "completed_at"},
+	config.TableUsers:                         {"id", "created_at", "updated_at", "deleted_at", "email", "name", "picture", "timezone"},
+	config.TableCalendars:                     {"id", "created_at", "updated_at", "deleted_at", "organizer_id", "name", "symbol", "color_token", "display_order", "visible"},
+	config.TableLanes:                         {"id", "created_at", "updated_at", "deleted_at", "calendar_id", "title", "status", "starts_at", "ends_at", "resolved_at", "display_order"},
+	config.TableEventSeries:                   {"id", "created_at", "updated_at", "deleted_at", "lane_id", "timezone", "source_kind", "recurrence_rule"},
+	config.TableVenues:                        {"id", "created_at", "updated_at", "deleted_at", "user_id", "name", "address", "capacity", "website", "phone", "email", "description"},
+	config.TableEvents:                        {"id", "created_at", "updated_at", "deleted_at", "lane_id", "event_series_id", "anchor_event_id", "relation_type", "time_shape", "at", "starts_at", "ends_at", "start_date", "end_date", "timezone", "title", "description", "venue_id"},
+	config.TableRSVPs:                         {"id", "created_at", "updated_at", "deleted_at", "name", "response", "extra_guests", "event_id"},
+	config.TableAttentionPolicies:             {"id", "created_at", "updated_at", "deleted_at", "lane_id", "review_interval_seconds", "next_probe_at", "escalation_interval_seconds"},
+	config.TableProbes:                        {"id", "created_at", "updated_at", "deleted_at", "policy_id", "lane_id", "due_at", "escalates_at", "state", "completed_at"},
+	config.TableCalendarAuthorizationRequests: {"id", "created_at", "updated_at", "deleted_at", "organizer_id", "provider", "state_hash", "redirect_uri", "expires_at", "used_at"},
+	config.TableCalendarConnections:           {"id", "created_at", "updated_at", "deleted_at", "organizer_id", "provider", "credential_nonce", "credential_ciphertext", "status"},
+	config.TableSourceCalendarMappings:        {"id", "created_at", "updated_at", "deleted_at", "connection_id", "calendar_id", "provider_calendar_id", "sync_cursor"},
+	config.TableIdempotencyRecords:            {"id", "created_at", "updated_at", "deleted_at", "organizer_id", "operation", "key_hash", "request_hash", "response_status", "resource_type", "resource_id", "expires_at"},
 }
 
 type canonicalForeignKey struct {
@@ -64,31 +76,41 @@ type canonicalForeignKey struct {
 }
 
 var canonicalForeignKeys = map[string][]canonicalForeignKey{
-	config.TableCalendars:         {{"organizer_id", config.TableUsers, "id"}},
-	config.TableLanes:             {{"calendar_id", config.TableCalendars, "id"}},
-	config.TableEventSeries:       {{"lane_id", config.TableLanes, "id"}},
-	config.TableEvents:            {{"lane_id", config.TableLanes, "id"}, {"event_series_id", config.TableEventSeries, "id"}, {"anchor_event_id", config.TableEvents, "id"}, {"venue_id", config.TableVenues, "id"}},
-	config.TableRSVPs:             {{"event_id", config.TableEvents, "id"}},
-	config.TableAttentionPolicies: {{"lane_id", config.TableLanes, "id"}},
-	config.TableProbes:            {{"policy_id", config.TableAttentionPolicies, "id"}, {"lane_id", config.TableLanes, "id"}},
+	config.TableCalendars:                     {{"organizer_id", config.TableUsers, "id"}},
+	config.TableLanes:                         {{"calendar_id", config.TableCalendars, "id"}},
+	config.TableEventSeries:                   {{"lane_id", config.TableLanes, "id"}},
+	config.TableEvents:                        {{"lane_id", config.TableLanes, "id"}, {"event_series_id", config.TableEventSeries, "id"}, {"anchor_event_id", config.TableEvents, "id"}, {"venue_id", config.TableVenues, "id"}},
+	config.TableRSVPs:                         {{"event_id", config.TableEvents, "id"}},
+	config.TableAttentionPolicies:             {{"lane_id", config.TableLanes, "id"}},
+	config.TableProbes:                        {{"policy_id", config.TableAttentionPolicies, "id"}, {"lane_id", config.TableLanes, "id"}},
+	config.TableCalendarAuthorizationRequests: {{"organizer_id", config.TableUsers, "id"}},
+	config.TableCalendarConnections:           {{"organizer_id", config.TableUsers, "id"}},
+	config.TableSourceCalendarMappings:        {{"connection_id", config.TableCalendarConnections, "id"}, {"calendar_id", config.TableCalendars, "id"}},
+	config.TableIdempotencyRecords:            {{"organizer_id", config.TableUsers, "id"}},
 }
 
 var canonicalUniqueIndexes = map[string][][]string{
-	config.TableUsers:             {{"email"}},
-	config.TableCalendars:         {{"organizer_id", "display_order"}},
-	config.TableLanes:             {{"calendar_id", "display_order"}},
-	config.TableEventSeries:       {{"lane_id"}},
-	config.TableAttentionPolicies: {{"lane_id"}},
-	config.TableProbes:            {{"policy_id", "due_at"}},
+	config.TableUsers:                         {{"email"}},
+	config.TableCalendars:                     {{"organizer_id", "display_order"}},
+	config.TableLanes:                         {{"calendar_id", "display_order"}},
+	config.TableEventSeries:                   {{"lane_id"}},
+	config.TableAttentionPolicies:             {{"lane_id"}},
+	config.TableProbes:                        {{"policy_id", "due_at"}},
+	config.TableCalendarAuthorizationRequests: {{"state_hash"}},
+	config.TableCalendarConnections:           {{"organizer_id", "provider"}},
+	config.TableSourceCalendarMappings:        {{"connection_id", "provider_calendar_id"}, {"calendar_id"}},
+	config.TableIdempotencyRecords:            {{"organizer_id", "operation", "key_hash"}},
 }
 
 var canonicalCheckConstraints = map[string][]string{
-	config.TableCalendars:         {"calendar_display_order"},
-	config.TableLanes:             {"lane_state", "lane_display_order"},
-	config.TableEventSeries:       {"event_series_source_kind"},
-	config.TableEvents:            {"event_relation", "event_time_shape", "event_timezone"},
-	config.TableAttentionPolicies: {"attention_review_interval", "attention_escalation_interval"},
-	config.TableProbes:            {"probe_state"},
+	config.TableCalendars:                     {"calendar_display_order"},
+	config.TableLanes:                         {"lane_state", "lane_display_order"},
+	config.TableEventSeries:                   {"event_series_source_kind"},
+	config.TableEvents:                        {"event_relation", "event_time_shape", "event_timezone"},
+	config.TableAttentionPolicies:             {"attention_review_interval", "attention_escalation_interval"},
+	config.TableProbes:                        {"probe_state"},
+	config.TableCalendarAuthorizationRequests: {"calendar_authorization_provider"},
+	config.TableCalendarConnections:           {"calendar_connection_provider", "calendar_connection_status"},
 }
 
 // InitDatabase opens a canonical database or stops application startup.

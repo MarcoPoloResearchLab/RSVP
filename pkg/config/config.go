@@ -27,6 +27,8 @@ type ApplicationContext struct {
 
 // EnvConfig holds configuration values sourced from environment variables.
 type EnvConfig struct {
+	// CalendarCredentialEncryptionKey encrypts stored provider credentials.
+	CalendarCredentialEncryptionKey string
 	// SessionSecret is the secret key used for securing user sessions.
 	SessionSecret string
 	// GoogleClientID is the Client ID obtained from Google Cloud Console for OAuth.
@@ -35,6 +37,12 @@ type EnvConfig struct {
 	GoogleClientSecret string
 	// GoogleOauth2Base is the base URL for Google OAuth2 endpoints.
 	GoogleOauth2Base string
+	// GoogleCalendarAuthorizationEndpoint starts Google Calendar consent.
+	GoogleCalendarAuthorizationEndpoint string
+	// GoogleCalendarTokenEndpoint exchanges Google Calendar authorization codes.
+	GoogleCalendarTokenEndpoint string
+	// GoogleCalendarListEndpoint lists available Google calendars.
+	GoogleCalendarListEndpoint string
 	// CertificateFilePath is the path to the TLS certificate file (optional).
 	CertificateFilePath string
 	// KeyFilePath is the path to the TLS private key file (optional).
@@ -61,13 +69,17 @@ func NewEnvConfig(applicationLogger *log.Logger) *EnvConfig {
 	}
 
 	envConfigData := &EnvConfig{
-		SessionSecret:       os.Getenv("SESSION_SECRET"),
-		GoogleClientID:      os.Getenv("GOOGLE_CLIENT_ID"),
-		GoogleClientSecret:  os.Getenv("GOOGLE_CLIENT_SECRET"),
-		GoogleOauth2Base:    os.Getenv("GOOGLE_OAUTH2_BASE"),
-		CertificateFilePath: os.Getenv("TLS_CERT_PATH"),
-		KeyFilePath:         os.Getenv("TLS_KEY_PATH"),
-		AppBaseURL:          appBaseURL, // Use the processed base URL
+		CalendarCredentialEncryptionKey:     os.Getenv("CALENDAR_CREDENTIAL_ENCRYPTION_KEY"),
+		SessionSecret:                       os.Getenv("SESSION_SECRET"),
+		GoogleClientID:                      os.Getenv("GOOGLE_CLIENT_ID"),
+		GoogleClientSecret:                  os.Getenv("GOOGLE_CLIENT_SECRET"),
+		GoogleOauth2Base:                    os.Getenv("GOOGLE_OAUTH2_BASE"),
+		GoogleCalendarAuthorizationEndpoint: GoogleCalendarAuthorizationEndpoint,
+		GoogleCalendarTokenEndpoint:         GoogleCalendarTokenEndpoint,
+		GoogleCalendarListEndpoint:          GoogleCalendarListEndpoint,
+		CertificateFilePath:                 os.Getenv("TLS_CERT_PATH"),
+		KeyFilePath:                         os.Getenv("TLS_KEY_PATH"),
+		AppBaseURL:                          appBaseURL, // Use the processed base URL
 		Database: DatabaseConfig{
 			Name: databaseName,
 		},
@@ -75,11 +87,12 @@ func NewEnvConfig(applicationLogger *log.Logger) *EnvConfig {
 
 	// Define required environment variables and their corresponding values from the config struct.
 	requiredEnvVars := map[string]string{
-		"SESSION_SECRET":       envConfigData.SessionSecret,
-		"GOOGLE_CLIENT_ID":     envConfigData.GoogleClientID,
-		"GOOGLE_CLIENT_SECRET": envConfigData.GoogleClientSecret,
-		"GOOGLE_OAUTH2_BASE":   envConfigData.GoogleOauth2Base,
-		"APP_BASE_URL":         envConfigData.AppBaseURL, // Make AppBaseURL required
+		"CALENDAR_CREDENTIAL_ENCRYPTION_KEY": envConfigData.CalendarCredentialEncryptionKey,
+		"SESSION_SECRET":                     envConfigData.SessionSecret,
+		"GOOGLE_CLIENT_ID":                   envConfigData.GoogleClientID,
+		"GOOGLE_CLIENT_SECRET":               envConfigData.GoogleClientSecret,
+		"GOOGLE_OAUTH2_BASE":                 envConfigData.GoogleOauth2Base,
+		"APP_BASE_URL":                       envConfigData.AppBaseURL, // Make AppBaseURL required
 	}
 
 	// Check if all required environment variables are set.

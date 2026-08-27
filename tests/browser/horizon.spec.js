@@ -146,6 +146,29 @@ test('shows and completes a durable attention probe', async ({page}) => {
     await expect(waitingLane.locator('[data-probe-state="pending"]')).toBeVisible();
 });
 
+test('connects Google Calendar and selects two source calendars', async ({page}) => {
+    await page.locator('[data-horizon-management] > summary').click();
+    await page.getByRole('button', {name: 'Connect Google Calendar'}).click();
+    await expect(page.getByRole('heading', {name: 'Confirm Google Calendar'})).toBeVisible();
+    await page.getByRole('button', {name: 'Create connection'}).click();
+    await expect(page).toHaveURL(/\/horizon\/$/);
+
+    await page.locator('[data-horizon-management] > summary').click();
+    await expect(page.getByText('Connection state:')).toBeVisible();
+    await page.getByRole('button', {name: 'Select source calendars'}).click();
+    await page.getByLabel('Google Personal').check();
+    await page.getByLabel('Google Work').check();
+    await page.getByRole('button', {name: 'Save source calendars'}).click();
+
+    await expect(page.locator('.horizon-calendar-toggle', {hasText: 'Google Personal'})).toBeVisible();
+    await expect(page.locator('.horizon-calendar-toggle', {hasText: 'Google Work'})).toBeVisible();
+
+    await page.locator('[data-horizon-management] > summary').click();
+    await page.getByRole('button', {name: 'Delete connection'}).click();
+    await page.locator('[data-horizon-management] > summary').click();
+    await expect(page.getByRole('button', {name: 'Connect Google Calendar'})).toBeVisible();
+});
+
 test('supports keyboard pan, scale, visibility, and marker selection', async ({page}) => {
     const viewport = page.locator('[data-horizon-viewport]');
     const board = page.locator('[data-horizon-board]');

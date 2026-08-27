@@ -13,16 +13,25 @@ import (
 const horizonScaleIntervalDays = 7
 
 type horizonViewData struct {
-	Window             services.HorizonWindowProjection
-	StylesURL          string
-	ScriptURL          string
-	WindowDays         int
-	TodayPosition      *string
-	TimeScaleTicks     []horizonTimeScaleTick
-	Calendars          []horizonCalendarView
-	CalendarCreateURL  string
-	LaneCreateURL      string
-	AttentionCreateURL string
+	Window                   services.HorizonWindowProjection
+	StylesURL                string
+	ScriptURL                string
+	WindowDays               int
+	TodayPosition            *string
+	TimeScaleTicks           []horizonTimeScaleTick
+	Calendars                []horizonCalendarView
+	CalendarCreateURL        string
+	LaneCreateURL            string
+	AttentionCreateURL       string
+	CalendarAuthorizationURL string
+	CalendarConnection       *horizonConnectionView
+}
+
+type horizonConnectionView struct {
+	ID                string
+	Status            models.CalendarConnectionStatus
+	ManagementURL     string
+	SourceCalendarURL string
 }
 
 type horizonTimeScaleTick struct {
@@ -105,8 +114,9 @@ func newHorizonViewData(projection services.HorizonProjection, referenceTime tim
 		Window:    projection.Window,
 		StylesURL: config.HorizonStylesPath, ScriptURL: config.HorizonScriptPath,
 		CalendarCreateURL: config.WebCalendars, LaneCreateURL: config.WebLanes,
-		AttentionCreateURL: config.WebAttentionPolicies,
-		TimeScaleTicks:     make([]horizonTimeScaleTick, 0), Calendars: make([]horizonCalendarView, 0, len(projection.Calendars)),
+		AttentionCreateURL:       config.WebAttentionPolicies,
+		CalendarAuthorizationURL: config.WebCalendarAuthorizationRequests,
+		TimeScaleTicks:           make([]horizonTimeScaleTick, 0), Calendars: make([]horizonCalendarView, 0, len(projection.Calendars)),
 	}
 	localStart := windowStart.In(location)
 	localEnd := windowEnd.In(location)

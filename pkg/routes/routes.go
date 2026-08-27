@@ -6,8 +6,10 @@ import (
 	"github.com/tyemirov/GAuss/pkg/gauss"
 	"github.com/tyemirov/GAuss/pkg/session"
 	"github.com/tyemirov/RSVP/pkg/config"
+	"github.com/tyemirov/RSVP/pkg/handlers"
 	"github.com/tyemirov/RSVP/pkg/handlers/attentionpolicy"
 	"github.com/tyemirov/RSVP/pkg/handlers/calendar"
+	"github.com/tyemirov/RSVP/pkg/handlers/calendarconnection"
 	"github.com/tyemirov/RSVP/pkg/handlers/event"
 	"github.com/tyemirov/RSVP/pkg/handlers/horizon"
 	"github.com/tyemirov/RSVP/pkg/handlers/lane"
@@ -161,6 +163,21 @@ func (appRoutes *Routes) RegisterRoutes(mux *http.ServeMux) {
 	})
 	mux.Handle(config.WebEvents, protectedChain(eventBaseDispatcher))
 	mux.Handle(config.WebCalendars, protectedChain(calendar.Handler(appRoutes.ApplicationContext)))
+	calendarConnectionResources, calendarConnectionError := calendarconnection.New(appRoutes.ApplicationContext, *appRoutes.EnvConfig, time.Now)
+	if calendarConnectionError == nil {
+		mux.Handle(config.WebCalendarAuthorizationRequests, protectedChain(calendarConnectionResources.AuthorizationRequests()))
+		mux.Handle(config.WebCalendarConnectionCallbacksGoogle, protectedChain(calendarConnectionResources.Callback()))
+		mux.Handle(config.WebCalendarConnections, protectedChain(calendarConnectionResources.Connections()))
+	} else {
+		unavailable := http.HandlerFunc(func(responseWriter http.ResponseWriter, _ *http.Request) {
+			if responseError := handlers.WriteTypedError(responseWriter, http.StatusServiceUnavailable, "calendar_connection_unavailable", "Calendar connection is unavailable."); responseError != nil {
+				appRoutes.ApplicationContext.Logger.Printf("ERROR: Write calendar connection unavailable response: %v", responseError)
+			}
+		})
+		mux.Handle(config.WebCalendarAuthorizationRequests, protectedChain(unavailable))
+		mux.Handle(config.WebCalendarConnectionCallbacksGoogle, protectedChain(unavailable))
+		mux.Handle(config.WebCalendarConnections, protectedChain(unavailable))
+	}
 	mux.Handle(config.WebAttentionPolicies, protectedChain(attentionpolicy.Handler(appRoutes.ApplicationContext, time.Now)))
 	mux.Handle(config.WebLanes, protectedChain(lane.Handler(appRoutes.ApplicationContext, time.Now)))
 	mux.Handle(config.WebProbes, protectedChain(probe.Handler(appRoutes.ApplicationContext, time.Now)))

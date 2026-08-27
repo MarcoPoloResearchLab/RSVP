@@ -438,7 +438,7 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Run `make ci`.
   - Run the browser test target.
 
-- [ ] [F005] (P1) {I002,F003} Add a Google Calendar connection
+- [x] [F005] (P1) {I002,F003} Add a Google Calendar connection
   Goal:
   This issue lets an organizer authorize read-only access and select source calendars.
 
