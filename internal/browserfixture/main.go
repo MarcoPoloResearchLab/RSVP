@@ -114,6 +114,10 @@ func main() {
 			return
 		}
 		responseWriter.Header().Set("Content-Type", "application/json")
+		if request.URL.Query().Get("syncToken") == "browser-sync-1" {
+			fmt.Fprint(responseWriter, `{"timeZone":"America/Los_Angeles","items":[{"id":"birthday-ada","status":"confirmed","summary":"Ada provider birthday updated","start":{"date":"2026-09-15"},"end":{"date":"2026-09-16"}},{"id":"birthday-lin","status":"cancelled"},{"id":"birthday-maya","status":"cancelled"}],"nextSyncToken":"browser-sync-2"}`)
+			return
+		}
 		fmt.Fprint(responseWriter, `{"timeZone":"America/Los_Angeles","items":[{"id":"birthday-ada","status":"confirmed","summary":"Ada provider birthday","start":{"date":"2026-09-15"},"end":{"date":"2026-09-16"}},{"id":"birthday-lin","status":"confirmed","summary":"Lin provider birthday","start":{"date":"2026-10-01"},"end":{"date":"2026-10-02"}},{"id":"birthday-maya","status":"confirmed","summary":"Maya provider birthday","start":{"date":"2026-10-20"},"end":{"date":"2026-10-21"}}],"nextSyncToken":"browser-sync-1"}`)
 	})
 	mux.HandleFunc(browserNaturalLanguagePath, func(responseWriter http.ResponseWriter, request *http.Request) {
@@ -174,6 +178,10 @@ func seedBrowserFixture(database *gorm.DB) error {
 		if confirmationError := organizer.ConfirmTimezone(transaction, timezone); confirmationError != nil {
 			return confirmationError
 		}
+		venue := models.Venue{BaseModel: models.BaseModel{ID: "VENBRWSR"}, UserID: organizer.ID, Name: "Browser Terminal", Address: "100 Horizon Way"}
+		if createError := venue.Create(transaction); createError != nil {
+			return fmt.Errorf("create browser venue: %w", createError)
+		}
 
 		birthdays, calendarError := createBrowserCalendar(transaction, organizer.ID, "CALBIRTH", "Birthdays", "✦", "birthdays", 0)
 		if calendarError != nil {
@@ -233,6 +241,13 @@ func seedBrowserFixture(database *gorm.DB) error {
 		)
 		if anchorError != nil {
 			return anchorError
+		}
+		if updateError := transaction.Model(anchor).Update("venue_id", venue.ID).Error; updateError != nil {
+			return fmt.Errorf("assign browser venue: %w", updateError)
+		}
+		browserRSVP := models.RSVP{BaseModel: models.BaseModel{ID: "RSVPBR01"}, Name: "Browser Invitee", Response: config.RSVPResponsePending, EventID: anchor.ID}
+		if createError := browserRSVP.Create(transaction); createError != nil {
+			return fmt.Errorf("create browser RSVP: %w", createError)
 		}
 		dependentRelation, relationError := models.DependentEventRelation(anchor.ID)
 		if relationError != nil {

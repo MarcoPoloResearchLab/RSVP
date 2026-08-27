@@ -56,6 +56,9 @@ RSVP does not store a duplicate organizer identifier on these temporal resources
 | Source calendar mapping | One connection and one calendar | Connection organizer |
 | External event series link | One mapping and one event series | Event series relationship |
 | External event link | One mapping and one RSVP event | RSVP event relationship |
+| Ingestion draft | One organizer and one calendar | Organizer identifier |
+| Draft derived marker rule | One ingestion draft | Ingestion draft organizer |
+| Draft confirmation | One ingestion draft and created resources | Ingestion draft organizer |
 
 A venue keeps its direct organizer relationship.
 An event keeps its optional venue relationship.
@@ -86,7 +89,8 @@ RSVP stores that value as the organizer timezone.
 | External event series link | `id`, `mapping_id`, `event_series_id`, `provider_series_id` |
 | External event link | `id`, `mapping_id`, `event_id`, `provider_event_id`, optional `provider_series_id` |
 | Calendar sync | `id`, `mapping_id`, `state`, `started_at`, optional `finished_at`, optional `error_code` |
-| Ingestion draft | `id`, `organizer_id`, `status`, `mode`, `calendar_id`, typed lane and marker proposals, `reference_time`, `timezone` |
+| Ingestion draft | `id`, `organizer_id`, `status`, `mode`, `source`, `calendar_id`, typed proposals, `reference_time`, `timezone`, `missing_fields_json` |
+| Draft derived marker rule | `id`, `draft_id`, `anchor_edge`, `offset_seconds` |
 | Draft confirmation | `id`, `draft_id`, created resource identifiers |
 | Idempotency record | `id`, `organizer_id`, `operation`, `key_hash`, `request_hash`, `response_status`, `resource_type`, `resource_id`, `expires_at` |
 
@@ -119,6 +123,7 @@ Probe `state` accepts `pending`, `completed`, `missed`, or `canceled`.
 Calendar connection `status` accepts `authorization_pending`, `connected`, or `error`.
 Calendar sync `state` accepts `pending`, `running`, `succeeded`, or `failed`.
 Ingestion draft `status` accepts `incomplete`, `ready`, `confirmed`, or `canceled`.
+Ingestion draft `source` accepts `quick` or `natural_language`.
 
 Derived marker rule `anchor_type` accepts `event`, `probe`, or `derived`.
 Derived marker rule `anchor_edge` accepts `start` or `end`.
@@ -384,6 +389,7 @@ Each organizer route requires authentication and owner authorization.
 | `PATCH` | `/ingestion-drafts/{draft_id}` | Correct one ingestion draft. |
 | `DELETE` | `/ingestion-drafts/{draft_id}` | Cancel one ingestion draft. |
 | `POST` | `/ingestion-drafts/{draft_id}/confirmations/` | Confirm one draft and create temporal resources. |
+| `POST` | `/natural-language-ingestion/` | Parse text and create one ingestion draft. |
 
 An authenticated request to `/` redirects to `/horizon/`.
 An unauthenticated request to `/` keeps the public landing page.
@@ -538,6 +544,16 @@ A canceled draft changes no temporal resource.
 An invalid parser response changes no temporal resource.
 The natural-language parser uses one explicit reference time and the organizer timezone.
 RSVP does not store the original natural-language input.
+
+The parser adapter sends the input text, reference time, and organizer timezone.
+The adapter authenticates with a key from private deployment values.
+The adapter accepts only the current JSON response schema.
+RSVP calculates the missing required fields from the validated response.
+
+A natural-language draft stores its source and missing field names.
+A dated draft can store proposed relative marker rules.
+Draft confirmation creates each approved rule from the new event anchor.
+The event and its derived markers use one lane.
 
 ## Fresh Schema Contract
 

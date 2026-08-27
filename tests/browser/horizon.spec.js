@@ -170,7 +170,14 @@ test('connects Google Calendar and selects two source calendars', async ({page})
     await expect(page.locator('[data-lane-id]', {hasText: 'Maya provider birthday'})).toBeVisible();
 
     await page.locator('[data-horizon-management] > summary').click();
+    await page.getByRole('button', {name: 'Synchronize Google Personal'}).click();
+    await expect(page.locator('[data-lane-id]', {hasText: 'Ada provider birthday updated'})).toBeVisible();
+    await expect(page.locator('[data-lane-id]', {hasText: 'Lin provider birthday'})).toHaveCount(0);
+    await expect(page.locator('[data-lane-id]', {hasText: 'Maya provider birthday'})).toHaveCount(0);
+
+    await page.locator('[data-horizon-management] > summary').click();
     await page.getByRole('button', {name: 'Delete connection'}).click();
+    await page.waitForLoadState('networkidle');
     await page.locator('[data-horizon-management] > summary').click();
     await expect(page.getByRole('button', {name: 'Connect Google Calendar'})).toBeVisible();
 });
@@ -193,6 +200,25 @@ test('supports keyboard pan, scale, visibility, and marker selection', async ({p
     await expect(page.locator('[data-marker-id].is-selected')).toBeFocused();
     await page.keyboard.press('2');
     await expect(page.locator('[data-calendar-id="CALHOLID"]')).toBeVisible();
+});
+
+test('provides labeled controls, focus order, and color-independent meaning', async ({page}) => {
+    await page.locator('[data-quick-add] > summary').click();
+    const visibleFields = page.locator('[data-quick-add] input:not([type="hidden"]):visible, [data-quick-add] select:visible, [data-quick-add] textarea:visible');
+    const fieldCount = await visibleFields.count();
+    for (let fieldIndex = 0; fieldIndex < fieldCount; fieldIndex += 1) {
+        await expect(visibleFields.nth(fieldIndex).locator('xpath=ancestor::label[1]')).toHaveCount(1);
+    }
+    const parserInput = page.locator('form[data-resource-url="/natural-language-ingestion/"] [name="input_text"]');
+    await parserInput.focus();
+    await page.keyboard.press('Tab');
+    await expect(page.locator('form[data-resource-url="/natural-language-ingestion/"] [name="calendar_id"]')).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(page.getByRole('button', {name: 'Parse into draft'})).toBeFocused();
+
+    await expect(page.locator('[data-calendar-control="CALBIRTH"]')).toContainText('Birthdays');
+    await expect(page.locator('[data-lane-id="LANWAIT0"]')).toHaveAttribute('data-lane-open', 'true');
+    await expect(page.locator('[data-marker-id="EVTFLGHT"]')).toHaveAttribute('aria-label', /event marker/);
 });
 
 test('creates and deletes a derived marker on its anchor lane', async ({page}) => {
@@ -326,6 +352,22 @@ test('restores independent-event calendar selection after cancel', async ({page}
     await page.locator('#globalNewEventButton').click();
     await expect(anchorSelect).toHaveValue('');
     await expect(calendarSelect).toBeEnabled();
+});
+
+test('keeps the QR and public RSVP response flow available', async ({context, page}) => {
+    await page.goto('/rsvps/qr/?rsvp_id=RSVPBR01');
+    const qrImage = page.getByRole('img', {name: 'RSVP QR Code'});
+    await expect(qrImage).toHaveAttribute('src', /^data:image\/png;base64,/);
+    const publicLink = page.getByRole('link', {name: /\/response\/\?rsvp_id=RSVPBR01/});
+    await expect(publicLink).toHaveAttribute('href', 'http://127.0.0.1:18080/response/?rsvp_id=RSVPBR01');
+
+    await context.clearCookies();
+    await page.goto('/response/?rsvp_id=RSVPBR01');
+    await expect(page.getByRole('heading', {name: "You're Invited!"})).toBeVisible();
+    await expect(page.getByText('Browser Terminal')).toBeVisible();
+    await page.getByRole('button', {name: '+2 Guests'}).click();
+    await expect(page).toHaveURL(/\/response\/thankyou\?rsvp_id=RSVPBR01$/);
+    await expect(page.getByText(/Thank/)).toBeVisible();
 });
 
 test('renders the interactive view at the supported mobile width', async ({page}) => {

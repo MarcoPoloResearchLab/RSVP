@@ -126,3 +126,19 @@ The issue identifiers refer to [.mprlab/ISSUES.md](.mprlab/ISSUES.md).
 An implementation issue closes only after its assigned evidence is valid.
 I003 closes only after each row has valid evidence or an approved exclusion.
 Each exclusion requires a new planning issue and an architecture update.
+
+## I003 Evidence
+
+The deterministic browser suite is `tests/browser/horizon.spec.js`.
+It uses the production-like fixture in `internal/browserfixture/main.go`.
+
+The suite verifies desktop and mobile presentation.
+It also verifies keyboard access, labels, focus order, and color-independent meaning.
+
+The suite verifies initial and incremental Google Calendar synchronization.
+It verifies attention, derived markers, quick drafts, and natural-language drafts.
+It verifies the QR page and the public RSVP response flow.
+
+The schema record is [TIME_HORIZON_SCHEMA_RECORD.md](TIME_HORIZON_SCHEMA_RECORD.md).
+The user procedure is [USER_GUIDE.md](USER_GUIDE.md).
+The operator procedure is [OPERATOR_RUNBOOK.md](OPERATOR_RUNBOOK.md).

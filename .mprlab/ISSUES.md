@@ -77,7 +77,7 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Make sure that an absent client timezone stops the temporal write.
   - Run `make ci`.
 
-- [ ] [I003] (P1) {F004,F006,F007,F009} Complete time horizon acceptance
+- [x] [I003] (P1) {F004,F006,F007,F009} Complete time horizon acceptance
   Goal:
   This issue supplies integrated acceptance evidence for the complete time horizon capability.
 
