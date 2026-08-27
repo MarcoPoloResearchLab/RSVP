@@ -76,6 +76,63 @@ test('persists complete calendar visibility for the organizer', async ({context,
     await expect(page.locator('[data-calendar-id="CALBIRTH"]')).toBeVisible();
 });
 
+test('creates, reorders, resolves, and persists calendar lanes', async ({context, page}) => {
+    await page.locator('[data-horizon-management] > summary').click();
+    const calendarForm = page.locator('form[data-resource-url="/calendars/"]');
+    await calendarForm.locator('[name="name"]').fill('Browser Calendar');
+    await calendarForm.locator('[name="symbol"]').fill('B');
+    await calendarForm.locator('[name="color_token"]').fill('browser-calendar');
+    await calendarForm.getByRole('button', {name: 'Create calendar'}).click();
+
+    await expect(page.locator('[data-calendar-toggle]').last()).toHaveAttribute('data-calendar-toggle', /.+/);
+    await expect(page.locator('.horizon-calendar-toggle').last()).toContainText('Browser Calendar');
+    const calendarID = await page.locator('[data-calendar-toggle]').last().getAttribute('data-calendar-toggle');
+    expect(calendarID).toBeTruthy();
+
+    await page.locator('[data-horizon-management] > summary').click();
+    const calendarManagement = page.locator(`[data-calendar-management="${calendarID}"]`);
+    await calendarManagement.getByRole('button', {name: 'Move calendar up'}).click();
+    await expect(page.locator('[data-calendar-toggle]').nth(4)).toHaveAttribute('data-calendar-toggle', calendarID);
+
+    await page.locator('[data-horizon-management] > summary').click();
+    const laneForm = page.locator('form[data-resource-url="/lanes/"]');
+    await laneForm.locator('[name="calendar_id"]').selectOption(calendarID);
+    await laneForm.locator('[name="title"]').fill('Browser open lane');
+    await laneForm.getByRole('button', {name: 'Create lane'}).click();
+    const openLane = page.locator(`[data-calendar-id="${calendarID}"] [data-lane-id]`, {hasText: 'Browser open lane'});
+    await expect(openLane).toBeVisible();
+    await expect(openLane).toHaveAttribute('data-lane-open', 'true');
+
+    await page.locator('[data-horizon-management] > summary').click();
+    await laneForm.locator('[name="calendar_id"]').selectOption(calendarID);
+    await laneForm.locator('[name="title"]').fill('Browser finite lane');
+    await laneForm.locator('[name="kind"]').selectOption('finite');
+    const localEnd = await page.evaluate(() => {
+        const value = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+        value.setMinutes(value.getMinutes() - value.getTimezoneOffset());
+        return value.toISOString().slice(0, 16);
+    });
+    await laneForm.locator('[name="ends_at"]').fill(localEnd);
+    await laneForm.getByRole('button', {name: 'Create lane'}).click();
+    const finiteLane = page.locator(`[data-calendar-id="${calendarID}"] [data-lane-id]`, {hasText: 'Browser finite lane'});
+    await expect(finiteLane).toBeVisible();
+    await expect(finiteLane).toHaveAttribute('data-lane-open', 'false');
+
+    await finiteLane.locator('.horizon-lane-controls > summary').click();
+    await finiteLane.getByRole('button', {name: 'Move lane up'}).click();
+    await expect(page.locator(`[data-calendar-id="${calendarID}"] .horizon-lane-label > span:nth-child(2)`)).toHaveText(['Browser finite lane', 'Browser open lane']);
+
+    await context.clearCookies();
+    await page.goto('/browser-login/');
+    await expect(page.locator('[data-calendar-toggle]').nth(4)).toHaveAttribute('data-calendar-toggle', calendarID);
+    await expect(page.locator(`[data-calendar-id="${calendarID}"] .horizon-lane-label > span:nth-child(2)`).first()).toHaveText('Browser finite lane');
+
+    const persistedOpenLane = page.locator(`[data-calendar-id="${calendarID}"] [data-lane-id]`, {hasText: 'Browser open lane'});
+    await persistedOpenLane.locator('.horizon-lane-controls > summary').click();
+    await persistedOpenLane.getByRole('button', {name: 'Resolve lane'}).click();
+    await expect(page.locator(`[data-calendar-id="${calendarID}"] [data-lane-id]`, {hasText: 'Browser open lane'})).toHaveAttribute('data-lane-open', 'false');
+});
+
 test('supports keyboard pan, scale, visibility, and marker selection', async ({page}) => {
     const viewport = page.locator('[data-horizon-viewport]');
     const board = page.locator('[data-horizon-board]');
@@ -94,6 +151,20 @@ test('supports keyboard pan, scale, visibility, and marker selection', async ({p
     await expect(page.locator('[data-marker-id].is-selected')).toBeFocused();
     await page.keyboard.press('2');
     await expect(page.locator('[data-calendar-id="CALHOLID"]')).toBeVisible();
+});
+
+test('restores independent-event calendar selection after cancel', async ({page}) => {
+    await page.goto('/events/');
+    await page.locator('#globalNewEventButton').click();
+    const anchorSelect = page.locator('#anchorEventSelect');
+    const calendarSelect = page.locator('#calendarSelect');
+    await anchorSelect.selectOption({index: 1});
+    await expect(calendarSelect).toBeDisabled();
+
+    await page.locator('#cancelNewEventButton').click();
+    await page.locator('#globalNewEventButton').click();
+    await expect(anchorSelect).toHaveValue('');
+    await expect(calendarSelect).toBeEnabled();
 });
 
 test('renders the interactive view at the supported mobile width', async ({page}) => {
