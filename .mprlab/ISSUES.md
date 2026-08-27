@@ -8,6 +8,32 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 ## BugFixes
 
+- [x] [B044] (P1) {I003} Use one REST interface for Horizon resources
+  Goal:
+  Horizon must use the repository REST contract for reads, writes, and errors.
+  Requirements:
+  - Support safe `HEAD` requests for the Horizon projection.
+  - Return one typed error shape for Horizon API failures.
+  - Use standard HTTP methods without method override on Horizon resources.
+  - Create quick and natural-language drafts through `/ingestion-drafts/`.
+  - Keep the legacy event, RSVP, and venue pages outside the Horizon API surface.
+  Validation:
+  - Test methods, headers, representations, and typed errors through HTTP.
+  - Test both ingestion-draft creation representations.
+  - Run `make ci` and `make browser-test`.
+
+- [x] [B043] (P1) {I003} Show Horizon setup after first authentication
+  Goal:
+  A new organizer must see an HTML setup state instead of an invalid time-window response.
+  Requirements:
+  - Use the browser IANA timezone for the first temporal write.
+  - Create the first calendar before RSVP calculates the default Horizon window.
+  - Return an explicit organizer-timezone error for a JSON Horizon request.
+  Validation:
+  - Test the HTML setup state and the JSON error contract.
+  - Complete the setup in a browser and confirm that Horizon renders.
+  - Run `make ci`.
+
 ## Improvements
 
 - [x] [I001] (P0) Add RSVP contract tests
