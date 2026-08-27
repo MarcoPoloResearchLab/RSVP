@@ -17,6 +17,143 @@ if (horizonView instanceof HTMLElement) {
 
     board.style.setProperty('--window-days', horizonView.dataset.windowDays || '90');
 
+    const browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (!browserTimezone) {
+        throw new Error('The browser did not supply an IANA timezone.');
+    }
+    for (const timezoneInput of horizonView.querySelectorAll('[data-client-timezone]')) {
+        if (!(timezoneInput instanceof HTMLInputElement)) {
+            throw new TypeError('A timezone input is invalid.');
+        }
+        timezoneInput.value = browserTimezone;
+    }
+
+    /** @param {Response} response */
+    const requireResourceResponse = async (response) => {
+        if (response.ok) {
+            return;
+        }
+        let message = `Resource operation failed with status ${response.status}.`;
+        try {
+            const body = await response.json();
+            if (body && body.error && typeof body.error.message === 'string') {
+                message = body.error.message;
+            }
+        } catch (_error) {
+            // The status message remains the canonical browser error.
+        }
+        throw new Error(message);
+    };
+
+    /** @param {HTMLFormElement} form */
+    const formPayload = (form) => {
+        /** @type {Record<string, string>} */
+        const payload = {};
+        for (const [name, rawValue] of new FormData(form).entries()) {
+            if (typeof rawValue !== 'string' || rawValue === '') {
+                continue;
+            }
+            if (name === 'ends_at') {
+                payload[name] = new Date(rawValue).toISOString();
+            } else {
+                payload[name] = rawValue;
+            }
+        }
+        return payload;
+    };
+
+    for (const kindSelect of horizonView.querySelectorAll('[data-lane-kind]')) {
+        if (!(kindSelect instanceof HTMLSelectElement)) {
+            throw new TypeError('A lane kind control is invalid.');
+        }
+        const form = kindSelect.closest('form');
+        const endInput = form ? form.querySelector('[data-lane-end]') : null;
+        if (!(endInput instanceof HTMLInputElement)) {
+            throw new TypeError('A lane end control is invalid.');
+        }
+        const applyLaneKind = () => {
+            const finite = kindSelect.value === 'finite';
+            endInput.disabled = !finite;
+            endInput.required = finite;
+            if (!finite) {
+                endInput.value = '';
+            }
+        };
+        kindSelect.addEventListener('change', applyLaneKind);
+        applyLaneKind();
+    }
+
+    for (const resourceForm of horizonView.querySelectorAll('[data-resource-form]')) {
+        if (!(resourceForm instanceof HTMLFormElement)) {
+            throw new TypeError('A resource form is invalid.');
+        }
+        resourceForm.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const resourceURL = resourceForm.dataset.resourceUrl;
+            const method = resourceForm.dataset.method;
+            if (!resourceURL || !method) {
+                throw new Error('A resource form contract is incomplete.');
+            }
+            const submitButton = resourceForm.querySelector('button[type="submit"]');
+            if (submitButton instanceof HTMLButtonElement) {
+                submitButton.disabled = true;
+            }
+            try {
+                const response = await fetch(resourceURL, {
+                    method,
+                    credentials: 'same-origin',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(formPayload(resourceForm)),
+                });
+                await requireResourceResponse(response);
+                window.location.reload();
+            } catch (error) {
+                status.classList.remove('visually-hidden');
+                status.textContent = error instanceof Error ? error.message : 'Resource operation failed.';
+                if (submitButton instanceof HTMLButtonElement) {
+                    submitButton.disabled = false;
+                }
+            }
+        });
+    }
+
+    for (const actionButton of horizonView.querySelectorAll('[data-resource-action]')) {
+        if (!(actionButton instanceof HTMLButtonElement)) {
+            throw new TypeError('A resource action is invalid.');
+        }
+        actionButton.addEventListener('click', async () => {
+            const method = actionButton.dataset.resourceAction;
+            const resourceURL = actionButton.dataset.resourceUrl;
+            if (!method || !resourceURL) {
+                throw new Error('A resource action contract is incomplete.');
+            }
+            /** @type {Record<string, number|string>} */
+            const payload = {};
+            if (actionButton.dataset.displayOrder) {
+                payload.display_order = Number(actionButton.dataset.displayOrder);
+            }
+            if (actionButton.hasAttribute('data-resolve-lane')) {
+                payload.resolved_at = new Date().toISOString();
+            }
+            actionButton.disabled = true;
+            try {
+                /** @type {RequestInit} */
+                const request = {method, credentials: 'same-origin'};
+                if (method !== 'DELETE') {
+                    request.headers = {'Content-Type': 'application/json'};
+                    request.body = JSON.stringify(payload);
+                }
+                const response = await fetch(resourceURL, request);
+                await requireResourceResponse(response);
+                window.location.reload();
+            } catch (error) {
+                status.classList.remove('visually-hidden');
+                status.textContent = error instanceof Error ? error.message : 'Resource operation failed.';
+                actionButton.disabled = false;
+            }
+        });
+    }
+
     /** @param {string} token */
     const colorForToken = (token) => {
         let hash = 0;
@@ -71,9 +208,7 @@ if (horizonView instanceof HTMLElement) {
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({visible: requestedVisibility}),
                 });
-                if (response.status !== 204) {
-                    throw new Error(`Calendar visibility update failed with status ${response.status}.`);
-                }
+				await requireResourceResponse(response);
                 applyCalendarVisibility(toggleElement, requestedVisibility);
                 status.textContent = `${requestedVisibility ? 'Showed' : 'Hid'} calendar ${calendarID}.`;
             } catch (error) {
