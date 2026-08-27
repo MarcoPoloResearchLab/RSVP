@@ -159,6 +159,40 @@ func (horizonHandler *handler) serveHTTP(responseWriter http.ResponseWriter, req
 		horizonHandler.baseHandler.HandleError(responseWriter, connectionError, utils.DatabaseError, utils.ErrMsgInternalServer)
 		return
 	}
+	var drafts []models.IngestionDraft
+	if draftsError := horizonHandler.baseHandler.ApplicationContext.Database.WithContext(request.Context()).Preload("Calendar").Where("organizer_id = ? AND status IN ?", currentUser.ID, []models.IngestionDraftStatus{models.IngestionDraftReady, models.IngestionDraftIncomplete}).Order("created_at ASC").Find(&drafts).Error; draftsError != nil {
+		horizonHandler.baseHandler.HandleError(responseWriter, draftsError, utils.DatabaseError, utils.ErrMsgInternalServer)
+		return
+	}
+	location, locationError := time.LoadLocation(viewData.Window.Timezone)
+	if locationError != nil {
+		horizonHandler.baseHandler.HandleError(responseWriter, locationError, utils.ServerError, utils.ErrMsgInternalServer)
+		return
+	}
+	for draftIndex := range drafts {
+		draft := &drafts[draftIndex]
+		draftView := horizonDraftView{ID: draft.ID, Mode: draft.Mode, CalendarID: draft.CalendarID, CalendarName: draft.Calendar.Name, Title: draft.Title, ReferenceTime: draft.ReferenceTime.In(location).Format("2006-01-02T15:04"), Timezone: draft.Timezone, ManagementURL: config.WebIngestionDrafts + draft.ID, ConfirmationURL: config.WebIngestionDrafts + draft.ID + "/confirmations/", ProposedLane: "new lane"}
+		if draft.AnchorEventID != nil {
+			draftView.AnchorEventID = *draft.AnchorEventID
+			draftView.ProposedLane = "anchor event lane"
+		}
+		if draft.StartsAt != nil {
+			draftView.StartsAt = draft.StartsAt.In(location).Format("2006-01-02T15:04")
+		}
+		if draft.EndsAt != nil {
+			draftView.EndsAt = draft.EndsAt.In(location).Format("2006-01-02T15:04")
+		}
+		if draft.ReviewIntervalSeconds != nil {
+			draftView.ReviewIntervalSeconds = strconv.FormatInt(*draft.ReviewIntervalSeconds, 10)
+		}
+		if draft.NextProbeAt != nil {
+			draftView.NextProbeAt = draft.NextProbeAt.In(location).Format("2006-01-02T15:04")
+		}
+		if draft.EscalationIntervalSeconds != nil {
+			draftView.EscalationIntervalSeconds = strconv.FormatInt(*draft.EscalationIntervalSeconds, 10)
+		}
+		viewData.IngestionDraftViews = append(viewData.IngestionDraftViews, draftView)
+	}
 	responseWriter.Header().Set("Content-Type", horizonHTMLMediaType+"; charset=utf-8")
 	horizonHandler.baseHandler.RenderView(responseWriter, request, config.TemplateHorizon, viewData)
 }

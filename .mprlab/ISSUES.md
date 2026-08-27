@@ -562,7 +562,7 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Run `make ci`.
   - Run the browser test target.
 
-- [ ] [F008] (P1) {F003,F004} Add quick ingestion drafts
+- [x] [F008] (P1) {F003,F004} Add quick ingestion drafts
   Goal:
   This issue supplies a short, confirmable workflow for new events and unresolved lanes.
 

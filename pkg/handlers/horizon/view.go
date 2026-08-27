@@ -26,6 +26,32 @@ type horizonViewData struct {
 	CalendarAuthorizationURL string
 	CalendarConnection       *horizonConnectionView
 	DerivedCreateURL         string
+	IngestionDraftCreateURL  string
+	IngestionDraftViews      []horizonDraftView
+	AnchorEvents             []horizonAnchorView
+}
+
+type horizonAnchorView struct {
+	ID    string
+	Title string
+}
+type horizonDraftView struct {
+	ID                        string
+	Mode                      models.IngestionDraftMode
+	CalendarID                string
+	CalendarName              string
+	Title                     string
+	AnchorEventID             string
+	StartsAt                  string
+	EndsAt                    string
+	ReviewIntervalSeconds     string
+	NextProbeAt               string
+	EscalationIntervalSeconds string
+	ReferenceTime             string
+	Timezone                  string
+	ManagementURL             string
+	ConfirmationURL           string
+	ProposedLane              string
 }
 
 type horizonConnectionView struct {
@@ -130,6 +156,9 @@ func newHorizonViewData(projection services.HorizonProjection, referenceTime tim
 		CalendarCreateURL: config.WebCalendars, LaneCreateURL: config.WebLanes,
 		AttentionCreateURL:       config.WebAttentionPolicies,
 		DerivedCreateURL:         config.WebDerivedMarkerRules,
+		IngestionDraftCreateURL:  config.WebIngestionDrafts,
+		IngestionDraftViews:      make([]horizonDraftView, 0),
+		AnchorEvents:             make([]horizonAnchorView, 0),
 		CalendarAuthorizationURL: config.WebCalendarAuthorizationRequests,
 		TimeScaleTicks:           make([]horizonTimeScaleTick, 0), Calendars: make([]horizonCalendarView, 0, len(projection.Calendars)),
 	}
@@ -228,6 +257,7 @@ func newHorizonViewData(projection services.HorizonProjection, referenceTime tim
 					encodedEventID := url.QueryEscape(marker.EventID)
 					markerView.EventURL = config.WebEvents + "?" + config.EventIDParam + "=" + encodedEventID
 					markerView.RSVPURL = config.WebRSVPs + "?" + config.EventIDParam + "=" + encodedEventID
+					viewData.AnchorEvents = append(viewData.AnchorEvents, horizonAnchorView{ID: marker.EventID, Title: marker.Title})
 				}
 				laneView.Markers = append(laneView.Markers, markerView)
 			}

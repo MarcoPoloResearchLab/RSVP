@@ -212,6 +212,62 @@ test('creates and deletes a derived marker on its anchor lane', async ({page}) =
     await expect(page.getByRole('button', {name: 'Derived marker. derived marker.'})).toHaveCount(0);
 });
 
+test('previews, corrects, confirms, and cancels quick ingestion drafts', async ({page}) => {
+    await page.locator('[data-quick-add] > summary').click();
+    const quickForm = page.locator('[data-quick-add-form]');
+    await quickForm.locator('[name="mode"]').selectOption('open_lane');
+    await quickForm.locator('[name="calendar_id"]').selectOption('CALWAIT0');
+    await quickForm.locator('[name="title"]').fill('Browser draft waiting lane');
+    await quickForm.locator('[name="review_interval_seconds"]').fill('604800');
+    const nextProbe = await page.evaluate(() => {
+        const value = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+        value.setMinutes(value.getMinutes() - value.getTimezoneOffset());
+        return value.toISOString().slice(0, 16);
+    });
+    await quickForm.locator('[name="next_probe_at"]').fill(nextProbe);
+    await quickForm.getByRole('button', {name: 'Create ingestion draft'}).click();
+
+    await page.locator('[data-quick-add] > summary').click();
+    const waitingDraft = page.locator('[data-ingestion-draft]', {hasText: 'Browser draft waiting lane'});
+    await expect(waitingDraft).toBeVisible();
+    await expect(waitingDraft.getByText(/Calendar: Waiting\. Lane: new lane/)).toBeVisible();
+    await expect(waitingDraft.getByText(/Marker: none\. Attention: review every 604800 seconds/)).toBeVisible();
+    await expect(page.locator('[data-lane-id]', {hasText: 'Browser draft waiting lane'})).toHaveCount(0);
+
+    await waitingDraft.locator('[name="title"]').fill('Corrected browser waiting lane');
+    await waitingDraft.locator('[name="timezone"]').fill('America/New_York');
+    await waitingDraft.getByRole('button', {name: 'Save proposal'}).click();
+    await page.locator('[data-quick-add] > summary').click();
+    const correctedDraft = page.locator('[data-ingestion-draft]', {hasText: 'Corrected browser waiting lane'});
+    await expect(correctedDraft.locator('[name="timezone"]')).toHaveValue('America/New_York');
+    await correctedDraft.getByRole('button', {name: 'Confirm draft'}).click();
+    await expect(page.locator('[data-calendar-id="CALWAIT0"] [data-lane-id]', {hasText: 'Corrected browser waiting lane'})).toBeVisible();
+
+    await page.locator('[data-quick-add] > summary').click();
+    await quickForm.locator('[name="mode"]').selectOption('dated_event');
+    await quickForm.locator('[name="calendar_id"]').selectOption('CALBIRTH');
+    await quickForm.locator('[name="title"]').fill('Canceled browser birthday');
+    const eventStart = await page.evaluate(() => {
+        const value = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
+        value.setMinutes(value.getMinutes() - value.getTimezoneOffset());
+        return value.toISOString().slice(0, 16);
+    });
+    const eventEnd = await page.evaluate(() => {
+        const value = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000 + 60 * 60 * 1000);
+        value.setMinutes(value.getMinutes() - value.getTimezoneOffset());
+        return value.toISOString().slice(0, 16);
+    });
+    await quickForm.locator('[name="starts_at"]').fill(eventStart);
+    await quickForm.locator('[name="ends_at"]').fill(eventEnd);
+    await quickForm.getByRole('button', {name: 'Create ingestion draft'}).click();
+    await page.locator('[data-quick-add] > summary').click();
+    const canceledDraft = page.locator('[data-ingestion-draft]', {hasText: 'Canceled browser birthday'});
+    await expect(canceledDraft.getByText(/Lane: new lane/)).toBeVisible();
+    await expect(canceledDraft.getByText(/Marker: .* to .*\. Attention: none/)).toBeVisible();
+    await canceledDraft.getByRole('button', {name: 'Cancel draft'}).click();
+    await expect(page.locator('[data-lane-id]', {hasText: 'Canceled browser birthday'})).toHaveCount(0);
+});
+
 test('restores independent-event calendar selection after cancel', async ({page}) => {
     await page.goto('/events/');
     await page.locator('#globalNewEventButton').click();

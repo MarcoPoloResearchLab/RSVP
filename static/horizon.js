@@ -53,7 +53,8 @@ if (horizonView instanceof HTMLElement) {
             if (typeof rawValue !== 'string' || rawValue === '') {
                 continue;
             }
-            if (name === 'ends_at' || name === 'next_probe_at') {
+            const organizerLocalTime = form.hasAttribute('data-ingestion-draft-form') && (name === 'starts_at' || name === 'ends_at' || name === 'next_probe_at');
+            if (!organizerLocalTime && (name === 'starts_at' || name === 'ends_at' || name === 'next_probe_at' || name === 'reference_time')) {
                 payload[name] = new Date(rawValue).toISOString();
             } else if (name.endsWith('_seconds')) {
                 payload[name] = Number(rawValue);
@@ -83,6 +84,39 @@ if (horizonView instanceof HTMLElement) {
         };
         kindSelect.addEventListener('change', applyLaneKind);
         applyLaneKind();
+    }
+
+    for (const referenceInput of horizonView.querySelectorAll('[data-reference-time]')) {
+        if (!(referenceInput instanceof HTMLInputElement)) { throw new TypeError('A reference time input is invalid.'); }
+        referenceInput.value = new Date().toISOString();
+    }
+    const quickMode = horizonView.querySelector('[data-quick-mode]');
+    if (quickMode instanceof HTMLSelectElement) {
+        const applyQuickMode = () => {
+            const eventMode = quickMode.value === 'dated_event';
+            for (const field of horizonView.querySelectorAll('[data-event-field] input, [data-event-field] select')) { if (field instanceof HTMLInputElement || field instanceof HTMLSelectElement) { field.disabled = !eventMode; } }
+            for (const field of horizonView.querySelectorAll('[data-open-field] input')) { if (field instanceof HTMLInputElement) { field.disabled = eventMode; } }
+        };
+        quickMode.addEventListener('change', applyQuickMode);
+        applyQuickMode();
+    }
+
+    for (const confirmButton of horizonView.querySelectorAll('[data-draft-confirm]')) {
+        if (!(confirmButton instanceof HTMLButtonElement)) { throw new TypeError('A draft confirmation control is invalid.'); }
+        confirmButton.addEventListener('click', async () => {
+            const resourceURL = confirmButton.dataset.resourceUrl;
+            if (!resourceURL) { throw new Error('The draft confirmation URL is absent.'); }
+            confirmButton.disabled = true;
+            try {
+                const response = await fetch(resourceURL, {method: 'POST', credentials: 'same-origin', headers: {'Content-Type': 'application/json', 'Idempotency-Key': crypto.randomUUID()}, body: '{}'});
+                await requireResourceResponse(response);
+                window.location.reload();
+            } catch (error) {
+                status.classList.remove('visually-hidden');
+                status.textContent = error instanceof Error ? error.message : 'Draft confirmation failed.';
+                confirmButton.disabled = false;
+            }
+        });
     }
 
     for (const resourceForm of horizonView.querySelectorAll('[data-resource-form]')) {

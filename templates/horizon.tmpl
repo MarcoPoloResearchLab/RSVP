@@ -54,6 +54,55 @@
             {{ end }}
         </div>
 
+        <details class="horizon-management" data-quick-add>
+            <summary>Quick add</summary>
+            <form class="horizon-resource-form" data-resource-form data-ingestion-draft-form data-quick-add-form data-method="POST" data-resource-url="{{ .IngestionDraftCreateURL }}">
+                <label>Mode <select name="mode" data-quick-mode><option value="dated_event">Dated event</option><option value="open_lane">Open lane</option></select></label>
+                <label>Calendar <select name="calendar_id" required>{{ range .Calendars }}<option value="{{ .ID }}">{{ .Symbol }} {{ .Name }}</option>{{ end }}</select></label>
+                <label>Title <input name="title" required></label>
+                <label data-event-field>Anchor event <select name="anchor_event_id"><option value="">Independent event</option>{{ range .AnchorEvents }}<option value="{{ .ID }}">{{ .Title }}</option>{{ end }}</select></label>
+                <label data-event-field>Start <input name="starts_at" type="datetime-local" required></label>
+                <label data-event-field>End <input name="ends_at" type="datetime-local" required></label>
+                <label data-open-field>Review interval seconds <input name="review_interval_seconds" type="number" min="1"></label>
+                <label data-open-field>Next probe <input name="next_probe_at" type="datetime-local"></label>
+                <label data-open-field>Escalation interval seconds <input name="escalation_interval_seconds" type="number" min="1"></label>
+                <input name="reference_time" type="hidden" data-reference-time>
+                <input name="timezone" type="hidden" data-client-timezone>
+                <button type="submit">Create ingestion draft</button>
+            </form>
+            {{ range .IngestionDraftViews }}
+            {{ $draft := . }}
+            <section class="horizon-resource-card" data-ingestion-draft="{{ .ID }}">
+                <h2>Confirm proposal: {{ .Title }}</h2>
+                <p>Calendar: {{ .CalendarName }}. Lane: {{ .ProposedLane }}. Mode: {{ .Mode }}.</p>
+                {{ if eq .Mode "dated_event" }}
+                <p>Marker: {{ .StartsAt }} to {{ .EndsAt }}. Attention: none.</p>
+                {{ else }}
+                <p>Marker: none. Attention: {{ if .ReviewIntervalSeconds }}review every {{ .ReviewIntervalSeconds }} seconds, next probe {{ .NextProbeAt }}{{ else }}none{{ end }}.</p>
+                {{ end }}
+                <form data-resource-form data-ingestion-draft-form data-method="PATCH" data-resource-url="{{ .ManagementURL }}">
+                    <input name="mode" type="hidden" value="{{ .Mode }}">
+                    <label>Calendar <select name="calendar_id">{{ range $.Calendars }}<option value="{{ .ID }}" {{ if eq .ID $draft.CalendarID }}selected{{ end }}>{{ .Name }}</option>{{ end }}</select></label>
+                    <label>Title <input name="title" value="{{ .Title }}" required></label>
+                    {{ if eq .Mode "dated_event" }}
+                    <label>Anchor event <select name="anchor_event_id"><option value="">Independent event</option>{{ range $.AnchorEvents }}<option value="{{ .ID }}" {{ if eq .ID $draft.AnchorEventID }}selected{{ end }}>{{ .Title }}</option>{{ end }}</select></label>
+                    <label>Start <input name="starts_at" type="datetime-local" value="{{ .StartsAt }}" required></label>
+                    <label>End <input name="ends_at" type="datetime-local" value="{{ .EndsAt }}" required></label>
+                    {{ else }}
+                    <label>Review interval seconds <input name="review_interval_seconds" type="number" min="1" value="{{ .ReviewIntervalSeconds }}"></label>
+                    <label>Next probe <input name="next_probe_at" type="datetime-local" value="{{ .NextProbeAt }}"></label>
+                    <label>Escalation interval seconds <input name="escalation_interval_seconds" type="number" min="1" value="{{ .EscalationIntervalSeconds }}"></label>
+                    {{ end }}
+                    <input name="reference_time" type="hidden" value="{{ .ReferenceTime }}">
+                    <label>Timezone <input name="timezone" value="{{ .Timezone }}" required></label>
+                    <button type="submit">Save proposal</button>
+                </form>
+                <button type="button" data-draft-confirm data-resource-url="{{ .ConfirmationURL }}">Confirm draft</button>
+                <button type="button" data-resource-action="DELETE" data-resource-url="{{ .ManagementURL }}">Cancel draft</button>
+            </section>
+            {{ end }}
+        </details>
+
         <details class="horizon-management" data-horizon-management>
             <summary>Manage calendars and lanes</summary>
             <div class="horizon-management-grid">

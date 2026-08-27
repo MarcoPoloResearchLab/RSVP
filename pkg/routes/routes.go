@@ -13,6 +13,7 @@ import (
 	"github.com/tyemirov/RSVP/pkg/handlers/derivedmarker"
 	"github.com/tyemirov/RSVP/pkg/handlers/event"
 	"github.com/tyemirov/RSVP/pkg/handlers/horizon"
+	"github.com/tyemirov/RSVP/pkg/handlers/ingestiondraft"
 	"github.com/tyemirov/RSVP/pkg/handlers/lane"
 	"github.com/tyemirov/RSVP/pkg/handlers/probe"
 	"github.com/tyemirov/RSVP/pkg/handlers/response"
@@ -169,6 +170,11 @@ func (appRoutes *Routes) RegisterRoutes(mux *http.ServeMux) {
 		panic(derivedMarkerError)
 	}
 	mux.Handle(config.WebDerivedMarkerRules, protectedChain(derivedMarkerResources.Handler()))
+	ingestionDraftResources, ingestionDraftError := ingestiondraft.New(appRoutes.ApplicationContext, time.Now)
+	if ingestionDraftError != nil {
+		panic(ingestionDraftError)
+	}
+	mux.Handle(config.WebIngestionDrafts, protectedChain(ingestionDraftResources.Handler()))
 	calendarConnectionResources, calendarConnectionError := calendarconnection.New(appRoutes.ApplicationContext, *appRoutes.EnvConfig, time.Now)
 	if calendarConnectionError == nil {
 		mux.Handle(config.WebCalendarAuthorizationRequests, protectedChain(calendarConnectionResources.AuthorizationRequests()))

@@ -2,8 +2,6 @@ package services_test
 
 import (
 	"errors"
-	"io"
-	"log"
 	"os"
 	"path/filepath"
 	"testing"
@@ -16,7 +14,10 @@ import (
 
 func TestDatabaseInitializationCreatesCanonicalTables(testingContext *testing.T) {
 	databasePath := filepath.Join(testingContext.TempDir(), "nested", "rsvp.db")
-	databaseConnection := services.InitDatabase(databasePath, log.New(io.Discard, "", 0))
+	databaseConnection, initializationError := services.OpenDatabase(databasePath)
+	if initializationError != nil {
+		testingContext.Fatalf("initialize canonical database: %v", initializationError)
+	}
 
 	sqlDatabase, databaseError := databaseConnection.DB()
 	if databaseError != nil {
