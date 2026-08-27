@@ -56,6 +56,60 @@ func TestHorizonDefaultWindowUsesOrganizerCalendarDays(testingContext *testing.T
 	}
 }
 
+func TestHorizonHeadReturnsProjectionMetadataWithoutBody(testingContext *testing.T) {
+	fixture := testsupport.NewFixture(testingContext)
+	owner := fixture.CreateUser(testsupport.OwnerUserID)
+	confirmTimezone(testingContext, fixture.Database, &owner)
+	request := testsupport.Request(testingContext, http.MethodHead, config.WebHorizon, nil, &owner)
+	request.Header.Set("Accept", horizonJSONMediaType)
+	responseRecorder := httptest.NewRecorder()
+
+	horizon.Handler(fixture.ApplicationContext, time.Now).ServeHTTP(responseRecorder, request)
+
+	if responseRecorder.Code != http.StatusOK {
+		testingContext.Fatalf("status = %d, want %d", responseRecorder.Code, http.StatusOK)
+	}
+	if responseRecorder.Body.Len() != 0 {
+		testingContext.Fatalf("HEAD body = %q, want empty", responseRecorder.Body.String())
+	}
+	if responseRecorder.Header().Get("Content-Type") != horizonJSONMediaType || responseRecorder.Header().Get("Cache-Control") != "private, no-store" || responseRecorder.Header().Get("Vary") != "Accept" {
+		testingContext.Fatalf("HEAD headers = %#v", responseRecorder.Header())
+	}
+}
+
+func TestHorizonRequiresFirstTemporalWriteBeforeDefaultWindow(testingContext *testing.T) {
+	fixture := testsupport.NewFixture(testingContext)
+	testsupport.LoadTemplates(testingContext)
+	owner := fixture.CreateUser(testsupport.OwnerUserID)
+	referenceTime := time.Date(2030, time.March, 8, 18, 30, 0, 0, time.UTC)
+
+	htmlResponse := requestHorizon(testingContext, fixture, owner, config.WebHorizon, horizonHTMLMediaType, referenceTime)
+	if htmlResponse.Code != http.StatusOK {
+		testingContext.Fatalf("setup status = %d, want %d; body = %s", htmlResponse.Code, http.StatusOK, htmlResponse.Body.String())
+	}
+	htmlBody := htmlResponse.Body.String()
+	if !strings.Contains(htmlBody, `data-horizon-setup`) || !strings.Contains(htmlBody, `data-resource-url="`+config.WebCalendars+`"`) || strings.Contains(htmlBody, `invalid_time_window`) {
+		testingContext.Fatalf("Horizon setup HTML is invalid: %s", htmlBody)
+	}
+
+	jsonResponse := requestHorizon(testingContext, fixture, owner, config.WebHorizon, horizonJSONMediaType, referenceTime)
+	if jsonResponse.Code != http.StatusUnprocessableEntity {
+		testingContext.Fatalf("JSON status = %d, want %d; body = %s", jsonResponse.Code, http.StatusUnprocessableEntity, jsonResponse.Body.String())
+	}
+	var responseBody struct {
+		Error struct {
+			Code    string `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if decodeError := json.Unmarshal(jsonResponse.Body.Bytes(), &responseBody); decodeError != nil {
+		testingContext.Fatalf("decode timezone error: %v", decodeError)
+	}
+	if responseBody.Error.Code != "organizer_timezone_required" || responseBody.Error.Message != "The organizer timezone is required." {
+		testingContext.Fatalf("timezone error = %#v", responseBody.Error)
+	}
+}
+
 func TestHorizonProjectionReturnsOrderedOwnerResourcesAndTypedMarkers(testingContext *testing.T) {
 	fixture := testsupport.NewFixture(testingContext)
 	owner := fixture.CreateUser(testsupport.OwnerUserID)
@@ -482,7 +536,7 @@ func TestHorizonRejectsUnsupportedMethodRepresentationAndPath(testingContext *te
 		wantStatus int
 		wantAllow  string
 	}{
-		{name: "method", method: http.MethodPost, target: config.WebHorizon, accept: horizonJSONMediaType, wantStatus: http.StatusMethodNotAllowed, wantAllow: http.MethodGet},
+		{name: "method", method: http.MethodPost, target: config.WebHorizon, accept: horizonJSONMediaType, wantStatus: http.StatusMethodNotAllowed, wantAllow: http.MethodGet + ", " + http.MethodHead},
 		{name: "representation", method: http.MethodGet, target: config.WebHorizon, accept: "application/xml", wantStatus: http.StatusNotAcceptable},
 		{name: "path", method: http.MethodGet, target: config.WebHorizon + "other", accept: horizonJSONMediaType, wantStatus: http.StatusNotFound},
 	}
@@ -498,7 +552,62 @@ func TestHorizonRejectsUnsupportedMethodRepresentationAndPath(testingContext *te
 			if responseRecorder.Header().Get("Allow") != testCase.wantAllow {
 				testingContext.Fatalf("Allow = %q, want %q", responseRecorder.Header().Get("Allow"), testCase.wantAllow)
 			}
+			var responseBody struct {
+				Error struct {
+					Code      string            `json:"code"`
+					Details   map[string]string `json:"details"`
+					RequestID string            `json:"request_id"`
+				} `json:"error"`
+			}
+			if decodeError := json.Unmarshal(responseRecorder.Body.Bytes(), &responseBody); decodeError != nil {
+				testingContext.Fatalf("decode typed error: %v; body = %s", decodeError, responseRecorder.Body.String())
+			}
+			if responseBody.Error.Code == "" || responseBody.Error.Details == nil || responseBody.Error.RequestID == "" {
+				testingContext.Fatalf("typed error = %#v", responseBody.Error)
+			}
 		})
+	}
+}
+
+func TestHorizonResourcesDoNotAcceptMethodOverride(testingContext *testing.T) {
+	fixture := testsupport.NewFixture(testingContext)
+	owner := fixture.CreateUser(testsupport.OwnerUserID)
+	confirmTimezone(testingContext, fixture.Database, &owner)
+	calendarRecord := createCalendar(testingContext, fixture.Database, owner.ID, "CALREST0", "REST", 0, true)
+	mux := http.NewServeMux()
+	routes.New(fixture.ApplicationContext, config.EnvConfig{}).RegisterRoutes(mux)
+	testServer := httptest.NewServer(mux)
+	testingContext.Cleanup(testServer.Close)
+
+	sessionRequest := httptest.NewRequest(http.MethodGet, config.WebHorizon, nil)
+	sessionRecorder := httptest.NewRecorder()
+	webSession, sessionError := session.Store().Get(sessionRequest, gaussConstants.SessionName)
+	if sessionError != nil {
+		testingContext.Fatalf("get session: %v", sessionError)
+	}
+	webSession.Values[gaussConstants.SessionKeyUserEmail] = owner.Email
+	if saveError := webSession.Save(sessionRequest, sessionRecorder); saveError != nil {
+		testingContext.Fatalf("save session: %v", saveError)
+	}
+	request, requestError := http.NewRequest(http.MethodPost, testServer.URL+config.WebCalendars+calendarRecord.ID, strings.NewReader("_method=DELETE"))
+	if requestError != nil {
+		testingContext.Fatalf("construct request: %v", requestError)
+	}
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	for _, cookie := range sessionRecorder.Result().Cookies() {
+		request.AddCookie(cookie)
+	}
+	response, responseError := testServer.Client().Do(request)
+	if responseError != nil {
+		testingContext.Fatalf("request calendar item: %v", responseError)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusMethodNotAllowed || response.Header.Get("Allow") != http.MethodGet+", "+http.MethodPatch+", "+http.MethodDelete {
+		testingContext.Fatalf("response = %d Allow %q", response.StatusCode, response.Header.Get("Allow"))
+	}
+	var storedCalendar models.Calendar
+	if findError := fixture.Database.First(&storedCalendar, "id = ?", calendarRecord.ID).Error; findError != nil {
+		testingContext.Fatalf("method override deleted calendar: %v", findError)
 	}
 }
 

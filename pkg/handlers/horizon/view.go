@@ -13,6 +13,7 @@ import (
 const horizonScaleIntervalDays = 7
 
 type horizonViewData struct {
+	NeedsTimezoneSetup       bool
 	Window                   services.HorizonWindowProjection
 	StylesURL                string
 	ScriptURL                string
@@ -27,9 +28,17 @@ type horizonViewData struct {
 	CalendarConnection       *horizonConnectionView
 	DerivedCreateURL         string
 	IngestionDraftCreateURL  string
-	NaturalLanguageCreateURL string
 	IngestionDraftViews      []horizonDraftView
 	AnchorEvents             []horizonAnchorView
+}
+
+func newHorizonSetupViewData() horizonViewData {
+	return horizonViewData{
+		NeedsTimezoneSetup: true,
+		StylesURL:          config.HorizonStylesPath,
+		ScriptURL:          config.HorizonScriptPath,
+		CalendarCreateURL:  config.WebCalendars,
+	}
 }
 
 type horizonAnchorView struct {
@@ -162,7 +171,6 @@ func newHorizonViewData(projection services.HorizonProjection, referenceTime tim
 		AttentionCreateURL:       config.WebAttentionPolicies,
 		DerivedCreateURL:         config.WebDerivedMarkerRules,
 		IngestionDraftCreateURL:  config.WebIngestionDrafts,
-		NaturalLanguageCreateURL: config.WebNaturalLanguageIngestion,
 		IngestionDraftViews:      make([]horizonDraftView, 0),
 		AnchorEvents:             make([]horizonAnchorView, 0),
 		CalendarAuthorizationURL: config.WebCalendarAuthorizationRequests,

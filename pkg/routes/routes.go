@@ -15,13 +15,13 @@ import (
 	"github.com/tyemirov/RSVP/pkg/handlers/horizon"
 	"github.com/tyemirov/RSVP/pkg/handlers/ingestiondraft"
 	"github.com/tyemirov/RSVP/pkg/handlers/lane"
-	naturallanguagehandler "github.com/tyemirov/RSVP/pkg/handlers/naturallanguage"
 	"github.com/tyemirov/RSVP/pkg/handlers/probe"
 	"github.com/tyemirov/RSVP/pkg/handlers/response"
 	"github.com/tyemirov/RSVP/pkg/handlers/rsvp"
 	"github.com/tyemirov/RSVP/pkg/handlers/venue"
 	"github.com/tyemirov/RSVP/pkg/middleware"
 	naturallanguageprovider "github.com/tyemirov/RSVP/pkg/providers/naturallanguage"
+	"github.com/tyemirov/RSVP/pkg/services"
 	"github.com/tyemirov/RSVP/pkg/utils"
 	staticassets "github.com/tyemirov/RSVP/static"
 	"html/template"
@@ -142,6 +142,9 @@ func (appRoutes *Routes) RegisterRoutes(mux *http.ServeMux) {
 	protectedChain := func(handler http.Handler) http.Handler {
 		return authRequired(addUserMiddleware(applyOverrides(handler)))
 	}
+	strictProtectedChain := func(handler http.Handler) http.Handler {
+		return authRequired(addUserMiddleware(handler))
+	}
 	mux.HandleFunc(config.WebRoot, appRoutes.LandingPageHandler)
 	mux.Handle(config.WebStatic, http.StripPrefix(config.WebStatic, staticassets.Handler()))
 	responseBaseDispatcher := http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
@@ -166,51 +169,44 @@ func (appRoutes *Routes) RegisterRoutes(mux *http.ServeMux) {
 		}
 	})
 	mux.Handle(config.WebEvents, protectedChain(eventBaseDispatcher))
-	mux.Handle(config.WebCalendars, protectedChain(calendar.Handler(appRoutes.ApplicationContext)))
+	mux.Handle(config.WebCalendars, strictProtectedChain(calendar.Handler(appRoutes.ApplicationContext)))
 	derivedMarkerResources, derivedMarkerError := derivedmarker.New(appRoutes.ApplicationContext)
 	if derivedMarkerError != nil {
 		panic(derivedMarkerError)
 	}
-	mux.Handle(config.WebDerivedMarkerRules, protectedChain(derivedMarkerResources.Handler()))
-	ingestionDraftResources, ingestionDraftError := ingestiondraft.New(appRoutes.ApplicationContext, time.Now)
+	mux.Handle(config.WebDerivedMarkerRules, strictProtectedChain(derivedMarkerResources.Handler()))
+	parserAdapter, parserAdapterError := naturallanguageprovider.New(appRoutes.EnvConfig.NaturalLanguageParserEndpoint, appRoutes.EnvConfig.NaturalLanguageParserAPIKey, naturallanguageprovider.DefaultHTTPClient())
+	var parser services.NaturalLanguageParser
+	if parserAdapterError == nil {
+		parser = parserAdapter
+	}
+	ingestionDraftResources, ingestionDraftError := ingestiondraft.New(appRoutes.ApplicationContext, time.Now, parser)
 	if ingestionDraftError != nil {
 		panic(ingestionDraftError)
 	}
-	mux.Handle(config.WebIngestionDrafts, protectedChain(ingestionDraftResources.Handler()))
-	parserAdapter, parserAdapterError := naturallanguageprovider.New(appRoutes.EnvConfig.NaturalLanguageParserEndpoint, appRoutes.EnvConfig.NaturalLanguageParserAPIKey, naturallanguageprovider.DefaultHTTPClient())
-	if parserAdapterError == nil {
-		naturalLanguageResource, resourceError := naturallanguagehandler.New(appRoutes.ApplicationContext, parserAdapter)
-		if resourceError != nil {
-			panic(resourceError)
-		}
-		mux.Handle(config.WebNaturalLanguageIngestion, protectedChain(naturalLanguageResource.Handler()))
-	} else {
-		mux.Handle(config.WebNaturalLanguageIngestion, protectedChain(http.HandlerFunc(func(responseWriter http.ResponseWriter, _ *http.Request) {
-			_ = handlers.WriteTypedError(responseWriter, http.StatusServiceUnavailable, "natural_language_unavailable", "Natural-language parsing is unavailable.")
-		})))
-	}
+	mux.Handle(config.WebIngestionDrafts, strictProtectedChain(ingestionDraftResources.Handler()))
 	calendarConnectionResources, calendarConnectionError := calendarconnection.New(appRoutes.ApplicationContext, *appRoutes.EnvConfig, time.Now)
 	if calendarConnectionError == nil {
-		mux.Handle(config.WebCalendarAuthorizationRequests, protectedChain(calendarConnectionResources.AuthorizationRequests()))
-		mux.Handle(config.WebCalendarConnectionCallbacksGoogle, protectedChain(calendarConnectionResources.Callback()))
-		mux.Handle(config.WebCalendarConnections, protectedChain(calendarConnectionResources.Connections()))
-		mux.Handle(config.WebCalendarSyncs, protectedChain(calendarConnectionResources.CalendarSyncs()))
+		mux.Handle(config.WebCalendarAuthorizationRequests, strictProtectedChain(calendarConnectionResources.AuthorizationRequests()))
+		mux.Handle(config.WebCalendarConnectionCallbacksGoogle, strictProtectedChain(calendarConnectionResources.Callback()))
+		mux.Handle(config.WebCalendarConnections, strictProtectedChain(calendarConnectionResources.Connections()))
+		mux.Handle(config.WebCalendarSyncs, strictProtectedChain(calendarConnectionResources.CalendarSyncs()))
 	} else {
 		unavailable := http.HandlerFunc(func(responseWriter http.ResponseWriter, _ *http.Request) {
 			if responseError := handlers.WriteTypedError(responseWriter, http.StatusServiceUnavailable, "calendar_connection_unavailable", "Calendar connection is unavailable."); responseError != nil {
 				appRoutes.ApplicationContext.Logger.Printf("ERROR: Write calendar connection unavailable response: %v", responseError)
 			}
 		})
-		mux.Handle(config.WebCalendarAuthorizationRequests, protectedChain(unavailable))
-		mux.Handle(config.WebCalendarConnectionCallbacksGoogle, protectedChain(unavailable))
-		mux.Handle(config.WebCalendarConnections, protectedChain(unavailable))
-		mux.Handle(config.WebCalendarSyncs, protectedChain(unavailable))
+		mux.Handle(config.WebCalendarAuthorizationRequests, strictProtectedChain(unavailable))
+		mux.Handle(config.WebCalendarConnectionCallbacksGoogle, strictProtectedChain(unavailable))
+		mux.Handle(config.WebCalendarConnections, strictProtectedChain(unavailable))
+		mux.Handle(config.WebCalendarSyncs, strictProtectedChain(unavailable))
 	}
-	mux.Handle(config.WebAttentionPolicies, protectedChain(attentionpolicy.Handler(appRoutes.ApplicationContext, time.Now)))
-	mux.Handle(config.WebLanes, protectedChain(lane.Handler(appRoutes.ApplicationContext, time.Now)))
-	mux.Handle(config.WebProbes, protectedChain(probe.Handler(appRoutes.ApplicationContext, time.Now)))
+	mux.Handle(config.WebAttentionPolicies, strictProtectedChain(attentionpolicy.Handler(appRoutes.ApplicationContext, time.Now)))
+	mux.Handle(config.WebLanes, strictProtectedChain(lane.Handler(appRoutes.ApplicationContext, time.Now)))
+	mux.Handle(config.WebProbes, strictProtectedChain(probe.Handler(appRoutes.ApplicationContext, time.Now)))
 	horizonHandler := horizon.Handler(appRoutes.ApplicationContext, time.Now)
-	mux.Handle(config.WebHorizon, horizon.AuthenticationMiddleware(appRoutes.ApplicationContext, addUserMiddleware(applyOverrides(horizonHandler))))
+	mux.Handle(config.WebHorizon, horizon.AuthenticationMiddleware(appRoutes.ApplicationContext, addUserMiddleware(horizonHandler)))
 	mux.Handle(config.WebRSVPQR, authRequired(addUserMiddleware(http.HandlerFunc(rsvp.ShowHandler(appRoutes.ApplicationContext)))))
 	rsvpBaseDispatcher := http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
 		appRoutes.ApplicationContext.Logger.Printf("Router: Protected path %s, method %s", request.URL.Path, request.Method)

@@ -23,7 +23,6 @@ const (
 	WebDerivedMarkerRules                = "/derived-marker-rules/"
 	WebHorizon                           = "/horizon/"
 	WebIngestionDrafts                   = "/ingestion-drafts/"
-	WebNaturalLanguageIngestion          = "/natural-language-ingestion/"
 	WebLanes                             = "/lanes/"
 	WebProbes                            = "/probes/"
 	WebStatic                            = "/static/"

@@ -19,30 +19,41 @@ import (
 const maximumBodyBytes = 8192
 
 type Resources struct {
-	applicationContext *config.ApplicationContext
-	service            *services.IngestionDraftService
+	applicationContext     *config.ApplicationContext
+	service                *services.IngestionDraftService
+	naturalLanguageService *services.NaturalLanguageService
 }
 
-func New(applicationContext *config.ApplicationContext, now func() time.Time) (*Resources, error) {
+func New(applicationContext *config.ApplicationContext, now func() time.Time, parser services.NaturalLanguageParser) (*Resources, error) {
 	service, serviceError := services.NewIngestionDraftService(applicationContext.Database, now)
 	if serviceError != nil {
 		return nil, serviceError
 	}
-	return &Resources{applicationContext: applicationContext, service: service}, nil
+	var naturalLanguageService *services.NaturalLanguageService
+	if parser != nil {
+		var naturalLanguageError error
+		naturalLanguageService, naturalLanguageError = services.NewNaturalLanguageService(applicationContext.Database, parser)
+		if naturalLanguageError != nil {
+			return nil, naturalLanguageError
+		}
+	}
+	return &Resources{applicationContext: applicationContext, service: service, naturalLanguageService: naturalLanguageService}, nil
 }
 
 type draftRequest struct {
-	Mode                      models.IngestionDraftMode `json:"mode"`
-	CalendarID                string                    `json:"calendar_id"`
-	Title                     string                    `json:"title"`
-	AnchorEventID             *string                   `json:"anchor_event_id"`
-	StartsAt                  *string                   `json:"starts_at"`
-	EndsAt                    *string                   `json:"ends_at"`
-	ReviewIntervalSeconds     *int64                    `json:"review_interval_seconds"`
-	NextProbeAt               *string                   `json:"next_probe_at"`
-	EscalationIntervalSeconds *int64                    `json:"escalation_interval_seconds"`
-	ReferenceTime             string                    `json:"reference_time"`
-	Timezone                  string                    `json:"timezone"`
+	Source                    models.IngestionDraftSource `json:"source"`
+	InputText                 string                      `json:"input_text"`
+	Mode                      models.IngestionDraftMode   `json:"mode"`
+	CalendarID                string                      `json:"calendar_id"`
+	Title                     string                      `json:"title"`
+	AnchorEventID             *string                     `json:"anchor_event_id"`
+	StartsAt                  *string                     `json:"starts_at"`
+	EndsAt                    *string                     `json:"ends_at"`
+	ReviewIntervalSeconds     *int64                      `json:"review_interval_seconds"`
+	NextProbeAt               *string                     `json:"next_probe_at"`
+	EscalationIntervalSeconds *int64                      `json:"escalation_interval_seconds"`
+	ReferenceTime             string                      `json:"reference_time"`
+	Timezone                  string                      `json:"timezone"`
 }
 
 func (body draftRequest) proposal() (models.IngestionDraftProposal, error) {
@@ -103,12 +114,7 @@ func (resources *Resources) Handler() http.Handler {
 				writeDecodeError(responseWriter, decodeError)
 				return
 			}
-			proposal, proposalError := body.proposal()
-			if proposalError != nil {
-				resources.writeServiceError(responseWriter, proposalError)
-				return
-			}
-			draft, createError := resources.service.Create(request.Context(), organizer.ID, proposal)
+			draft, createError := resources.createDraft(request, organizer, body)
 			if createError != nil {
 				resources.writeServiceError(responseWriter, createError)
 				return
@@ -165,6 +171,10 @@ func (resources *Resources) Handler() http.Handler {
 				writeDecodeError(responseWriter, decodeError)
 				return
 			}
+			if body.Source != "" || body.InputText != "" {
+				resources.writeServiceError(responseWriter, models.ErrIngestionDraftInvalid)
+				return
+			}
 			proposal, proposalError := body.proposal()
 			if proposalError != nil {
 				resources.writeServiceError(responseWriter, proposalError)
@@ -189,6 +199,35 @@ func (resources *Resources) Handler() http.Handler {
 	})
 }
 
+func (resources *Resources) createDraft(request *http.Request, organizer *models.User, body draftRequest) (*models.IngestionDraft, error) {
+	switch body.Source {
+	case models.IngestionSourceQuick:
+		if body.InputText != "" {
+			return nil, models.ErrIngestionDraftInvalid
+		}
+		proposal, proposalError := body.proposal()
+		if proposalError != nil {
+			return nil, proposalError
+		}
+		return resources.service.Create(request.Context(), organizer.ID, proposal)
+	case models.IngestionSourceNatural:
+		if body.Mode != "" || body.Title != "" || body.AnchorEventID != nil || body.StartsAt != nil || body.EndsAt != nil || body.ReviewIntervalSeconds != nil || body.NextProbeAt != nil || body.EscalationIntervalSeconds != nil {
+			return nil, models.ErrIngestionDraftInvalid
+		}
+		if resources.naturalLanguageService == nil {
+			return nil, services.ErrNaturalLanguageUnavailable
+		}
+		referenceTime, referenceError := time.Parse(time.RFC3339Nano, body.ReferenceTime)
+		timezone, timezoneError := models.NewTimezone(body.Timezone)
+		if referenceError != nil || timezoneError != nil {
+			return nil, models.ErrIngestionDraftInvalid
+		}
+		return resources.naturalLanguageService.Parse(request.Context(), organizer.ID, body.InputText, body.CalendarID, referenceTime, timezone)
+	default:
+		return nil, models.ErrIngestionDraftInvalid
+	}
+}
+
 func (resources *Resources) writeServiceError(responseWriter http.ResponseWriter, serviceError error) {
 	switch {
 	case errors.Is(serviceError, gorm.ErrRecordNotFound):
@@ -199,6 +238,13 @@ func (resources *Resources) writeServiceError(responseWriter http.ResponseWriter
 		writeError(responseWriter, http.StatusBadRequest, "idempotency_key_required", serviceError.Error())
 	case errors.Is(serviceError, services.ErrIdempotencyConflict):
 		writeError(responseWriter, http.StatusConflict, "idempotency_conflict", serviceError.Error())
+	case errors.Is(serviceError, services.ErrNaturalLanguageUnavailable):
+		writeError(responseWriter, http.StatusServiceUnavailable, "natural_language_unavailable", "Natural-language parsing is unavailable.")
+	case errors.Is(serviceError, services.ErrNaturalLanguageProviderFailed):
+		resources.applicationContext.Logger.Printf("ERROR: Natural-language parser operation failed")
+		writeError(responseWriter, http.StatusBadGateway, "natural_language_provider_failed", "Natural-language parsing failed.")
+	case errors.Is(serviceError, services.ErrNaturalLanguageInputRequired), errors.Is(serviceError, services.ErrNaturalLanguageProviderResponseInvalid):
+		writeError(responseWriter, http.StatusUnprocessableEntity, "ingestion_draft_invalid", "Ingestion draft data is invalid.")
 	case errors.Is(serviceError, services.ErrIngestionDraftNotReady), errors.Is(serviceError, models.ErrIngestionDraftInvalid), errors.Is(serviceError, models.ErrEventMembershipInvalid), errors.Is(serviceError, models.ErrTimezoneInvalid):
 		writeError(responseWriter, http.StatusUnprocessableEntity, "ingestion_draft_invalid", serviceError.Error())
 	default:

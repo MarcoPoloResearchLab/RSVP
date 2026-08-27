@@ -14,6 +14,7 @@ import (
 
 var (
 	ErrNaturalLanguageInputRequired           = errors.New("natural-language input is required")
+	ErrNaturalLanguageUnavailable             = errors.New("natural-language parsing is unavailable")
 	ErrNaturalLanguageProviderFailed          = errors.New("natural-language provider failed")
 	ErrNaturalLanguageProviderResponseInvalid = errors.New("natural-language provider response is invalid")
 )
