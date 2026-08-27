@@ -56,6 +56,14 @@
 
         <details class="horizon-management" data-quick-add>
             <summary>Quick add</summary>
+            <form class="horizon-resource-form" data-resource-form data-method="POST" data-resource-url="{{ .NaturalLanguageCreateURL }}">
+                <h2>Natural-language draft</h2>
+                <label>Request <textarea name="input_text" required></textarea></label>
+                <label>Calendar <select name="calendar_id" required>{{ range .Calendars }}<option value="{{ .ID }}">{{ .Symbol }} {{ .Name }}</option>{{ end }}</select></label>
+                <input name="reference_time" type="hidden" data-reference-time>
+                <input name="timezone" type="hidden" data-client-timezone>
+                <button type="submit">Parse into draft</button>
+            </form>
             <form class="horizon-resource-form" data-resource-form data-ingestion-draft-form data-quick-add-form data-method="POST" data-resource-url="{{ .IngestionDraftCreateURL }}">
                 <label>Mode <select name="mode" data-quick-mode><option value="dated_event">Dated event</option><option value="open_lane">Open lane</option></select></label>
                 <label>Calendar <select name="calendar_id" required>{{ range .Calendars }}<option value="{{ .ID }}">{{ .Symbol }} {{ .Name }}</option>{{ end }}</select></label>
@@ -74,12 +82,15 @@
             {{ $draft := . }}
             <section class="horizon-resource-card" data-ingestion-draft="{{ .ID }}">
                 <h2>Confirm proposal: {{ .Title }}</h2>
+                {{ if eq .Source "natural_language" }}<p>Parser-inferred proposal.</p>{{ end }}
+                {{ if .MissingFields }}<p>Missing required values: {{ range $index, $field := .MissingFields }}{{ if $index }}, {{ end }}{{ $field }}{{ end }}.</p>{{ end }}
                 <p>Calendar: {{ .CalendarName }}. Lane: {{ .ProposedLane }}. Mode: {{ .Mode }}.</p>
                 {{ if eq .Mode "dated_event" }}
                 <p>Marker: {{ .StartsAt }} to {{ .EndsAt }}. Attention: none.</p>
                 {{ else }}
                 <p>Marker: none. Attention: {{ if .ReviewIntervalSeconds }}review every {{ .ReviewIntervalSeconds }} seconds, next probe {{ .NextProbeAt }}{{ else }}none{{ end }}.</p>
                 {{ end }}
+                {{ if .DerivedRuleSummaries }}<p>Relative marker rules: {{ range $index, $rule := .DerivedRuleSummaries }}{{ if $index }}; {{ end }}{{ $rule }}{{ end }}.</p>{{ end }}
                 <form data-resource-form data-ingestion-draft-form data-method="PATCH" data-resource-url="{{ .ManagementURL }}">
                     <input name="mode" type="hidden" value="{{ .Mode }}">
                     <label>Calendar <select name="calendar_id">{{ range $.Calendars }}<option value="{{ .ID }}" {{ if eq .ID $draft.CalendarID }}selected{{ end }}>{{ .Name }}</option>{{ end }}</select></label>
@@ -97,7 +108,7 @@
                     <label>Timezone <input name="timezone" value="{{ .Timezone }}" required></label>
                     <button type="submit">Save proposal</button>
                 </form>
-                <button type="button" data-draft-confirm data-resource-url="{{ .ConfirmationURL }}">Confirm draft</button>
+                {{ if eq .Status "ready" }}<button type="button" data-draft-confirm data-resource-url="{{ .ConfirmationURL }}">Confirm draft</button>{{ end }}
                 <button type="button" data-resource-action="DELETE" data-resource-url="{{ .ManagementURL }}">Cancel draft</button>
             </section>
             {{ end }}

@@ -45,6 +45,10 @@ type EnvConfig struct {
 	GoogleCalendarListEndpoint string
 	// GoogleCalendarEventsEndpoint lists event changes for one Google calendar.
 	GoogleCalendarEventsEndpoint string
+	// NaturalLanguageParserEndpoint accepts the parser request schema.
+	NaturalLanguageParserEndpoint string
+	// NaturalLanguageParserAPIKey authenticates parser requests.
+	NaturalLanguageParserAPIKey string
 	// CertificateFilePath is the path to the TLS certificate file (optional).
 	CertificateFilePath string
 	// KeyFilePath is the path to the TLS private key file (optional).
@@ -80,6 +84,8 @@ func NewEnvConfig(applicationLogger *log.Logger) *EnvConfig {
 		GoogleCalendarTokenEndpoint:         GoogleCalendarTokenEndpoint,
 		GoogleCalendarListEndpoint:          GoogleCalendarListEndpoint,
 		GoogleCalendarEventsEndpoint:        GoogleCalendarEventsEndpoint,
+		NaturalLanguageParserEndpoint:       os.Getenv("NATURAL_LANGUAGE_PARSER_ENDPOINT"),
+		NaturalLanguageParserAPIKey:         os.Getenv("NATURAL_LANGUAGE_PARSER_API_KEY"),
 		CertificateFilePath:                 os.Getenv("TLS_CERT_PATH"),
 		KeyFilePath:                         os.Getenv("TLS_KEY_PATH"),
 		AppBaseURL:                          appBaseURL, // Use the processed base URL
@@ -95,6 +101,8 @@ func NewEnvConfig(applicationLogger *log.Logger) *EnvConfig {
 		"GOOGLE_CLIENT_ID":                   envConfigData.GoogleClientID,
 		"GOOGLE_CLIENT_SECRET":               envConfigData.GoogleClientSecret,
 		"GOOGLE_OAUTH2_BASE":                 envConfigData.GoogleOauth2Base,
+		"NATURAL_LANGUAGE_PARSER_ENDPOINT":   envConfigData.NaturalLanguageParserEndpoint,
+		"NATURAL_LANGUAGE_PARSER_API_KEY":    envConfigData.NaturalLanguageParserAPIKey,
 		"APP_BASE_URL":                       envConfigData.AppBaseURL, // Make AppBaseURL required
 	}
 

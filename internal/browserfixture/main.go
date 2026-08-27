@@ -4,6 +4,7 @@ package main
 import (
 	"bytes"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -32,6 +33,7 @@ const (
 	browserGoogleTokenPath     = "/browser-google/token"
 	browserGoogleCalendarsPath = "/browser-google/calendars"
 	browserGoogleEventsPath    = "/browser-google/events"
+	browserNaturalLanguagePath = "/browser-natural-language"
 )
 
 var browserReferenceTime = time.Now().UTC()
@@ -114,6 +116,34 @@ func main() {
 		responseWriter.Header().Set("Content-Type", "application/json")
 		fmt.Fprint(responseWriter, `{"timeZone":"America/Los_Angeles","items":[{"id":"birthday-ada","status":"confirmed","summary":"Ada provider birthday","start":{"date":"2026-09-15"},"end":{"date":"2026-09-16"}},{"id":"birthday-lin","status":"confirmed","summary":"Lin provider birthday","start":{"date":"2026-10-01"},"end":{"date":"2026-10-02"}},{"id":"birthday-maya","status":"confirmed","summary":"Maya provider birthday","start":{"date":"2026-10-20"},"end":{"date":"2026-10-21"}}],"nextSyncToken":"browser-sync-1"}`)
 	})
+	mux.HandleFunc(browserNaturalLanguagePath, func(responseWriter http.ResponseWriter, request *http.Request) {
+		if request.Method != http.MethodPost || request.Header.Get("Authorization") != "Bearer browser-parser-key" {
+			http.Error(responseWriter, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+			return
+		}
+		var body struct {
+			InputText string `json:"input_text"`
+		}
+		if decodeError := json.NewDecoder(request.Body).Decode(&body); decodeError != nil {
+			http.Error(responseWriter, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+			return
+		}
+		responseWriter.Header().Set("Content-Type", "application/json")
+		switch body.InputText {
+		case "unresolved appeal with weekly checks":
+			nextProbe := browserReferenceTime.Add(7 * 24 * time.Hour).Format(time.RFC3339Nano)
+			fmt.Fprintf(responseWriter, `{"mode":"open_lane","title":"Unresolved appeal","anchor_event_id":null,"starts_at":null,"ends_at":null,"review_interval_seconds":604800,"next_probe_at":%q,"escalation_interval_seconds":null,"relative_rules":[]}`, nextProbe)
+		case "flight with relative departure and arrival markers":
+			startsAt := browserReferenceTime.Add(20 * 24 * time.Hour).Format(time.RFC3339Nano)
+			endsAt := browserReferenceTime.Add(20*24*time.Hour + 3*time.Hour).Format(time.RFC3339Nano)
+			fmt.Fprintf(responseWriter, `{"mode":"dated_event","title":"Parsed flight","anchor_event_id":null,"starts_at":%q,"ends_at":%q,"review_interval_seconds":null,"next_probe_at":null,"escalation_interval_seconds":null,"relative_rules":[{"anchor_edge":"start","offset_seconds":-7200},{"anchor_edge":"end","offset_seconds":3600}]}`, startsAt, endsAt)
+		case "flight missing an end":
+			startsAt := browserReferenceTime.Add(24 * 24 * time.Hour).Format(time.RFC3339Nano)
+			fmt.Fprintf(responseWriter, `{"mode":"dated_event","title":"Incomplete flight","anchor_event_id":null,"starts_at":%q,"ends_at":null,"review_interval_seconds":null,"next_probe_at":null,"escalation_interval_seconds":null,"relative_rules":[]}`, startsAt)
+		default:
+			fmt.Fprint(responseWriter, `{"unexpected":true}`)
+		}
+	})
 	browserBaseURL := "http://" + browserFixtureAddress
 	routes.New(applicationContext, config.EnvConfig{
 		CalendarCredentialEncryptionKey: base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{0x42}, 32)),
@@ -122,6 +152,8 @@ func main() {
 		GoogleCalendarTokenEndpoint:         browserBaseURL + browserGoogleTokenPath,
 		GoogleCalendarListEndpoint:          browserBaseURL + browserGoogleCalendarsPath,
 		GoogleCalendarEventsEndpoint:        browserBaseURL + browserGoogleEventsPath,
+		NaturalLanguageParserEndpoint:       browserBaseURL + browserNaturalLanguagePath,
+		NaturalLanguageParserAPIKey:         "browser-parser-key",
 	}).RegisterRoutes(mux)
 	logger.Printf("Listening on http://%s", browserFixtureAddress)
 	if serveError := http.ListenAndServe(browserFixtureAddress, mux); serveError != nil {

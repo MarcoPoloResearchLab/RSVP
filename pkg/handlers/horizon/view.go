@@ -27,6 +27,7 @@ type horizonViewData struct {
 	CalendarConnection       *horizonConnectionView
 	DerivedCreateURL         string
 	IngestionDraftCreateURL  string
+	NaturalLanguageCreateURL string
 	IngestionDraftViews      []horizonDraftView
 	AnchorEvents             []horizonAnchorView
 }
@@ -37,7 +38,9 @@ type horizonAnchorView struct {
 }
 type horizonDraftView struct {
 	ID                        string
+	Status                    models.IngestionDraftStatus
 	Mode                      models.IngestionDraftMode
+	Source                    models.IngestionDraftSource
 	CalendarID                string
 	CalendarName              string
 	Title                     string
@@ -52,6 +55,8 @@ type horizonDraftView struct {
 	ManagementURL             string
 	ConfirmationURL           string
 	ProposedLane              string
+	MissingFields             []string
+	DerivedRuleSummaries      []string
 }
 
 type horizonConnectionView struct {
@@ -157,6 +162,7 @@ func newHorizonViewData(projection services.HorizonProjection, referenceTime tim
 		AttentionCreateURL:       config.WebAttentionPolicies,
 		DerivedCreateURL:         config.WebDerivedMarkerRules,
 		IngestionDraftCreateURL:  config.WebIngestionDrafts,
+		NaturalLanguageCreateURL: config.WebNaturalLanguageIngestion,
 		IngestionDraftViews:      make([]horizonDraftView, 0),
 		AnchorEvents:             make([]horizonAnchorView, 0),
 		CalendarAuthorizationURL: config.WebCalendarAuthorizationRequests,

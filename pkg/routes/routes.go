@@ -15,11 +15,13 @@ import (
 	"github.com/tyemirov/RSVP/pkg/handlers/horizon"
 	"github.com/tyemirov/RSVP/pkg/handlers/ingestiondraft"
 	"github.com/tyemirov/RSVP/pkg/handlers/lane"
+	naturallanguagehandler "github.com/tyemirov/RSVP/pkg/handlers/naturallanguage"
 	"github.com/tyemirov/RSVP/pkg/handlers/probe"
 	"github.com/tyemirov/RSVP/pkg/handlers/response"
 	"github.com/tyemirov/RSVP/pkg/handlers/rsvp"
 	"github.com/tyemirov/RSVP/pkg/handlers/venue"
 	"github.com/tyemirov/RSVP/pkg/middleware"
+	naturallanguageprovider "github.com/tyemirov/RSVP/pkg/providers/naturallanguage"
 	"github.com/tyemirov/RSVP/pkg/utils"
 	staticassets "github.com/tyemirov/RSVP/static"
 	"html/template"
@@ -175,6 +177,18 @@ func (appRoutes *Routes) RegisterRoutes(mux *http.ServeMux) {
 		panic(ingestionDraftError)
 	}
 	mux.Handle(config.WebIngestionDrafts, protectedChain(ingestionDraftResources.Handler()))
+	parserAdapter, parserAdapterError := naturallanguageprovider.New(appRoutes.EnvConfig.NaturalLanguageParserEndpoint, appRoutes.EnvConfig.NaturalLanguageParserAPIKey, naturallanguageprovider.DefaultHTTPClient())
+	if parserAdapterError == nil {
+		naturalLanguageResource, resourceError := naturallanguagehandler.New(appRoutes.ApplicationContext, parserAdapter)
+		if resourceError != nil {
+			panic(resourceError)
+		}
+		mux.Handle(config.WebNaturalLanguageIngestion, protectedChain(naturalLanguageResource.Handler()))
+	} else {
+		mux.Handle(config.WebNaturalLanguageIngestion, protectedChain(http.HandlerFunc(func(responseWriter http.ResponseWriter, _ *http.Request) {
+			_ = handlers.WriteTypedError(responseWriter, http.StatusServiceUnavailable, "natural_language_unavailable", "Natural-language parsing is unavailable.")
+		})))
+	}
 	calendarConnectionResources, calendarConnectionError := calendarconnection.New(appRoutes.ApplicationContext, *appRoutes.EnvConfig, time.Now)
 	if calendarConnectionError == nil {
 		mux.Handle(config.WebCalendarAuthorizationRequests, protectedChain(calendarConnectionResources.AuthorizationRequests()))

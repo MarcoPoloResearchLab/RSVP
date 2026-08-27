@@ -268,6 +268,52 @@ test('previews, corrects, confirms, and cancels quick ingestion drafts', async (
     await expect(page.locator('[data-lane-id]', {hasText: 'Canceled browser birthday'})).toHaveCount(0);
 });
 
+test('parses natural-language waiting, flight, and incomplete drafts', async ({page}) => {
+    await page.locator('[data-quick-add] > summary').click();
+    const parserForm = page.locator('form[data-resource-url="/natural-language-ingestion/"]');
+    await parserForm.locator('[name="calendar_id"]').selectOption('CALWAIT0');
+    await parserForm.locator('[name="input_text"]').fill('unresolved appeal with weekly checks');
+    await parserForm.getByRole('button', {name: 'Parse into draft'}).click();
+    await page.locator('[data-quick-add] > summary').click();
+    const waitingDraft = page.locator('[data-ingestion-draft]', {hasText: 'Unresolved appeal'});
+    await expect(waitingDraft.getByText('Parser-inferred proposal.')).toBeVisible();
+    await expect(waitingDraft.getByText(/Attention: review every 604800 seconds/)).toBeVisible();
+    await expect(page.locator('[data-lane-id]', {hasText: 'Unresolved appeal'})).toHaveCount(0);
+    await waitingDraft.getByRole('button', {name: 'Confirm draft'}).click();
+    await expect(page.locator('[data-calendar-id="CALWAIT0"] [data-lane-id]', {hasText: 'Unresolved appeal'})).toBeVisible();
+
+    await page.locator('[data-quick-add] > summary').click();
+    await parserForm.locator('[name="calendar_id"]').selectOption('CALTRAVL');
+    await parserForm.locator('[name="input_text"]').fill('flight with relative departure and arrival markers');
+    await parserForm.getByRole('button', {name: 'Parse into draft'}).click();
+    await page.locator('[data-quick-add] > summary').click();
+    const flightDraft = page.locator('[data-ingestion-draft]', {hasText: 'Parsed flight'});
+    await expect(flightDraft.getByText(/Relative marker rules: -7200 seconds from start; 3600 seconds from end/)).toBeVisible();
+    await flightDraft.getByRole('button', {name: 'Confirm draft'}).click();
+    const flightLane = page.locator('[data-calendar-id="CALTRAVL"] [data-lane-id]', {hasText: 'Parsed flight'});
+    await expect(flightLane).toBeVisible();
+    await expect(flightLane.locator('[data-marker-id]')).toHaveCount(3);
+    await expect(flightLane.locator('[data-marker-type="derived"]')).toHaveCount(2);
+
+    await page.locator('[data-quick-add] > summary').click();
+    await parserForm.locator('[name="calendar_id"]').selectOption('CALTRAVL');
+    await parserForm.locator('[name="input_text"]').fill('flight missing an end');
+    await parserForm.getByRole('button', {name: 'Parse into draft'}).click();
+    await page.locator('[data-quick-add] > summary').click();
+    const incompleteDraft = page.locator('[data-ingestion-draft]', {hasText: 'Incomplete flight'});
+    await expect(incompleteDraft.getByText('Missing required values: ends_at.')).toBeVisible();
+    await expect(incompleteDraft.getByRole('button', {name: 'Confirm draft'})).toHaveCount(0);
+    const completedEnd = await page.evaluate(() => {
+        const value = new Date(Date.now() + 24 * 24 * 60 * 60 * 1000 + 2 * 60 * 60 * 1000);
+        value.setMinutes(value.getMinutes() - value.getTimezoneOffset());
+        return value.toISOString().slice(0, 16);
+    });
+    await incompleteDraft.locator('[name="ends_at"]').fill(completedEnd);
+    await incompleteDraft.getByRole('button', {name: 'Save proposal'}).click();
+    await page.locator('[data-quick-add] > summary').click();
+    await expect(page.locator('[data-ingestion-draft]', {hasText: 'Incomplete flight'}).getByRole('button', {name: 'Confirm draft'})).toBeVisible();
+});
+
 test('restores independent-event calendar selection after cancel', async ({page}) => {
     await page.goto('/events/');
     await page.locator('#globalNewEventButton').click();

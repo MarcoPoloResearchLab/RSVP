@@ -47,7 +47,7 @@ func (service *IngestionDraftService) Create(ctx context.Context, organizerID st
 
 func (service *IngestionDraftService) Read(ctx context.Context, organizerID string, draftID string) (*models.IngestionDraft, error) {
 	var draft models.IngestionDraft
-	if findError := service.database.WithContext(ctx).Preload("Calendar").Preload("Confirmation").First(&draft, "id = ?", draftID).Error; findError != nil {
+	if findError := service.database.WithContext(ctx).Preload("Calendar").Preload("Confirmation").Preload("DerivedMarkerRules").First(&draft, "id = ?", draftID).Error; findError != nil {
 		return nil, findError
 	}
 	if draft.OrganizerID != organizerID {
@@ -79,6 +79,7 @@ func (service *IngestionDraftService) Update(ctx context.Context, organizerID st
 		updated.Mode, updated.CalendarID, updated.Title, updated.AnchorEventID = candidate.Mode, candidate.CalendarID, candidate.Title, candidate.AnchorEventID
 		updated.StartsAt, updated.EndsAt, updated.ReviewIntervalSeconds, updated.NextProbeAt = candidate.StartsAt, candidate.EndsAt, candidate.ReviewIntervalSeconds, candidate.NextProbeAt
 		updated.EscalationIntervalSeconds, updated.ReferenceTime, updated.Timezone, updated.Status = candidate.EscalationIntervalSeconds, candidate.ReferenceTime, candidate.Timezone, models.IngestionDraftReady
+		updated.MissingFieldsJSON = "[]"
 		return transaction.Save(&updated).Error
 	})
 	return &updated, transactionError
@@ -122,6 +123,9 @@ func (service *IngestionDraftService) Confirm(ctx context.Context, organizerID s
 		}
 		var draft models.IngestionDraft
 		if findError := transaction.Clauses(clause.Locking{Strength: "UPDATE"}).First(&draft, "id = ?", draftID).Error; findError != nil {
+			return findError
+		}
+		if findError := transaction.Where("draft_id = ?", draft.ID).Find(&draft.DerivedMarkerRules).Error; findError != nil {
 			return findError
 		}
 		if draft.OrganizerID != organizerID {
@@ -192,6 +196,12 @@ func (service *IngestionDraftService) Confirm(ctx context.Context, organizerID s
 			}
 			laneID = event.LaneID
 			eventID = &event.ID
+			for ruleIndex := range draft.DerivedMarkerRules {
+				rule := &draft.DerivedMarkerRules[ruleIndex]
+				if _, _, derivedError := CreateDerivedMarkerForAnchor(transaction, organizerID, models.DerivedAnchorEvent, event.ID, rule.AnchorEdge, rule.OffsetSeconds); derivedError != nil {
+					return derivedError
+				}
+			}
 		default:
 			return models.ErrIngestionDraftInvalid
 		}

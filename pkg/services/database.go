@@ -41,6 +41,7 @@ var canonicalModels = []any{
 	&models.DerivedMarkerRule{},
 	&models.DerivedMarker{},
 	&models.IngestionDraft{},
+	&models.DraftDerivedMarkerRule{},
 	&models.DraftConfirmation{},
 }
 
@@ -64,6 +65,7 @@ var canonicalTableNames = []string{
 	config.TableDerivedMarkerRules,
 	config.TableDerivedMarkers,
 	config.TableIngestionDrafts,
+	config.TableDraftDerivedMarkerRules,
 	config.TableDraftConfirmations,
 }
 
@@ -86,7 +88,8 @@ var canonicalColumns = map[string][]string{
 	config.TableCalendarSyncs:                 {"id", "created_at", "updated_at", "deleted_at", "mapping_id", "state", "started_at", "finished_at", "error_code"},
 	config.TableDerivedMarkerRules:            {"id", "created_at", "updated_at", "deleted_at", "lane_id", "anchor_type", "anchor_id", "anchor_edge", "offset_seconds"},
 	config.TableDerivedMarkers:                {"id", "created_at", "updated_at", "deleted_at", "rule_id", "lane_id", "at", "timezone"},
-	config.TableIngestionDrafts:               {"id", "created_at", "updated_at", "deleted_at", "organizer_id", "status", "mode", "calendar_id", "title", "anchor_event_id", "starts_at", "ends_at", "review_interval_seconds", "next_probe_at", "escalation_interval_seconds", "reference_time", "timezone"},
+	config.TableIngestionDrafts:               {"id", "created_at", "updated_at", "deleted_at", "organizer_id", "status", "mode", "source", "calendar_id", "title", "anchor_event_id", "starts_at", "ends_at", "review_interval_seconds", "next_probe_at", "escalation_interval_seconds", "reference_time", "timezone", "missing_fields_json"},
+	config.TableDraftDerivedMarkerRules:       {"id", "created_at", "updated_at", "deleted_at", "draft_id", "anchor_edge", "offset_seconds"},
 	config.TableDraftConfirmations:            {"id", "created_at", "updated_at", "deleted_at", "draft_id", "lane_id", "event_id", "attention_policy_id"},
 }
 
@@ -114,6 +117,7 @@ var canonicalForeignKeys = map[string][]canonicalForeignKey{
 	config.TableDerivedMarkerRules:            {{"lane_id", config.TableLanes, "id"}},
 	config.TableDerivedMarkers:                {{"rule_id", config.TableDerivedMarkerRules, "id"}, {"lane_id", config.TableLanes, "id"}},
 	config.TableIngestionDrafts:               {{"organizer_id", config.TableUsers, "id"}, {"calendar_id", config.TableCalendars, "id"}},
+	config.TableDraftDerivedMarkerRules:       {{"draft_id", config.TableIngestionDrafts, "id"}},
 	config.TableDraftConfirmations:            {{"draft_id", config.TableIngestionDrafts, "id"}, {"lane_id", config.TableLanes, "id"}, {"event_id", config.TableEvents, "id"}, {"attention_policy_id", config.TableAttentionPolicies, "id"}},
 }
 
@@ -131,6 +135,7 @@ var canonicalUniqueIndexes = map[string][][]string{
 	config.TableExternalEventSeriesLinks:      {{"mapping_id", "provider_series_id"}, {"event_series_id"}},
 	config.TableExternalEventLinks:            {{"mapping_id", "provider_event_id"}, {"event_id"}},
 	config.TableDerivedMarkers:                {{"rule_id"}},
+	config.TableDraftDerivedMarkerRules:       {{"draft_id", "anchor_edge", "offset_seconds"}},
 	config.TableDraftConfirmations:            {{"draft_id"}},
 }
 
@@ -145,7 +150,8 @@ var canonicalCheckConstraints = map[string][]string{
 	config.TableCalendarConnections:           {"calendar_connection_provider", "calendar_connection_status"},
 	config.TableCalendarSyncs:                 {"calendar_sync_state"},
 	config.TableDerivedMarkerRules:            {"derived_anchor_type", "derived_anchor_edge"},
-	config.TableIngestionDrafts:               {"ingestion_draft_status", "ingestion_draft_mode"},
+	config.TableIngestionDrafts:               {"ingestion_draft_status", "ingestion_draft_mode", "ingestion_draft_source"},
+	config.TableDraftDerivedMarkerRules:       {"draft_derived_anchor_edge"},
 }
 
 // InitDatabase opens a canonical database or stops application startup.

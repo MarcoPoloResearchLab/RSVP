@@ -600,7 +600,7 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Run `make ci`.
   - Run the browser test target.
 
-- [ ] [F009] (P2) {F007,F008} Add natural-language ingestion
+- [x] [F009] (P2) {F007,F008} Add natural-language ingestion
   Goal:
   This issue converts natural-language temporal requests into confirmable ingestion drafts.
 

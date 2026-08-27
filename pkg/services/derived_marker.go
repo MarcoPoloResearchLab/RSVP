@@ -28,32 +28,40 @@ func (service *DerivedMarkerService) Create(ctx context.Context, organizerID str
 	var rule *models.DerivedMarkerRule
 	var marker *models.DerivedMarker
 	transactionError := service.database.WithContext(ctx).Transaction(func(transaction *gorm.DB) error {
-		laneID, anchorAt, timezone, anchorError := derivedAnchor(transaction, organizerID, anchorType, anchorID, anchorEdge)
-		if anchorError != nil {
-			return anchorError
-		}
-		var ruleError error
-		rule, ruleError = models.NewDerivedMarkerRule(laneID, anchorType, anchorID, anchorEdge, offsetSeconds)
-		if ruleError != nil {
-			return ruleError
-		}
-		if createError := transaction.Create(rule).Error; createError != nil {
-			return createError
-		}
-		var markerError error
-		marker, markerError = models.NewDerivedMarker(rule.ID, laneID, anchorAt.Add(time.Duration(offsetSeconds)*time.Second), timezone)
-		if markerError != nil {
-			return markerError
-		}
-		if createError := transaction.Create(marker).Error; createError != nil {
-			return createError
-		}
-		if boundsError := includeDerivedTimeInLane(transaction, laneID, marker.At); boundsError != nil {
-			return boundsError
-		}
-		return RecalculateTemporalLaneBounds(transaction, laneID)
+		var createError error
+		rule, marker, createError = CreateDerivedMarkerForAnchor(transaction, organizerID, anchorType, anchorID, anchorEdge, offsetSeconds)
+		return createError
 	})
 	return rule, marker, transactionError
+}
+
+// CreateDerivedMarkerForAnchor creates one derived rule and marker in the caller transaction.
+func CreateDerivedMarkerForAnchor(database *gorm.DB, organizerID string, anchorType models.DerivedAnchorType, anchorID string, anchorEdge models.DerivedAnchorEdge, offsetSeconds int64) (*models.DerivedMarkerRule, *models.DerivedMarker, error) {
+	laneID, anchorAt, timezone, anchorError := derivedAnchor(database, organizerID, anchorType, anchorID, anchorEdge)
+	if anchorError != nil {
+		return nil, nil, anchorError
+	}
+	rule, ruleError := models.NewDerivedMarkerRule(laneID, anchorType, anchorID, anchorEdge, offsetSeconds)
+	if ruleError != nil {
+		return nil, nil, ruleError
+	}
+	if createError := database.Create(rule).Error; createError != nil {
+		return nil, nil, createError
+	}
+	marker, markerError := models.NewDerivedMarker(rule.ID, laneID, anchorAt.Add(time.Duration(offsetSeconds)*time.Second), timezone)
+	if markerError != nil {
+		return nil, nil, markerError
+	}
+	if createError := database.Create(marker).Error; createError != nil {
+		return nil, nil, createError
+	}
+	if boundsError := includeDerivedTimeInLane(database, laneID, marker.At); boundsError != nil {
+		return nil, nil, boundsError
+	}
+	if boundsError := RecalculateTemporalLaneBounds(database, laneID); boundsError != nil {
+		return nil, nil, boundsError
+	}
+	return rule, marker, nil
 }
 
 func (service *DerivedMarkerService) Update(ctx context.Context, organizerID string, ruleID string, anchorType models.DerivedAnchorType, anchorID string, anchorEdge models.DerivedAnchorEdge, offsetSeconds int64) (*models.DerivedMarkerRule, *models.DerivedMarker, error) {

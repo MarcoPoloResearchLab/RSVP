@@ -4,6 +4,7 @@ package horizon
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"mime"
 	"net/http"
 	"strconv"
@@ -160,7 +161,7 @@ func (horizonHandler *handler) serveHTTP(responseWriter http.ResponseWriter, req
 		return
 	}
 	var drafts []models.IngestionDraft
-	if draftsError := horizonHandler.baseHandler.ApplicationContext.Database.WithContext(request.Context()).Preload("Calendar").Where("organizer_id = ? AND status IN ?", currentUser.ID, []models.IngestionDraftStatus{models.IngestionDraftReady, models.IngestionDraftIncomplete}).Order("created_at ASC").Find(&drafts).Error; draftsError != nil {
+	if draftsError := horizonHandler.baseHandler.ApplicationContext.Database.WithContext(request.Context()).Preload("Calendar").Preload("DerivedMarkerRules").Where("organizer_id = ? AND status IN ?", currentUser.ID, []models.IngestionDraftStatus{models.IngestionDraftReady, models.IngestionDraftIncomplete}).Order("created_at ASC").Find(&drafts).Error; draftsError != nil {
 		horizonHandler.baseHandler.HandleError(responseWriter, draftsError, utils.DatabaseError, utils.ErrMsgInternalServer)
 		return
 	}
@@ -171,7 +172,16 @@ func (horizonHandler *handler) serveHTTP(responseWriter http.ResponseWriter, req
 	}
 	for draftIndex := range drafts {
 		draft := &drafts[draftIndex]
-		draftView := horizonDraftView{ID: draft.ID, Mode: draft.Mode, CalendarID: draft.CalendarID, CalendarName: draft.Calendar.Name, Title: draft.Title, ReferenceTime: draft.ReferenceTime.In(location).Format("2006-01-02T15:04"), Timezone: draft.Timezone, ManagementURL: config.WebIngestionDrafts + draft.ID, ConfirmationURL: config.WebIngestionDrafts + draft.ID + "/confirmations/", ProposedLane: "new lane"}
+		missingFields, missingError := draft.MissingFields()
+		if missingError != nil {
+			horizonHandler.baseHandler.HandleError(responseWriter, missingError, utils.DatabaseError, utils.ErrMsgInternalServer)
+			return
+		}
+		draftView := horizonDraftView{ID: draft.ID, Status: draft.Status, Mode: draft.Mode, Source: draft.Source, CalendarID: draft.CalendarID, CalendarName: draft.Calendar.Name, Title: draft.Title, ReferenceTime: draft.ReferenceTime.In(location).Format("2006-01-02T15:04"), Timezone: draft.Timezone, ManagementURL: config.WebIngestionDrafts + draft.ID, ConfirmationURL: config.WebIngestionDrafts + draft.ID + "/confirmations/", ProposedLane: "new lane", MissingFields: missingFields, DerivedRuleSummaries: make([]string, 0, len(draft.DerivedMarkerRules))}
+		for ruleIndex := range draft.DerivedMarkerRules {
+			rule := draft.DerivedMarkerRules[ruleIndex]
+			draftView.DerivedRuleSummaries = append(draftView.DerivedRuleSummaries, fmt.Sprintf("%d seconds from %s", rule.OffsetSeconds, rule.AnchorEdge))
+		}
 		if draft.AnchorEventID != nil {
 			draftView.AnchorEventID = *draft.AnchorEventID
 			draftView.ProposedLane = "anchor event lane"
