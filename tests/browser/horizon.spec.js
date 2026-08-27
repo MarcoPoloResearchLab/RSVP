@@ -10,6 +10,20 @@ test.beforeEach(async ({page}) => {
     await expect(page).toHaveURL(/\/horizon\/$/);
 });
 
+test('sets up Horizon after the first authentication', async ({context, page}) => {
+    await context.clearCookies();
+    await page.goto('/browser-new-login/');
+    await expect(page).toHaveURL(/\/horizon\/$/);
+    await expect(page.locator('[data-horizon-setup]')).toBeVisible();
+    await expect(page.getByRole('textbox', {name: 'Calendar name'})).toHaveValue('RSVP Events');
+    await page.getByRole('button', {name: 'Start Horizon'}).click();
+
+    await expect(page.locator('[data-horizon-view]')).toBeVisible();
+    await expect(page.locator('[data-calendar-toggle]')).toHaveCount(1);
+    await expect(page.locator('.horizon-calendar-toggle')).toContainText('RSVP Events');
+    await expect(page.locator('.horizon-window')).toContainText('America/Los_Angeles');
+});
+
 test('renders the lane and marker contract', async ({page}) => {
     await expect(page.locator('[data-calendar-id="CALBIRTH"] [data-lane-id]')).toHaveCount(3);
     await expect(page.locator('[data-calendar-id="CALHOLID"] [data-lane-id]')).toHaveCount(2);
@@ -211,13 +225,13 @@ test('provides labeled controls, focus order, and color-independent meaning', as
     for (let fieldIndex = 0; fieldIndex < fieldCount; fieldIndex += 1) {
         await expect(visibleFields.nth(fieldIndex).locator('xpath=ancestor::label[1]')).toHaveCount(1);
     }
-    const parserInput = page.locator('form[data-resource-url="/natural-language-ingestion/"] [name="input_text"]');
+    const parserInput = page.locator('form:has([name="source"][value="natural_language"]) [name="input_text"]');
     await parserInput.focus();
     await parserInput.pressSequentially('high-jolt link 1+1=2');
     await expect(parserInput).toHaveValue('high-jolt link 1+1=2');
     await parserInput.clear();
     await page.keyboard.press('Tab');
-    await expect(page.locator('form[data-resource-url="/natural-language-ingestion/"] [name="calendar_id"]')).toBeFocused();
+    await expect(page.locator('form:has([name="source"][value="natural_language"]) [name="calendar_id"]')).toBeFocused();
     await page.keyboard.press('Tab');
     await expect(page.getByRole('button', {name: 'Parse into draft'})).toBeFocused();
 
@@ -302,7 +316,7 @@ test('previews, corrects, confirms, and cancels quick ingestion drafts', async (
 
 test('parses natural-language waiting, flight, and incomplete drafts', async ({page}) => {
     await page.locator('[data-quick-add] > summary').click();
-    const parserForm = page.locator('form[data-resource-url="/natural-language-ingestion/"]');
+    const parserForm = page.locator('form:has([name="source"][value="natural_language"])');
     await parserForm.locator('[name="calendar_id"]').selectOption('CALWAIT0');
     await parserForm.locator('[name="input_text"]').fill('unresolved appeal with weekly checks');
     await parserForm.getByRole('button', {name: 'Parse into draft'}).click();
