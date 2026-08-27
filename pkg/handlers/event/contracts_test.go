@@ -178,6 +178,88 @@ func TestEventCreationRequiresClientTimezone(testingContext *testing.T) {
 	}
 }
 
+func TestEventCreationAssignsIndependentAndDependentLanes(testingContext *testing.T) {
+	fixture := testsupport.NewFixture(testingContext)
+	owner := fixture.CreateUser(testsupport.OwnerUserID)
+	timezone, timezoneError := models.NewTimezone(testsupport.TimezoneName)
+	if timezoneError != nil {
+		testingContext.Fatalf("construct timezone: %v", timezoneError)
+	}
+	if confirmationError := owner.ConfirmTimezone(fixture.Database, timezone); confirmationError != nil {
+		testingContext.Fatalf("confirm timezone: %v", confirmationError)
+	}
+	firstCalendar, calendarError := models.NewCalendar(owner.ID, "Personal", "P", "personal", 0)
+	if calendarError != nil {
+		testingContext.Fatalf("construct first calendar: %v", calendarError)
+	}
+	secondCalendar, calendarError := models.NewCalendar(owner.ID, "Travel", "T", "travel", 1)
+	if calendarError != nil {
+		testingContext.Fatalf("construct second calendar: %v", calendarError)
+	}
+	if createError := fixture.Database.Create(firstCalendar).Error; createError != nil {
+		testingContext.Fatalf("create first calendar: %v", createError)
+	}
+	if createError := fixture.Database.Create(secondCalendar).Error; createError != nil {
+		testingContext.Fatalf("create second calendar: %v", createError)
+	}
+
+	createEvent := func(title string, calendarID string, anchorID string, startOffset time.Duration) *httptest.ResponseRecorder {
+		formValues := url.Values{
+			config.TitleParam:         {title},
+			config.StartTimeParam:     {testsupport.FixedStartTime().Add(startOffset).Format(config.TimeLayoutHTMLForm)},
+			config.TimezoneParam:      {testsupport.TimezoneName},
+			config.DurationParam:      {"2"},
+			config.CalendarIDParam:    {calendarID},
+			config.AnchorEventIDParam: {anchorID},
+		}
+		request := testsupport.Request(testingContext, http.MethodPost, config.WebEvents, formValues, &owner)
+		responseRecorder := httptest.NewRecorder()
+		event.CreateHandler(fixture.ApplicationContext).ServeHTTP(responseRecorder, request)
+		return responseRecorder
+	}
+
+	if response := createEvent("First independent", firstCalendar.ID, "", 0); response.Code != http.StatusSeeOther {
+		testingContext.Fatalf("first independent status = %d; body = %s", response.Code, response.Body.String())
+	}
+	if response := createEvent("Second independent", firstCalendar.ID, "", 24*time.Hour); response.Code != http.StatusSeeOther {
+		testingContext.Fatalf("second independent status = %d; body = %s", response.Code, response.Body.String())
+	}
+	var firstEvent models.Event
+	if findError := fixture.Database.Where("title = ?", "First independent").First(&firstEvent).Error; findError != nil {
+		testingContext.Fatalf("find first independent event: %v", findError)
+	}
+	var secondEvent models.Event
+	if findError := fixture.Database.Where("title = ?", "Second independent").First(&secondEvent).Error; findError != nil {
+		testingContext.Fatalf("find second independent event: %v", findError)
+	}
+	if firstEvent.LaneID == secondEvent.LaneID {
+		testingContext.Fatalf("independent events use lane %q", firstEvent.LaneID)
+	}
+
+	if response := createEvent("Dependent", firstCalendar.ID, firstEvent.ID, 48*time.Hour); response.Code != http.StatusSeeOther {
+		testingContext.Fatalf("dependent status = %d; body = %s", response.Code, response.Body.String())
+	}
+	var dependentEvent models.Event
+	if findError := fixture.Database.Where("title = ?", "Dependent").First(&dependentEvent).Error; findError != nil {
+		testingContext.Fatalf("find dependent event: %v", findError)
+	}
+	if dependentEvent.LaneID != firstEvent.LaneID || dependentEvent.AnchorEventID == nil || *dependentEvent.AnchorEventID != firstEvent.ID {
+		testingContext.Fatalf("dependent relationship = lane %q, anchor %v", dependentEvent.LaneID, dependentEvent.AnchorEventID)
+	}
+	var dependencyLane models.Lane
+	if findError := fixture.Database.First(&dependencyLane, "id = ?", firstEvent.LaneID).Error; findError != nil {
+		testingContext.Fatalf("reload dependency lane: %v", findError)
+	}
+	wantEnd := time.Date(2030, time.January, 5, 1, 0, 0, 0, time.UTC)
+	if dependencyLane.EndsAt == nil || !dependencyLane.EndsAt.Equal(wantEnd) {
+		testingContext.Fatalf("dependency lane end = %v, want %v", dependencyLane.EndsAt, wantEnd)
+	}
+
+	if response := createEvent("Invalid dependent", secondCalendar.ID, firstEvent.ID, 72*time.Hour); response.Code != http.StatusBadRequest {
+		testingContext.Fatalf("calendar mismatch status = %d, want %d; body = %s", response.Code, http.StatusBadRequest, response.Body.String())
+	}
+}
+
 func TestEventListSuppliesClientTimezoneDefault(testingContext *testing.T) {
 	testsupport.LoadTemplates(testingContext)
 	fixture := testsupport.NewFixture(testingContext)
@@ -249,6 +331,7 @@ func TestEventDeletionTransactionDeletesEventAndRSVPs(testingContext *testing.T)
 	owner := fixture.CreateUser(testsupport.OwnerUserID)
 	eventRecord := fixture.CreateEvent(testsupport.EventID, owner.ID, nil)
 	rsvpRecord := fixture.CreateRSVP(testsupport.RSVPID, eventRecord.ID)
+	siblingEvent := fixture.CreateEvent("EVT00002", owner.ID, nil)
 	request := testsupport.Request(
 		testingContext,
 		http.MethodDelete,
@@ -271,7 +354,14 @@ func TestEventDeletionTransactionDeletesEventAndRSVPs(testingContext *testing.T)
 	if findError := fixture.Database.First(&deletedRSVP, "id = ?", rsvpRecord.ID).Error; !errors.Is(findError, gorm.ErrRecordNotFound) {
 		testingContext.Fatalf("find deleted RSVP error = %v, want %v", findError, gorm.ErrRecordNotFound)
 	}
-	replacementEvent := fixture.CreateEvent("EVT00002", owner.ID, nil)
+	var siblingLane models.Lane
+	if findError := fixture.Database.First(&siblingLane, "id = ?", siblingEvent.LaneID).Error; findError != nil {
+		testingContext.Fatalf("find sibling lane: %v", findError)
+	}
+	if siblingLane.DisplayOrder != 0 {
+		testingContext.Fatalf("sibling lane display order = %d, want 0", siblingLane.DisplayOrder)
+	}
+	replacementEvent := fixture.CreateEvent("EVT00003", owner.ID, nil)
 	if replacementEvent.LaneID == eventRecord.LaneID {
 		testingContext.Fatalf("replacement event reused deleted lane %q", eventRecord.LaneID)
 	}

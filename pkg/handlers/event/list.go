@@ -20,6 +20,11 @@ func ListEventsHandler(applicationContext *config.ApplicationContext) http.Handl
 
 		requestedEventIDForEdit := r.URL.Query().Get(config.EventIDParam)
 		var selectedEventForEdit *EnhancedEventData
+		calendarList, calendarError := models.FindCalendarsByOwner(applicationContext.Database, currentUser.ID)
+		if calendarError != nil {
+			baseHttpHandler.HandleError(w, calendarError, utils.DatabaseError, "Failed to retrieve calendars.")
+			return
+		}
 
 		/* load user venues (for selector) */
 		userReusedVenues, err := models.FindVenuesByOwner(applicationContext.Database, currentUser.ID)
@@ -66,6 +71,7 @@ func ListEventsHandler(applicationContext *config.ApplicationContext) http.Handl
 		}
 
 		eventStatistics := make([]StatisticsData, len(eventsOwnedByUser))
+		anchorEvents := make([]AnchorEventData, 0, len(eventsOwnedByUser))
 		for i, ev := range eventsOwnedByUser {
 			localStart, localEnd, boundsError := ev.LocalMarkerBounds()
 			if boundsError != nil {
@@ -92,6 +98,9 @@ func ListEventsHandler(applicationContext *config.ApplicationContext) http.Handl
 				VenueName:         venueName,
 				RSVPCount:         total,
 				RSVPAnsweredCount: answered,
+			}
+			if ev.RelationType != models.EventRelationDependent {
+				anchorEvents = append(anchorEvents, AnchorEventData{ID: ev.ID, Title: ev.Title, CalendarID: ev.Lane.CalendarID})
 			}
 		}
 
@@ -125,11 +134,15 @@ func ListEventsHandler(applicationContext *config.ApplicationContext) http.Handl
 
 			/* data */
 			EventList:           eventStatistics,
+			CalendarList:        calendarList,
+			AnchorEventList:     anchorEvents,
 			SelectedItemForEdit: selectedEventForEdit,
 			UserReusedVenues:    userReusedVenues,
 
 			/* helpers */
 			ParamNameEventID:          config.EventIDParam,
+			ParamNameAnchorEventID:    config.AnchorEventIDParam,
+			ParamNameCalendarID:       config.CalendarIDParam,
 			ParamNameVenueID:          config.VenueIDParam,
 			ParamNameTitle:            config.TitleParam,
 			ParamNameDescription:      config.DescriptionParam,

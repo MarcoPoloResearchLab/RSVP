@@ -13,13 +13,15 @@ import (
 const horizonScaleIntervalDays = 7
 
 type horizonViewData struct {
-	Window         services.HorizonWindowProjection
-	StylesURL      string
-	ScriptURL      string
-	WindowDays     int
-	TodayPosition  *string
-	TimeScaleTicks []horizonTimeScaleTick
-	Calendars      []horizonCalendarView
+	Window            services.HorizonWindowProjection
+	StylesURL         string
+	ScriptURL         string
+	WindowDays        int
+	TodayPosition     *string
+	TimeScaleTicks    []horizonTimeScaleTick
+	Calendars         []horizonCalendarView
+	CalendarCreateURL string
+	LaneCreateURL     string
 }
 
 type horizonTimeScaleTick struct {
@@ -35,6 +37,11 @@ type horizonCalendarView struct {
 	ColorToken    string
 	Visible       bool
 	VisibilityURL string
+	ManagementURL string
+	PreviousOrder int
+	NextOrder     int
+	CanMoveUp     bool
+	CanMoveDown   bool
 	Lanes         []horizonLaneView
 }
 
@@ -48,6 +55,12 @@ type horizonLaneView struct {
 	StartPosition string
 	EndPosition   string
 	Markers       []horizonMarkerView
+	ManagementURL string
+	PreviousOrder int
+	NextOrder     int
+	CanMoveUp     bool
+	CanMoveDown   bool
+	CanResolve    bool
 }
 
 type horizonMarkerView struct {
@@ -77,6 +90,7 @@ func newHorizonViewData(projection services.HorizonProjection, referenceTime tim
 	viewData := horizonViewData{
 		Window:    projection.Window,
 		StylesURL: config.HorizonStylesPath, ScriptURL: config.HorizonScriptPath,
+		CalendarCreateURL: config.WebCalendars, LaneCreateURL: config.WebLanes,
 		TimeScaleTicks: make([]horizonTimeScaleTick, 0), Calendars: make([]horizonCalendarView, 0, len(projection.Calendars)),
 	}
 	localStart := windowStart.In(location)
@@ -102,10 +116,12 @@ func newHorizonViewData(projection services.HorizonProjection, referenceTime tim
 		viewData.TodayPosition = &position
 	}
 
-	for _, calendar := range projection.Calendars {
+	for calendarIndex, calendar := range projection.Calendars {
 		calendarView := horizonCalendarView{
 			ID: calendar.ID, Name: calendar.Name, Symbol: calendar.Symbol, ColorToken: calendar.ColorToken,
 			Visible: calendar.Visible, VisibilityURL: config.WebCalendars + url.PathEscape(calendar.ID),
+			ManagementURL: config.WebCalendars + url.PathEscape(calendar.ID), PreviousOrder: calendar.DisplayOrder - 1,
+			NextOrder: calendar.DisplayOrder + 1, CanMoveUp: calendarIndex > 0, CanMoveDown: calendarIndex < len(projection.Calendars)-1,
 			Lanes: make([]horizonLaneView, 0, len(calendar.Lanes)),
 		}
 		for _, lane := range calendar.Lanes {
@@ -131,6 +147,9 @@ func newHorizonViewData(projection services.HorizonProjection, referenceTime tim
 				StartPosition: horizonPosition(laneStart, windowStart, windowEnd),
 				EndPosition:   horizonPosition(laneEnd, windowStart, windowEnd),
 				Markers:       make([]horizonMarkerView, 0, len(lane.Markers)),
+				ManagementURL: config.WebLanes + url.PathEscape(lane.ID), PreviousOrder: lane.DisplayOrder - 1,
+				NextOrder: lane.DisplayOrder + 1, CanMoveUp: lane.DisplayOrder > 0, CanMoveDown: lane.DisplayOrder < calendar.TotalLaneCount-1,
+				CanResolve: lane.Status == models.LaneStatusActive && lane.EndsAt == nil,
 			}
 			for _, marker := range lane.Markers {
 				markerTime, markerTimeError := horizonMarkerPositionTime(marker.Time)

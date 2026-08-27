@@ -277,6 +277,32 @@ func TestHorizonHTMLRendersInteractiveLaneContract(testingContext *testing.T) {
 	}
 }
 
+func TestHorizonLaneControlsUseCompleteCalendarOrder(testingContext *testing.T) {
+	fixture := testsupport.NewFixture(testingContext)
+	testsupport.LoadTemplates(testingContext)
+	owner := fixture.CreateUser(testsupport.OwnerUserID)
+	confirmTimezone(testingContext, fixture.Database, &owner)
+	calendar := createCalendar(testingContext, fixture.Database, owner.ID, "CAL00001", "Ordered", 0, true)
+	windowStart := time.Date(2030, time.January, 1, 8, 0, 0, 0, time.UTC)
+	createFiniteLane(testingContext, fixture.Database, calendar.ID, "LANPAST0", "Past", windowStart.Add(-48*time.Hour), windowStart.Add(-24*time.Hour), 0)
+	visibleLane := createFiniteLane(testingContext, fixture.Database, calendar.ID, "LANSHOW0", "Visible", windowStart.Add(-time.Hour), windowStart.Add(time.Hour), 1)
+	target := config.WebHorizon + "?start=" + windowStart.Format(time.RFC3339) + "&end=" + windowStart.Add(24*time.Hour).Format(time.RFC3339)
+
+	responseRecorder := requestHorizon(testingContext, fixture, owner, target, horizonHTMLMediaType, windowStart)
+	if responseRecorder.Code != http.StatusOK {
+		testingContext.Fatalf("horizon HTML status = %d, want %d; body = %s", responseRecorder.Code, http.StatusOK, responseRecorder.Body.String())
+	}
+	responseBody := responseRecorder.Body.String()
+	laneStart := strings.Index(responseBody, `data-lane-id="`+visibleLane.ID+`"`)
+	if laneStart < 0 {
+		testingContext.Fatalf("visible lane %s is absent", visibleLane.ID)
+	}
+	laneHTML := responseBody[laneStart:]
+	if !strings.Contains(laneHTML, `data-display-order="0">Move lane up`) {
+		testingContext.Fatalf("visible lane controls do not include the complete calendar order: %s", laneHTML)
+	}
+}
+
 func TestAuthenticatedHomeAndStaticAssetRoutesUseHorizon(testingContext *testing.T) {
 	fixture := testsupport.NewFixture(testingContext)
 	owner := fixture.CreateUser(testsupport.OwnerUserID)

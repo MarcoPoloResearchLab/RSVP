@@ -25,6 +25,13 @@ type EnhancedEventData struct {
 	SelectedVenueID           string
 }
 
+// AnchorEventData identifies one event that can anchor a dependent event.
+type AnchorEventData struct {
+	ID         string
+	Title      string
+	CalendarID string
+}
+
 // ListViewData is passed to the main “events” view template.
 type ListViewData struct {
 	/* view / app chrome */
@@ -41,11 +48,15 @@ type ListViewData struct {
 
 	/* event & venue data */
 	EventList           []StatisticsData
+	CalendarList        []models.Calendar
+	AnchorEventList     []AnchorEventData
 	SelectedItemForEdit *EnhancedEventData
 	UserReusedVenues    []models.Venue
 
 	/* form/input helpers */
 	ParamNameEventID          string
+	ParamNameAnchorEventID    string
+	ParamNameCalendarID       string
 	ParamNameVenueID          string
 	ParamNameTitle            string
 	ParamNameDescription      string

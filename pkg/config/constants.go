@@ -5,6 +5,7 @@ const (
 	WebCalendars        = "/calendars/"
 	WebEvents           = "/events/"
 	WebHorizon          = "/horizon/"
+	WebLanes            = "/lanes/"
 	WebStatic           = "/static/"
 	WebRSVPs            = "/rsvps/"
 	WebRSVPQR           = "/rsvps/qr/"
@@ -32,6 +33,8 @@ const (
 
 const (
 	EventIDParam              = "event_id"
+	AnchorEventIDParam        = "anchor_event_id"
+	CalendarIDParam           = "calendar_id"
 	HorizonEndParam           = "end"
 	HorizonStartParam         = "start"
 	RSVPIDParam               = "rsvp_id"
@@ -79,7 +82,9 @@ const (
 
 const (
 	ResourceNameEvent    = "Event"
+	ResourceNameCalendar = "Calendar"
 	ResourceNameHorizon  = "Horizon"
+	ResourceNameLane     = "Lane"
 	ResourceNameRSVP     = "RSVP"
 	ResourceNameRSVPQR   = "RSVP QR Code"
 	ResourceNameResponse = "Response"

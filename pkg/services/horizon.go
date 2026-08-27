@@ -100,13 +100,14 @@ type HorizonProjection struct {
 
 // HorizonCalendarProjection contains one calendar and its intersecting lanes.
 type HorizonCalendarProjection struct {
-	ID           string                  `json:"id"`
-	Name         string                  `json:"name"`
-	Symbol       string                  `json:"symbol"`
-	ColorToken   string                  `json:"color_token"`
-	DisplayOrder int                     `json:"display_order"`
-	Visible      bool                    `json:"visible"`
-	Lanes        []HorizonLaneProjection `json:"lanes"`
+	ID             string                  `json:"id"`
+	Name           string                  `json:"name"`
+	Symbol         string                  `json:"symbol"`
+	ColorToken     string                  `json:"color_token"`
+	DisplayOrder   int                     `json:"display_order"`
+	Visible        bool                    `json:"visible"`
+	Lanes          []HorizonLaneProjection `json:"lanes"`
+	TotalLaneCount int                     `json:"-"`
 }
 
 // HorizonLaneProjection contains one lane and its markers in the window.
@@ -204,11 +205,30 @@ func (service *HorizonProjectionService) project(ctx context.Context, organizerI
 	}
 
 	calendarPositions := make(map[string]int, len(calendars))
+	calendarIDs := make([]string, 0, len(calendars))
+	for _, calendar := range calendars {
+		calendarIDs = append(calendarIDs, calendar.ID)
+	}
+	laneCounts := make(map[string]int, len(calendarIDs))
+	if len(calendarIDs) != 0 {
+		var rows []struct {
+			CalendarID string
+			LaneCount  int
+		}
+		if countError := service.database.WithContext(ctx).Model(&models.Lane{}).
+			Select("calendar_id, COUNT(*) AS lane_count").Where("calendar_id IN ?", calendarIDs).
+			Group("calendar_id").Scan(&rows).Error; countError != nil {
+			return HorizonProjection{}, fmt.Errorf("count horizon lanes for organizer %s: %w", organizerID, countError)
+		}
+		for _, row := range rows {
+			laneCounts[row.CalendarID] = row.LaneCount
+		}
+	}
 	for _, calendar := range calendars {
 		calendarPositions[calendar.ID] = len(projection.Calendars)
 		projection.Calendars = append(projection.Calendars, HorizonCalendarProjection{
 			ID: calendar.ID, Name: calendar.Name, Symbol: calendar.Symbol, ColorToken: calendar.ColorToken,
-			DisplayOrder: calendar.DisplayOrder, Visible: calendar.Visible, Lanes: make([]HorizonLaneProjection, 0),
+			DisplayOrder: calendar.DisplayOrder, Visible: calendar.Visible, Lanes: make([]HorizonLaneProjection, 0), TotalLaneCount: laneCounts[calendar.ID],
 		})
 	}
 

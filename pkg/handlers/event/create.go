@@ -36,6 +36,8 @@ func CreateHandler(applicationContext *config.ApplicationContext) http.HandlerFu
 		timezoneString := httpRequest.FormValue(config.TimezoneParam)
 		durationHoursString := httpRequest.FormValue(config.DurationParam)
 		selectedVenueIdentifierString := httpRequest.FormValue(config.VenueIDParam)
+		selectedCalendarIdentifier := httpRequest.FormValue(config.CalendarIDParam)
+		anchorEventIdentifier := httpRequest.FormValue(config.AnchorEventIDParam)
 		newVenueNameString := httpRequest.FormValue(createVenuePrefix + config.VenueNameParam)
 		shouldCreateNewVenue := newVenueNameString != ""
 
@@ -89,9 +91,15 @@ func CreateHandler(applicationContext *config.ApplicationContext) http.HandlerFu
 				venueIdentifierToAssociate = &selectedVenueIdentifierString
 			}
 
-			if _, err := models.CreateIndependentIntervalEvent(
+			var anchorEventID *string
+			if anchorEventIdentifier != "" {
+				anchorEventID = &anchorEventIdentifier
+			}
+			if _, err := models.CreateLocalIntervalEvent(
 				activeTransaction,
 				currentUser,
+				selectedCalendarIdentifier,
+				anchorEventID,
 				eventTitle,
 				eventDescription,
 				venueIdentifierToAssociate,
@@ -150,6 +158,7 @@ func isModelValidationError(err error) error {
 	if errors.Is(err, utils.ErrVenueNameRequired) || errors.Is(err, utils.ErrVenueNameTooLong) ||
 		errors.Is(err, utils.ErrTitleRequired) || errors.Is(err, utils.ErrTitleTooLong) ||
 		errors.Is(err, models.ErrLaneEndInvalid) || errors.Is(err, models.ErrMarkerOutsideLane) ||
+		errors.Is(err, models.ErrEventMembershipInvalid) || errors.Is(err, models.ErrEventRelationInvalid) ||
 		errors.Is(err, models.ErrTimezoneRequired) || errors.Is(err, models.ErrTimezoneInvalid) {
 		return err
 	}

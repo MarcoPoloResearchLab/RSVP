@@ -16,54 +16,104 @@ import (
 	"gorm.io/gorm"
 )
 
-func TestCalendarVisibilityPersistsForOwner(testingContext *testing.T) {
+func TestCalendarResourceOperationsPersistOrderAndVisibility(testingContext *testing.T) {
 	fixture := testsupport.NewFixture(testingContext)
 	owner := fixture.CreateUser(testsupport.OwnerUserID)
-	confirmTimezone(testingContext, fixture.Database, &owner)
-	calendarRecord := createCalendar(testingContext, fixture.Database, owner.ID, "CAL00001")
 
-	responseRecorder := requestVisibility(testingContext, fixture, owner, http.MethodPatch, config.WebCalendars+calendarRecord.ID, `{"visible":false}`, "application/json")
-	if responseRecorder.Code != http.StatusNoContent {
-		testingContext.Fatalf("calendar visibility status = %d, want %d; body = %s", responseRecorder.Code, http.StatusNoContent, responseRecorder.Body.String())
+	firstResponse := requestCalendar(testingContext, fixture, owner, http.MethodPost, config.WebCalendars, `{"name":"Personal","symbol":"P","color_token":"personal","timezone":"America/Los_Angeles"}`, "application/json")
+	if firstResponse.Code != http.StatusCreated {
+		testingContext.Fatalf("first create status = %d, want %d; body = %s", firstResponse.Code, http.StatusCreated, firstResponse.Body.String())
 	}
-	if responseRecorder.Header().Get("Cache-Control") != "private, no-store" {
-		testingContext.Fatalf("Cache-Control = %q, want %q", responseRecorder.Header().Get("Cache-Control"), "private, no-store")
+	first := decodeCalendar(testingContext, firstResponse)
+	if first.DisplayOrder != 0 || !first.Visible || firstResponse.Header().Get("Location") != config.WebCalendars+first.ID {
+		testingContext.Fatalf("first calendar response = %#v; Location = %q", first, firstResponse.Header().Get("Location"))
 	}
-	var storedCalendar models.Calendar
-	if findError := fixture.Database.First(&storedCalendar, "id = ?", calendarRecord.ID).Error; findError != nil {
-		testingContext.Fatalf("reload calendar: %v", findError)
+
+	secondResponse := requestCalendar(testingContext, fixture, owner, http.MethodPost, config.WebCalendars, `{"name":"Work","symbol":"W","color_token":"work","timezone":"America/Los_Angeles"}`, "application/json")
+	if secondResponse.Code != http.StatusCreated {
+		testingContext.Fatalf("second create status = %d, want %d; body = %s", secondResponse.Code, http.StatusCreated, secondResponse.Body.String())
 	}
-	if storedCalendar.Visible {
-		testingContext.Fatal("calendar remains visible after owner update")
+	second := decodeCalendar(testingContext, secondResponse)
+
+	updateResponse := requestCalendar(testingContext, fixture, owner, http.MethodPatch, config.WebCalendars+second.ID, `{"name":"Focused Work","display_order":0,"visible":false}`, "application/json")
+	if updateResponse.Code != http.StatusOK {
+		testingContext.Fatalf("update status = %d, want %d; body = %s", updateResponse.Code, http.StatusOK, updateResponse.Body.String())
+	}
+	updated := decodeCalendar(testingContext, updateResponse)
+	if updated.Name != "Focused Work" || updated.DisplayOrder != 0 || updated.Visible {
+		testingContext.Fatalf("updated calendar = %#v", updated)
+	}
+	readResponse := requestCalendar(testingContext, fixture, owner, http.MethodGet, config.WebCalendars+second.ID, "", "")
+	if readResponse.Code != http.StatusOK || decodeCalendar(testingContext, readResponse).Name != "Focused Work" {
+		testingContext.Fatalf("read status = %d; body = %s", readResponse.Code, readResponse.Body.String())
+	}
+
+	var reorderedFirst models.Calendar
+	if findError := fixture.Database.First(&reorderedFirst, "id = ?", first.ID).Error; findError != nil {
+		testingContext.Fatalf("reload first calendar: %v", findError)
+	}
+	if reorderedFirst.DisplayOrder != 1 {
+		testingContext.Fatalf("first calendar order = %d, want 1", reorderedFirst.DisplayOrder)
+	}
+
+	deleteResponse := requestCalendar(testingContext, fixture, owner, http.MethodDelete, config.WebCalendars+first.ID, "", "")
+	if deleteResponse.Code != http.StatusNoContent {
+		testingContext.Fatalf("delete status = %d, want %d; body = %s", deleteResponse.Code, http.StatusNoContent, deleteResponse.Body.String())
+	}
+	var storedOwner models.User
+	if findError := fixture.Database.First(&storedOwner, "id = ?", owner.ID).Error; findError != nil {
+		testingContext.Fatalf("reload organizer: %v", findError)
+	}
+	if storedOwner.Timezone == nil || *storedOwner.Timezone != testsupport.TimezoneName {
+		testingContext.Fatalf("organizer timezone = %v, want %q", storedOwner.Timezone, testsupport.TimezoneName)
 	}
 }
 
-func TestCalendarVisibilityDoesNotExposeAnotherOwnerCalendar(testingContext *testing.T) {
+func TestCalendarDeletionAndOwnershipConflictsChangeNoResource(testingContext *testing.T) {
 	fixture := testsupport.NewFixture(testingContext)
 	owner := fixture.CreateUser(testsupport.OwnerUserID)
 	otherOwner := fixture.CreateUser(testsupport.OtherUserID)
 	confirmTimezone(testingContext, fixture.Database, &owner)
 	confirmTimezone(testingContext, fixture.Database, &otherOwner)
-	calendarRecord := createCalendar(testingContext, fixture.Database, owner.ID, "CAL00001")
+	calendarRecord := createCalendar(testingContext, fixture.Database, owner.ID, "CAL00001", 0)
+	laneRecord, laneError := models.NewOpenLane(calendarRecord.ID, "Protected lane", testsupport.FixedStartTime(), 0)
+	if laneError != nil {
+		testingContext.Fatalf("construct lane: %v", laneError)
+	}
+	if createError := fixture.Database.Create(laneRecord).Error; createError != nil {
+		testingContext.Fatalf("create lane: %v", createError)
+	}
 
-	responseRecorder := requestVisibility(testingContext, fixture, otherOwner, http.MethodPatch, config.WebCalendars+calendarRecord.ID, `{"visible":false}`, "application/json")
-	if responseRecorder.Code != http.StatusNotFound {
-		testingContext.Fatalf("other-owner status = %d, want %d; body = %s", responseRecorder.Code, http.StatusNotFound, responseRecorder.Body.String())
+	conflictResponse := requestCalendar(testingContext, fixture, owner, http.MethodDelete, config.WebCalendars+calendarRecord.ID, "", "")
+	if conflictResponse.Code != http.StatusConflict {
+		testingContext.Fatalf("nonempty delete status = %d, want %d; body = %s", conflictResponse.Code, http.StatusConflict, conflictResponse.Body.String())
+	}
+	for _, method := range []string{http.MethodGet, http.MethodPatch, http.MethodDelete} {
+		body := ""
+		contentType := ""
+		if method == http.MethodPatch {
+			body = `{"visible":false}`
+			contentType = "application/json"
+		}
+		response := requestCalendar(testingContext, fixture, otherOwner, method, config.WebCalendars+calendarRecord.ID, body, contentType)
+		if response.Code != http.StatusForbidden {
+			testingContext.Fatalf("other-owner %s status = %d, want %d; body = %s", method, response.Code, http.StatusForbidden, response.Body.String())
+		}
 	}
 	var storedCalendar models.Calendar
 	if findError := fixture.Database.First(&storedCalendar, "id = ?", calendarRecord.ID).Error; findError != nil {
-		testingContext.Fatalf("reload calendar: %v", findError)
+		testingContext.Fatalf("reload protected calendar: %v", findError)
 	}
 	if !storedCalendar.Visible {
-		testingContext.Fatal("another owner changed calendar visibility")
+		testingContext.Fatal("another organizer changed calendar visibility")
 	}
 }
 
-func TestCalendarVisibilityRejectsNoncanonicalRequests(testingContext *testing.T) {
+func TestCalendarResourceRejectsInvalidBoundaryRequests(testingContext *testing.T) {
 	fixture := testsupport.NewFixture(testingContext)
 	owner := fixture.CreateUser(testsupport.OwnerUserID)
 	confirmTimezone(testingContext, fixture.Database, &owner)
-	calendarRecord := createCalendar(testingContext, fixture.Database, owner.ID, "CAL00001")
+	calendarRecord := createCalendar(testingContext, fixture.Database, owner.ID, "CAL00001", 0)
 	testCases := []struct {
 		name        string
 		method      string
@@ -71,51 +121,71 @@ func TestCalendarVisibilityRejectsNoncanonicalRequests(testingContext *testing.T
 		body        string
 		contentType string
 		wantStatus  int
-		wantAllow   string
 	}{
-		{name: "method", method: http.MethodPut, target: config.WebCalendars + calendarRecord.ID, body: `{"visible":false}`, contentType: "application/json", wantStatus: http.StatusMethodNotAllowed, wantAllow: http.MethodPatch},
-		{name: "path", method: http.MethodPatch, target: config.WebCalendars + calendarRecord.ID + "/extra", body: `{"visible":false}`, contentType: "application/json", wantStatus: http.StatusNotFound},
-		{name: "media type", method: http.MethodPatch, target: config.WebCalendars + calendarRecord.ID, body: `{"visible":false}`, contentType: "text/plain", wantStatus: http.StatusBadRequest},
-		{name: "missing field", method: http.MethodPatch, target: config.WebCalendars + calendarRecord.ID, body: `{}`, contentType: "application/json", wantStatus: http.StatusBadRequest},
-		{name: "unknown field", method: http.MethodPatch, target: config.WebCalendars + calendarRecord.ID, body: `{"visible":false,"legacy":true}`, contentType: "application/json", wantStatus: http.StatusBadRequest},
+		{name: "collection method", method: http.MethodGet, target: config.WebCalendars, wantStatus: http.StatusMethodNotAllowed},
+		{name: "item method", method: http.MethodPut, target: config.WebCalendars + calendarRecord.ID, body: `{}`, contentType: "application/json", wantStatus: http.StatusMethodNotAllowed},
+		{name: "path", method: http.MethodGet, target: config.WebCalendars + calendarRecord.ID + "/extra", wantStatus: http.StatusNotFound},
+		{name: "media type", method: http.MethodPatch, target: config.WebCalendars + calendarRecord.ID, body: `{"visible":false}`, contentType: "text/plain", wantStatus: http.StatusUnsupportedMediaType},
+		{name: "empty patch", method: http.MethodPatch, target: config.WebCalendars + calendarRecord.ID, body: `{}`, contentType: "application/json", wantStatus: http.StatusUnprocessableEntity},
+		{name: "unknown field", method: http.MethodPatch, target: config.WebCalendars + calendarRecord.ID, body: `{"legacy":true}`, contentType: "application/json", wantStatus: http.StatusBadRequest},
 		{name: "trailing value", method: http.MethodPatch, target: config.WebCalendars + calendarRecord.ID, body: `{"visible":false}{}`, contentType: "application/json", wantStatus: http.StatusBadRequest},
 	}
 	for _, testCase := range testCases {
 		testingContext.Run(testCase.name, func(testingContext *testing.T) {
-			responseRecorder := requestVisibility(testingContext, fixture, owner, testCase.method, testCase.target, testCase.body, testCase.contentType)
-			if responseRecorder.Code != testCase.wantStatus {
-				testingContext.Fatalf("status = %d, want %d; body = %s", responseRecorder.Code, testCase.wantStatus, responseRecorder.Body.String())
-			}
-			if responseRecorder.Header().Get("Allow") != testCase.wantAllow {
-				testingContext.Fatalf("Allow = %q, want %q", responseRecorder.Header().Get("Allow"), testCase.wantAllow)
+			response := requestCalendar(testingContext, fixture, owner, testCase.method, testCase.target, testCase.body, testCase.contentType)
+			if response.Code != testCase.wantStatus {
+				testingContext.Fatalf("status = %d, want %d; body = %s", response.Code, testCase.wantStatus, response.Body.String())
 			}
 			if testCase.wantStatus != http.StatusNotFound {
-				var responseBody struct {
-					Error struct {
-						Code      string            `json:"code"`
-						Details   map[string]string `json:"details"`
-						RequestID string            `json:"request_id"`
-					} `json:"error"`
-				}
-				if decodeError := json.Unmarshal(responseRecorder.Body.Bytes(), &responseBody); decodeError != nil {
-					testingContext.Fatalf("decode typed error: %v", decodeError)
-				}
-				if responseBody.Error.Code == "" || responseBody.Error.Details == nil || responseBody.Error.RequestID == "" {
-					testingContext.Fatalf("typed error is incomplete: %#v", responseBody.Error)
-				}
+				assertTypedError(testingContext, response)
 			}
 		})
 	}
 }
 
-func requestVisibility(testingContext *testing.T, fixture *testsupport.Fixture, owner models.User, method string, target string, body string, contentType string) *httptest.ResponseRecorder {
+type calendarBody struct {
+	ID           string `json:"id"`
+	Name         string `json:"name"`
+	DisplayOrder int    `json:"display_order"`
+	Visible      bool   `json:"visible"`
+}
+
+func requestCalendar(testingContext *testing.T, fixture *testsupport.Fixture, owner models.User, method string, target string, body string, contentType string) *httptest.ResponseRecorder {
 	testingContext.Helper()
 	request := httptest.NewRequest(method, target, strings.NewReader(body))
-	request.Header.Set("Content-Type", contentType)
+	if contentType != "" {
+		request.Header.Set("Content-Type", contentType)
+	}
 	request = request.WithContext(context.WithValue(request.Context(), middleware.ContextKeyUser, &owner))
 	responseRecorder := httptest.NewRecorder()
-	calendar.VisibilityHandler(fixture.ApplicationContext).ServeHTTP(responseRecorder, request)
+	calendar.Handler(fixture.ApplicationContext).ServeHTTP(responseRecorder, request)
 	return responseRecorder
+}
+
+func decodeCalendar(testingContext *testing.T, responseRecorder *httptest.ResponseRecorder) calendarBody {
+	testingContext.Helper()
+	var body calendarBody
+	if decodeError := json.Unmarshal(responseRecorder.Body.Bytes(), &body); decodeError != nil {
+		testingContext.Fatalf("decode calendar: %v", decodeError)
+	}
+	return body
+}
+
+func assertTypedError(testingContext *testing.T, responseRecorder *httptest.ResponseRecorder) {
+	testingContext.Helper()
+	var responseBody struct {
+		Error struct {
+			Code      string            `json:"code"`
+			Details   map[string]string `json:"details"`
+			RequestID string            `json:"request_id"`
+		} `json:"error"`
+	}
+	if decodeError := json.Unmarshal(responseRecorder.Body.Bytes(), &responseBody); decodeError != nil {
+		testingContext.Fatalf("decode typed error: %v", decodeError)
+	}
+	if responseBody.Error.Code == "" || responseBody.Error.Details == nil || responseBody.Error.RequestID == "" {
+		testingContext.Fatalf("typed error is incomplete: %#v", responseBody.Error)
+	}
 }
 
 func confirmTimezone(testingContext *testing.T, database *gorm.DB, owner *models.User) {
@@ -129,9 +199,9 @@ func confirmTimezone(testingContext *testing.T, database *gorm.DB, owner *models
 	}
 }
 
-func createCalendar(testingContext *testing.T, database *gorm.DB, ownerID string, identifier string) models.Calendar {
+func createCalendar(testingContext *testing.T, database *gorm.DB, ownerID string, identifier string, order int) models.Calendar {
 	testingContext.Helper()
-	calendarRecord, calendarError := models.NewCalendar(ownerID, "Calendar", "calendar", "test", 0)
+	calendarRecord, calendarError := models.NewCalendar(ownerID, "Calendar", "C", "test", order)
 	if calendarError != nil {
 		testingContext.Fatalf("construct calendar: %v", calendarError)
 	}

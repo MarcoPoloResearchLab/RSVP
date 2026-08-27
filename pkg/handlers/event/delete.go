@@ -8,6 +8,7 @@ import (
 	"github.com/tyemirov/RSVP/pkg/config"
 	"github.com/tyemirov/RSVP/pkg/handlers"
 	"github.com/tyemirov/RSVP/pkg/middleware"
+	"github.com/tyemirov/RSVP/pkg/services"
 	"github.com/tyemirov/RSVP/pkg/utils"
 	"gorm.io/gorm"
 )
@@ -49,6 +50,7 @@ func DeleteHandler(applicationContext *config.ApplicationContext) http.HandlerFu
 			tx.Rollback()
 			return
 		}
+		var independentLane *models.Lane
 		if eventRecord.RelationType == models.EventRelationIndependent {
 			hasDependents, dependentsError := eventRecord.HasDependentEvents(tx)
 			if dependentsError != nil {
@@ -61,21 +63,33 @@ func DeleteHandler(applicationContext *config.ApplicationContext) http.HandlerFu
 				baseHttpHandler.HandleError(httpResponseWriter, models.ErrEventHasDependents, utils.ConflictError, "Delete dependent events before deleting their anchor event.")
 				return
 			}
+			var laneRecord models.Lane
+			if laneError := tx.First(&laneRecord, "id = ?", eventRecord.LaneID).Error; laneError != nil {
+				tx.Rollback()
+				baseHttpHandler.HandleError(httpResponseWriter, laneError, utils.DatabaseError, "Failed to retrieve the event lane.")
+				return
+			}
+			independentLane = &laneRecord
 		}
-		if deleteRSVPsErr := tx.Where("event_id = ?", targetEventID).Delete(&models.RSVP{}).Error; deleteRSVPsErr != nil {
+		if deleteRSVPsErr := tx.Unscoped().Where("event_id = ?", targetEventID).Delete(&models.RSVP{}).Error; deleteRSVPsErr != nil {
 			tx.Rollback()
 			baseHttpHandler.HandleError(httpResponseWriter, deleteRSVPsErr, utils.DatabaseError, "Failed to delete associated RSVPs.")
 			return
 		}
-		if deleteEventErr := tx.Delete(&eventRecord).Error; deleteEventErr != nil {
+		if deleteEventErr := tx.Unscoped().Delete(&eventRecord).Error; deleteEventErr != nil {
 			tx.Rollback()
 			baseHttpHandler.HandleError(httpResponseWriter, deleteEventErr, utils.DatabaseError, "Failed to delete the event.")
 			return
 		}
 		if eventRecord.RelationType == models.EventRelationIndependent {
-			if deleteLaneError := tx.Delete(&models.Lane{}, "id = ?", eventRecord.LaneID).Error; deleteLaneError != nil {
+			if deleteLaneError := tx.Unscoped().Delete(&models.Lane{}, "id = ?", eventRecord.LaneID).Error; deleteLaneError != nil {
 				tx.Rollback()
 				baseHttpHandler.HandleError(httpResponseWriter, deleteLaneError, utils.DatabaseError, "Failed to delete the event lane.")
+				return
+			}
+			if normalizeError := services.NormalizeLaneOrder(tx, independentLane.CalendarID); normalizeError != nil {
+				tx.Rollback()
+				baseHttpHandler.HandleError(httpResponseWriter, normalizeError, utils.DatabaseError, "Failed to normalize the event lane order.")
 				return
 			}
 		} else if laneBoundsError := models.RecalculateFiniteLaneEnd(tx, eventRecord.LaneID); laneBoundsError != nil {
