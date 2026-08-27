@@ -10,6 +10,10 @@ certs/
 qodana.yaml
 tools/
 bin/
+node_modules/
+/output/
+/test-results/
+/playwright-report/
 
 # BEGIN MPRLAB-GOVERNANCE
 /.mprlab/*-PLAN.md
