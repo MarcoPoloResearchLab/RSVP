@@ -1,0 +1,110 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "RSVP Horizon API",
+    "version": "1"
+  },
+  "paths": {
+    "/horizon/": {
+      "get": {"operationId": "readHorizon", "responses": {"200": {"description": "Horizon projection"}, "400": {"$ref": "#/components/responses/TypedError"}, "401": {"$ref": "#/components/responses/TypedError"}, "406": {"$ref": "#/components/responses/TypedError"}, "422": {"$ref": "#/components/responses/TypedError"}}},
+      "head": {"operationId": "readHorizonMetadata", "responses": {"200": {"description": "Horizon projection metadata"}}}
+    },
+    "/calendars/": {
+      "post": {"operationId": "createCalendar", "responses": {"201": {"description": "Calendar created"}}}
+    },
+    "/calendars/{calendar_id}": {
+      "get": {"operationId": "readCalendar", "responses": {"200": {"description": "Calendar"}}},
+      "patch": {"operationId": "updateCalendar", "responses": {"200": {"description": "Calendar updated"}}},
+      "delete": {"operationId": "deleteCalendar", "responses": {"204": {"description": "Calendar deleted"}}}
+    },
+    "/lanes/": {
+      "post": {"operationId": "createLane", "responses": {"201": {"description": "Lane created"}}}
+    },
+    "/lanes/{lane_id}": {
+      "get": {"operationId": "readLane", "responses": {"200": {"description": "Lane"}}},
+      "patch": {"operationId": "updateLane", "responses": {"200": {"description": "Lane updated"}}},
+      "delete": {"operationId": "deleteLane", "responses": {"204": {"description": "Lane deleted"}}}
+    },
+    "/attention-policies/": {
+      "post": {"operationId": "createAttentionPolicy", "responses": {"201": {"description": "Attention policy created"}}}
+    },
+    "/attention-policies/{policy_id}": {
+      "patch": {"operationId": "updateAttentionPolicy", "responses": {"200": {"description": "Attention policy updated"}}},
+      "delete": {"operationId": "deleteAttentionPolicy", "responses": {"204": {"description": "Attention policy deleted"}}}
+    },
+    "/probes/{probe_id}": {
+      "patch": {"operationId": "updateProbe", "responses": {"200": {"description": "Probe updated"}}}
+    },
+    "/calendar-authorization-requests/": {
+      "post": {"operationId": "createCalendarAuthorizationRequest", "responses": {"201": {"description": "Authorization request created"}}}
+    },
+    "/calendar-connection-callbacks/google/": {
+      "get": {"operationId": "readGoogleCalendarCallback", "responses": {"200": {"description": "Validated callback"}}}
+    },
+    "/calendar-connections/": {
+      "post": {"operationId": "createCalendarConnection", "responses": {"201": {"description": "Calendar connection created"}}}
+    },
+    "/calendar-connections/{connection_id}": {
+      "get": {"operationId": "readCalendarConnection", "responses": {"200": {"description": "Calendar connection"}}},
+      "delete": {"operationId": "deleteCalendarConnection", "responses": {"204": {"description": "Calendar connection deleted"}}}
+    },
+    "/calendar-connections/{connection_id}/source-calendars/": {
+      "get": {"operationId": "listSourceCalendars", "responses": {"200": {"description": "Source calendars"}}},
+      "put": {"operationId": "replaceSourceCalendars", "responses": {"200": {"description": "Source calendars replaced"}}}
+    },
+    "/calendar-syncs/": {
+      "post": {"operationId": "createCalendarSync", "responses": {"202": {"description": "Calendar synchronization accepted"}}}
+    },
+    "/calendar-syncs/{sync_id}": {
+      "get": {"operationId": "readCalendarSync", "responses": {"200": {"description": "Calendar synchronization"}}}
+    },
+    "/derived-marker-rules/": {
+      "post": {"operationId": "createDerivedMarkerRule", "responses": {"201": {"description": "Derived marker rule created"}}}
+    },
+    "/derived-marker-rules/{rule_id}": {
+      "get": {"operationId": "readDerivedMarkerRule", "responses": {"200": {"description": "Derived marker rule"}}},
+      "patch": {"operationId": "updateDerivedMarkerRule", "responses": {"200": {"description": "Derived marker rule updated"}}},
+      "delete": {"operationId": "deleteDerivedMarkerRule", "responses": {"204": {"description": "Derived marker rule deleted"}}}
+    },
+    "/ingestion-drafts/": {
+      "post": {
+        "operationId": "createIngestionDraft",
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"oneOf": [{"$ref": "#/components/schemas/QuickDraftCreate"}, {"$ref": "#/components/schemas/NaturalLanguageDraftCreate"}]}}}},
+        "responses": {"201": {"description": "Ingestion draft created"}}
+      }
+    },
+    "/ingestion-drafts/{draft_id}": {
+      "get": {"operationId": "readIngestionDraft", "responses": {"200": {"description": "Ingestion draft"}}},
+      "patch": {"operationId": "updateIngestionDraft", "responses": {"200": {"description": "Ingestion draft updated"}}},
+      "delete": {"operationId": "deleteIngestionDraft", "responses": {"204": {"description": "Ingestion draft canceled"}}}
+    },
+    "/ingestion-drafts/{draft_id}/confirmations/": {
+      "post": {"operationId": "createDraftConfirmation", "responses": {"201": {"description": "Draft confirmation created"}, "200": {"description": "Existing confirmation returned"}}}
+    }
+  },
+  "components": {
+    "responses": {
+      "TypedError": {
+        "description": "Typed API error",
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/TypedError"}}}
+      }
+    },
+    "schemas": {
+      "TypedError": {
+        "type": "object",
+        "required": ["error"],
+        "properties": {"error": {"type": "object", "required": ["code", "message", "details", "request_id"], "properties": {"code": {"type": "string"}, "message": {"type": "string"}, "details": {"type": "object"}, "request_id": {"type": "string"}}}}
+      },
+      "QuickDraftCreate": {
+        "type": "object",
+        "required": ["source", "mode", "calendar_id", "title", "reference_time", "timezone"],
+        "properties": {"source": {"const": "quick"}, "mode": {"enum": ["dated_event", "open_lane"]}, "calendar_id": {"type": "string"}, "title": {"type": "string"}, "reference_time": {"type": "string", "format": "date-time"}, "timezone": {"type": "string"}}
+      },
+      "NaturalLanguageDraftCreate": {
+        "type": "object",
+        "required": ["source", "input_text", "calendar_id", "reference_time", "timezone"],
+        "properties": {"source": {"const": "natural_language"}, "input_text": {"type": "string"}, "calendar_id": {"type": "string"}, "reference_time": {"type": "string", "format": "date-time"}, "timezone": {"type": "string"}}
+      }
+    }
+  }
+}
