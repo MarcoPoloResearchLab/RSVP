@@ -365,7 +365,7 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Run `make ci`.
   - Run the browser test target.
 
-- [ ] [F003] (P1) {F002} Add calendar and lane management
+- [x] [F003] (P1) {F002} Add calendar and lane management
   Goal:
   This issue lets an organizer create and maintain the temporal structure shown in the horizon view.
 
