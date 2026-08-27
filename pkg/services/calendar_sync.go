@@ -199,6 +199,9 @@ func recalculateMappingLaneBounds(database *gorm.DB, mappingID string) error {
 		if updateError := database.Model(&lane).Update("ends_at", markerEnd).Error; updateError != nil {
 			return updateError
 		}
+		if boundsError := RecalculateTemporalLaneBounds(database, laneID); boundsError != nil {
+			return boundsError
+		}
 	}
 	return nil
 }
@@ -222,7 +225,14 @@ func upsertExternalEvent(database *gorm.DB, mapping *models.SourceCalendarMappin
 		if boundsError := expandSourceLane(database, event.LaneID, startedAt, boundsStart, boundsEnd); boundsError != nil {
 			return boundsError
 		}
-		return database.Model(&event).Updates(map[string]any{"title": candidate.Title, "description": candidate.Description, "time_shape": candidate.TimeShape, "at": candidate.At, "starts_at": candidate.StartsAt, "ends_at": candidate.EndsAt, "start_date": candidate.StartDate, "end_date": candidate.EndDate, "timezone": candidate.Timezone}).Error
+		if updateError := database.Model(&event).Updates(map[string]any{"title": candidate.Title, "description": candidate.Description, "time_shape": candidate.TimeShape, "at": candidate.At, "starts_at": candidate.StartsAt, "ends_at": candidate.EndsAt, "start_date": candidate.StartDate, "end_date": candidate.EndDate, "timezone": candidate.Timezone}).Error; updateError != nil {
+			return updateError
+		}
+		ownerID, ownerError := event.OwnerID(database)
+		if ownerError != nil {
+			return ownerError
+		}
+		return RecalculateDerivedMarkersForAnchor(database, ownerID, models.DerivedAnchorEvent, event.ID)
 	}
 	if !errors.Is(findError, gorm.ErrRecordNotFound) {
 		return findError
@@ -398,6 +408,9 @@ func deleteExternalEvent(database *gorm.DB, mappingID string, providerEventID st
 		return eventError
 	}
 	laneID := event.LaneID
+	if derivedDeleteError := DeleteDerivedMarkersForAnchor(database, models.DerivedAnchorEvent, event.ID); derivedDeleteError != nil {
+		return derivedDeleteError
+	}
 	if deleteError := database.Unscoped().Delete(&link).Error; deleteError != nil {
 		return deleteError
 	}

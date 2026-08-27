@@ -195,6 +195,23 @@ test('supports keyboard pan, scale, visibility, and marker selection', async ({p
     await expect(page.locator('[data-calendar-id="CALHOLID"]')).toBeVisible();
 });
 
+test('creates and deletes a derived marker on its anchor lane', async ({page}) => {
+    const anchor = page.getByRole('button', {name: 'Flight departs. event marker.'});
+    await anchor.focus();
+    await page.getByRole('button', {name: 'Add derived marker'}).click();
+
+    const derived = page.getByRole('button', {name: 'Derived marker. derived marker.'});
+    await expect(derived).toBeVisible();
+    const anchorLaneID = await anchor.locator('xpath=ancestor::*[@data-lane-id]').getAttribute('data-lane-id');
+    const derivedLaneID = await derived.locator('xpath=ancestor::*[@data-lane-id]').getAttribute('data-lane-id');
+    expect(derivedLaneID).toBe(anchorLaneID);
+
+    await derived.focus();
+    await expect(page.getByText(/Anchor marker:/)).toBeVisible();
+    await page.getByRole('button', {name: 'Delete derived marker'}).click();
+    await expect(page.getByRole('button', {name: 'Derived marker. derived marker.'})).toHaveCount(0);
+});
+
 test('restores independent-event calendar selection after cancel', async ({page}) => {
     await page.goto('/events/');
     await page.locator('#globalNewEventButton').click();

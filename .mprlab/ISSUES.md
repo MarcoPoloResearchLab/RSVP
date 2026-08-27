@@ -528,7 +528,7 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Run `make ci`.
   - Run the adapter tests.
 
-- [ ] [F007] (P2) {F003} Add derived markers
+- [x] [F007] (P2) {F003} Add derived markers
   Goal:
   This issue creates markers at typed time offsets from anchor markers.
 

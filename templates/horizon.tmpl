@@ -216,6 +216,17 @@
                                             {{ if .IsEvent }}
                                                 <a href="{{ .EventURL }}">Event controls</a>
                                                 <a href="{{ .RSVPURL }}">RSVP controls</a>
+                                                <form data-resource-form data-method="POST" data-resource-url="{{ $.DerivedCreateURL }}">
+                                                    <input name="anchor_type" type="hidden" value="event">
+                                                    <input name="anchor_id" type="hidden" value="{{ .ID }}">
+                                                    <label>Offset base <select name="anchor_edge"><option value="start">Anchor start</option><option value="end">Anchor end</option></select></label>
+                                                    <label>Offset seconds <input name="offset_seconds" type="number" value="-3600" required></label>
+                                                    <button type="submit">Add derived marker</button>
+                                                </form>
+                                            {{ end }}
+                                            {{ if .IsDerived }}
+                                                <span>Anchor marker: {{ .AnchorMarkerID }}</span>
+                                                <button type="button" data-resource-action="DELETE" data-resource-url="{{ .RuleURL }}">Delete derived marker</button>
                                             {{ end }}
                                             {{ if .CanComplete }}
                                                 <button type="button" data-resource-action="PATCH" data-resource-url="{{ .ProbeURL }}" data-complete-probe>Complete probe</button>

@@ -10,6 +10,7 @@ import (
 	"github.com/tyemirov/RSVP/pkg/handlers/attentionpolicy"
 	"github.com/tyemirov/RSVP/pkg/handlers/calendar"
 	"github.com/tyemirov/RSVP/pkg/handlers/calendarconnection"
+	"github.com/tyemirov/RSVP/pkg/handlers/derivedmarker"
 	"github.com/tyemirov/RSVP/pkg/handlers/event"
 	"github.com/tyemirov/RSVP/pkg/handlers/horizon"
 	"github.com/tyemirov/RSVP/pkg/handlers/lane"
@@ -163,6 +164,11 @@ func (appRoutes *Routes) RegisterRoutes(mux *http.ServeMux) {
 	})
 	mux.Handle(config.WebEvents, protectedChain(eventBaseDispatcher))
 	mux.Handle(config.WebCalendars, protectedChain(calendar.Handler(appRoutes.ApplicationContext)))
+	derivedMarkerResources, derivedMarkerError := derivedmarker.New(appRoutes.ApplicationContext)
+	if derivedMarkerError != nil {
+		panic(derivedMarkerError)
+	}
+	mux.Handle(config.WebDerivedMarkerRules, protectedChain(derivedMarkerResources.Handler()))
 	calendarConnectionResources, calendarConnectionError := calendarconnection.New(appRoutes.ApplicationContext, *appRoutes.EnvConfig, time.Now)
 	if calendarConnectionError == nil {
 		mux.Handle(config.WebCalendarAuthorizationRequests, protectedChain(calendarConnectionResources.AuthorizationRequests()))

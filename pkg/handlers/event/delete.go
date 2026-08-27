@@ -87,6 +87,11 @@ func DeleteHandler(applicationContext *config.ApplicationContext) http.HandlerFu
 			baseHttpHandler.HandleError(httpResponseWriter, deleteRSVPsErr, utils.DatabaseError, "Failed to delete associated RSVPs.")
 			return
 		}
+		if derivedDeleteError := services.DeleteDerivedMarkersForAnchor(tx, models.DerivedAnchorEvent, targetEventID); derivedDeleteError != nil {
+			tx.Rollback()
+			baseHttpHandler.HandleError(httpResponseWriter, derivedDeleteError, utils.DatabaseError, "Failed to delete derived markers.")
+			return
+		}
 		if deleteEventErr := tx.Unscoped().Delete(&eventRecord).Error; deleteEventErr != nil {
 			tx.Rollback()
 			baseHttpHandler.HandleError(httpResponseWriter, deleteEventErr, utils.DatabaseError, "Failed to delete the event.")

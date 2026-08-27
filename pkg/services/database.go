@@ -38,6 +38,8 @@ var canonicalModels = []any{
 	&models.ExternalEventSeriesLink{},
 	&models.ExternalEventLink{},
 	&models.CalendarSync{},
+	&models.DerivedMarkerRule{},
+	&models.DerivedMarker{},
 }
 
 var canonicalTableNames = []string{
@@ -57,6 +59,8 @@ var canonicalTableNames = []string{
 	config.TableExternalEventSeriesLinks,
 	config.TableExternalEventLinks,
 	config.TableCalendarSyncs,
+	config.TableDerivedMarkerRules,
+	config.TableDerivedMarkers,
 }
 
 var canonicalColumns = map[string][]string{
@@ -76,6 +80,8 @@ var canonicalColumns = map[string][]string{
 	config.TableExternalEventSeriesLinks:      {"id", "created_at", "updated_at", "deleted_at", "mapping_id", "event_series_id", "provider_series_id"},
 	config.TableExternalEventLinks:            {"id", "created_at", "updated_at", "deleted_at", "mapping_id", "event_id", "provider_event_id", "provider_series_id"},
 	config.TableCalendarSyncs:                 {"id", "created_at", "updated_at", "deleted_at", "mapping_id", "state", "started_at", "finished_at", "error_code"},
+	config.TableDerivedMarkerRules:            {"id", "created_at", "updated_at", "deleted_at", "lane_id", "anchor_type", "anchor_id", "anchor_edge", "offset_seconds"},
+	config.TableDerivedMarkers:                {"id", "created_at", "updated_at", "deleted_at", "rule_id", "lane_id", "at", "timezone"},
 }
 
 type canonicalForeignKey struct {
@@ -99,6 +105,8 @@ var canonicalForeignKeys = map[string][]canonicalForeignKey{
 	config.TableExternalEventSeriesLinks:      {{"mapping_id", config.TableSourceCalendarMappings, "id"}, {"event_series_id", config.TableEventSeries, "id"}},
 	config.TableExternalEventLinks:            {{"mapping_id", config.TableSourceCalendarMappings, "id"}, {"event_id", config.TableEvents, "id"}},
 	config.TableCalendarSyncs:                 {{"mapping_id", config.TableSourceCalendarMappings, "id"}},
+	config.TableDerivedMarkerRules:            {{"lane_id", config.TableLanes, "id"}},
+	config.TableDerivedMarkers:                {{"rule_id", config.TableDerivedMarkerRules, "id"}, {"lane_id", config.TableLanes, "id"}},
 }
 
 var canonicalUniqueIndexes = map[string][][]string{
@@ -114,6 +122,7 @@ var canonicalUniqueIndexes = map[string][][]string{
 	config.TableIdempotencyRecords:            {{"organizer_id", "operation", "key_hash"}},
 	config.TableExternalEventSeriesLinks:      {{"mapping_id", "provider_series_id"}, {"event_series_id"}},
 	config.TableExternalEventLinks:            {{"mapping_id", "provider_event_id"}, {"event_id"}},
+	config.TableDerivedMarkers:                {{"rule_id"}},
 }
 
 var canonicalCheckConstraints = map[string][]string{
@@ -126,6 +135,7 @@ var canonicalCheckConstraints = map[string][]string{
 	config.TableCalendarAuthorizationRequests: {"calendar_authorization_provider"},
 	config.TableCalendarConnections:           {"calendar_connection_provider", "calendar_connection_status"},
 	config.TableCalendarSyncs:                 {"calendar_sync_state"},
+	config.TableDerivedMarkerRules:            {"derived_anchor_type", "derived_anchor_edge"},
 }
 
 // InitDatabase opens a canonical database or stops application startup.

@@ -25,6 +25,7 @@ type horizonViewData struct {
 	AttentionCreateURL       string
 	CalendarAuthorizationURL string
 	CalendarConnection       *horizonConnectionView
+	DerivedCreateURL         string
 }
 
 type horizonConnectionView struct {
@@ -93,16 +94,20 @@ type horizonAttentionView struct {
 }
 
 type horizonMarkerView struct {
-	ID          string
-	Type        services.HorizonMarkerType
-	Title       string
-	Position    string
-	IsEvent     bool
-	EventURL    string
-	RSVPURL     string
-	ProbeState  models.ProbeState
-	ProbeURL    string
-	CanComplete bool
+	ID             string
+	Type           services.HorizonMarkerType
+	Title          string
+	Position       string
+	IsEvent        bool
+	EventURL       string
+	RSVPURL        string
+	ProbeState     models.ProbeState
+	ProbeURL       string
+	CanComplete    bool
+	IsDerived      bool
+	RuleID         string
+	AnchorMarkerID string
+	RuleURL        string
 }
 
 func newHorizonViewData(projection services.HorizonProjection, referenceTime time.Time) (horizonViewData, error) {
@@ -124,6 +129,7 @@ func newHorizonViewData(projection services.HorizonProjection, referenceTime tim
 		StylesURL: config.HorizonStylesPath, ScriptURL: config.HorizonScriptPath,
 		CalendarCreateURL: config.WebCalendars, LaneCreateURL: config.WebLanes,
 		AttentionCreateURL:       config.WebAttentionPolicies,
+		DerivedCreateURL:         config.WebDerivedMarkerRules,
 		CalendarAuthorizationURL: config.WebCalendarAuthorizationRequests,
 		TimeScaleTicks:           make([]horizonTimeScaleTick, 0), Calendars: make([]horizonCalendarView, 0, len(projection.Calendars)),
 	}
@@ -205,8 +211,13 @@ func newHorizonViewData(projection services.HorizonProjection, referenceTime tim
 				}
 				markerView := horizonMarkerView{
 					ID: marker.ID, Type: marker.Type, Title: marker.Title,
-					Position: horizonPosition(markerTime, windowStart, windowEnd),
-					IsEvent:  marker.Type == services.HorizonMarkerEvent,
+					Position:  horizonPosition(markerTime, windowStart, windowEnd),
+					IsEvent:   marker.Type == services.HorizonMarkerEvent,
+					IsDerived: marker.Type == services.HorizonMarkerDerived,
+				}
+				if markerView.IsDerived {
+					markerView.RuleID, markerView.AnchorMarkerID = marker.RuleID, marker.AnchorMarkerID
+					markerView.RuleURL = config.WebDerivedMarkerRules + url.PathEscape(marker.RuleID)
 				}
 				if marker.Type == services.HorizonMarkerProbe {
 					markerView.ProbeState = marker.ProbeState

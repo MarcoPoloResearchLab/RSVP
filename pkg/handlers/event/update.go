@@ -144,6 +144,16 @@ func UpdateEventHandler(applicationContext *config.ApplicationContext) http.Hand
 			baseHttpHandler.HandleError(httpResponseWriter, laneBoundsError, utils.DatabaseError, config.ErrMsgEventUpdate)
 			return
 		}
+		if derivedError := services.RecalculateDerivedMarkersForAnchor(activeTransaction, currentUser.ID, models.DerivedAnchorEvent, existingEventRecord.ID); derivedError != nil {
+			activeTransaction.Rollback()
+			baseHttpHandler.HandleError(httpResponseWriter, derivedError, utils.DatabaseError, config.ErrMsgEventUpdate)
+			return
+		}
+		if laneBoundsError := services.RecalculateTemporalLaneBounds(activeTransaction, existingEventRecord.LaneID); laneBoundsError != nil {
+			activeTransaction.Rollback()
+			baseHttpHandler.HandleError(httpResponseWriter, laneBoundsError, utils.DatabaseError, config.ErrMsgEventUpdate)
+			return
+		}
 		if existingEventRecord.RelationType == models.EventRelationIndependent {
 			eventLane.Title = existingEventRecord.Title
 			if laneTitleError := activeTransaction.Model(&eventLane).Update("title", eventLane.Title).Error; laneTitleError != nil {
