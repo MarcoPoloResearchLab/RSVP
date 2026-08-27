@@ -160,6 +160,73 @@ func TestEventSeriesOccurrencesUseOneLane(testingContext *testing.T) {
 	}
 }
 
+func TestSeriesOccurrenceCreationUsesSeriesLaneAndPreservesRecurrenceBounds(testingContext *testing.T) {
+	fixture := testsupport.NewFixture(testingContext)
+	owner := fixture.CreateUser(testsupport.OwnerUserID)
+	timezone, timezoneError := models.NewTimezone(testsupport.TimezoneName)
+	if timezoneError != nil {
+		testingContext.Fatalf("construct timezone: %v", timezoneError)
+	}
+	if confirmationError := owner.ConfirmTimezone(fixture.Database, timezone); confirmationError != nil {
+		testingContext.Fatalf("confirm organizer timezone: %v", confirmationError)
+	}
+	calendar, calendarError := models.EnsureDefaultCalendar(fixture.Database, owner.ID)
+	if calendarError != nil {
+		testingContext.Fatalf("create calendar: %v", calendarError)
+	}
+	recurrenceLimit := testsupport.FixedStartTime().Add(8 * 24 * time.Hour)
+	lane, laneError := models.NewFiniteLane(calendar.ID, "Series", testsupport.FixedStartTime().Add(-time.Hour), recurrenceLimit, 0)
+	if laneError != nil {
+		testingContext.Fatalf("construct lane: %v", laneError)
+	}
+	if createError := fixture.Database.Create(lane).Error; createError != nil {
+		testingContext.Fatalf("create lane: %v", createError)
+	}
+	series, seriesError := models.NewEventSeries(lane.ID, timezone, models.EventSourceLocal, nil)
+	if seriesError != nil {
+		testingContext.Fatalf("construct series: %v", seriesError)
+	}
+	if createError := fixture.Database.Create(series).Error; createError != nil {
+		testingContext.Fatalf("create series: %v", createError)
+	}
+	occurrenceStart := testsupport.FixedStartTime().Add(7 * 24 * time.Hour)
+	occurrenceEnd := occurrenceStart.Add(2 * time.Hour)
+	occurrence, occurrenceError := models.CreateSeriesOccurrenceIntervalEvent(
+		fixture.Database, owner.ID, series.ID, "Occurrence", "", nil, occurrenceStart, occurrenceEnd, timezone,
+	)
+	if occurrenceError != nil {
+		testingContext.Fatalf("create series occurrence: %v", occurrenceError)
+	}
+	if occurrence.LaneID != lane.ID || occurrence.EventSeriesID == nil || *occurrence.EventSeriesID != series.ID {
+		testingContext.Fatalf("occurrence relationship = lane %q, series %v", occurrence.LaneID, occurrence.EventSeriesID)
+	}
+	var storedLane models.Lane
+	if findError := fixture.Database.First(&storedLane, "id = ?", lane.ID).Error; findError != nil {
+		testingContext.Fatalf("reload series lane: %v", findError)
+	}
+	if storedLane.EndsAt == nil || !storedLane.EndsAt.Equal(recurrenceLimit) {
+		testingContext.Fatalf("series lane end = %v, want recurrence limit %v", storedLane.EndsAt, recurrenceLimit)
+	}
+
+	outOfRangeStart := recurrenceLimit.Add(time.Hour)
+	if _, occurrenceError := models.CreateSeriesOccurrenceIntervalEvent(
+		fixture.Database, owner.ID, series.ID, "Outside recurrence", "", nil, outOfRangeStart, outOfRangeStart.Add(time.Hour), timezone,
+	); !errors.Is(occurrenceError, models.ErrMarkerOutsideLane) {
+		testingContext.Fatalf("out-of-range occurrence error = %v, want %v", occurrenceError, models.ErrMarkerOutsideLane)
+	}
+	if _, occurrenceError := models.CreateSeriesOccurrenceIntervalEvent(
+		fixture.Database, owner.ID, series.ID, "", "", nil, outOfRangeStart, outOfRangeStart.Add(time.Hour), timezone,
+	); occurrenceError == nil {
+		testingContext.Fatal("invalid occurrence creation succeeded")
+	}
+	if findError := fixture.Database.First(&storedLane, "id = ?", lane.ID).Error; findError != nil {
+		testingContext.Fatalf("reload series lane after rejected occurrence: %v", findError)
+	}
+	if storedLane.EndsAt == nil || !storedLane.EndsAt.Equal(recurrenceLimit) {
+		testingContext.Fatalf("series lane changed after rejected occurrence: %v", storedLane.EndsAt)
+	}
+}
+
 func TestProbeRequiresAttentionPolicyLane(testingContext *testing.T) {
 	fixture := testsupport.NewFixture(testingContext)
 	owner := fixture.CreateUser(testsupport.OwnerUserID)

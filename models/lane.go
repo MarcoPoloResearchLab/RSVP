@@ -3,6 +3,7 @@ package models
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/tyemirov/RSVP/pkg/config"
@@ -42,7 +43,7 @@ type Lane struct {
 
 // NewOpenLane constructs one active lane without an end time.
 func NewOpenLane(calendarID string, title string, startsAt time.Time, displayOrder int) (*Lane, error) {
-	lane := &Lane{CalendarID: calendarID, Title: title, Status: LaneStatusActive, StartsAt: startsAt.UTC(), DisplayOrder: displayOrder}
+	lane := &Lane{CalendarID: calendarID, Title: strings.TrimSpace(title), Status: LaneStatusActive, StartsAt: startsAt.UTC(), DisplayOrder: displayOrder}
 	if validationError := lane.Validate(); validationError != nil {
 		return nil, validationError
 	}
@@ -52,7 +53,7 @@ func NewOpenLane(calendarID string, title string, startsAt time.Time, displayOrd
 // NewFiniteLane constructs one active lane with a known end time.
 func NewFiniteLane(calendarID string, title string, startsAt time.Time, endsAt time.Time, displayOrder int) (*Lane, error) {
 	canonicalEnd := endsAt.UTC()
-	lane := &Lane{CalendarID: calendarID, Title: title, Status: LaneStatusActive, StartsAt: startsAt.UTC(), EndsAt: &canonicalEnd, DisplayOrder: displayOrder}
+	lane := &Lane{CalendarID: calendarID, Title: strings.TrimSpace(title), Status: LaneStatusActive, StartsAt: startsAt.UTC(), EndsAt: &canonicalEnd, DisplayOrder: displayOrder}
 	if validationError := lane.Validate(); validationError != nil {
 		return nil, validationError
 	}

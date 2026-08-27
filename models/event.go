@@ -375,7 +375,7 @@ func (event *Event) FindByID(databaseConnection *gorm.DB, eventIdentifier string
 }
 
 func (event *Event) FindByIDAndOwner(databaseConnection *gorm.DB, eventIdentifier string, ownerUserID string) error {
-	return databaseConnection.Preload("Venue").
+	return databaseConnection.Preload("Venue").Preload("Lane").
 		Joins(eventLaneJoin).
 		Joins(eventCalendarJoin).
 		Where("events.id = ? AND calendars.organizer_id = ?", eventIdentifier, ownerUserID).
@@ -414,6 +414,7 @@ func (event *Event) HasDependentEvents(databaseConnection *gorm.DB) (bool, error
 func FindEventsByUserID(databaseConnection *gorm.DB, ownerUserID string, preloadRSVPs bool, preloadVenues bool) ([]Event, error) {
 	var events []Event
 	query := databaseConnection.
+		Preload("Lane").
 		Joins(eventLaneJoin).
 		Joins(eventCalendarJoin).
 		Where("calendars.organizer_id = ?", ownerUserID).
@@ -469,6 +470,13 @@ func RecalculateFiniteLaneEnd(databaseConnection *gorm.DB, laneID string) error 
 	if lane.Status != LaneStatusActive || lane.EndsAt == nil {
 		return nil
 	}
+	var eventSeriesCount int64
+	if countError := databaseConnection.Model(&EventSeries{}).Where("lane_id = ?", laneID).Count(&eventSeriesCount).Error; countError != nil {
+		return fmt.Errorf("count event series for lane %s: %w", laneID, countError)
+	}
+	if eventSeriesCount != 0 {
+		return nil
+	}
 	var laneEvents []Event
 	if findError := databaseConnection.Where("lane_id = ?", laneID).Find(&laneEvents).Error; findError != nil {
 		return findError
@@ -490,31 +498,113 @@ func RecalculateFiniteLaneEnd(databaseConnection *gorm.DB, laneID string) error 
 	return databaseConnection.Save(&lane).Error
 }
 
-// CreateIndependentIntervalEvent creates the default calendar, one finite lane, and one event atomically with the caller transaction.
-func CreateIndependentIntervalEvent(databaseConnection *gorm.DB, organizer *User, title string, description string, venueID *string, startsAt time.Time, endsAt time.Time, referenceTime time.Time, timezone Timezone) (*Event, error) {
+// CreateLocalIntervalEvent creates one independent or dependent local event with canonical lane membership.
+func CreateLocalIntervalEvent(databaseConnection *gorm.DB, organizer *User, calendarID string, anchorEventID *string, title string, description string, venueID *string, startsAt time.Time, endsAt time.Time, referenceTime time.Time, timezone Timezone) (*Event, error) {
 	if confirmationError := organizer.ConfirmTimezone(databaseConnection, timezone); confirmationError != nil {
 		return nil, confirmationError
 	}
-	calendar, calendarError := EnsureDefaultCalendar(databaseConnection, organizer.ID)
-	if calendarError != nil {
-		return nil, calendarError
-	}
-	displayOrder, orderError := NextLaneDisplayOrder(databaseConnection, calendar.ID)
-	if orderError != nil {
-		return nil, orderError
-	}
-	lane, laneError := NewFiniteLane(calendar.ID, title, referenceTime, endsAt, displayOrder)
-	if laneError != nil {
-		return nil, laneError
-	}
-	if createError := databaseConnection.Create(lane).Error; createError != nil {
-		return nil, fmt.Errorf("create independent event lane: %w", createError)
+	var lane Lane
+	relation := IndependentEventRelation()
+	if anchorEventID == nil {
+		var calendar *Calendar
+		if calendarID == "" {
+			defaultCalendar, calendarError := EnsureDefaultCalendar(databaseConnection, organizer.ID)
+			if calendarError != nil {
+				return nil, calendarError
+			}
+			calendar = defaultCalendar
+		} else {
+			var selectedCalendar Calendar
+			if findError := databaseConnection.Where("id = ? AND organizer_id = ?", calendarID, organizer.ID).First(&selectedCalendar).Error; findError != nil {
+				return nil, fmt.Errorf("find calendar %s for organizer %s: %w", calendarID, organizer.ID, findError)
+			}
+			calendar = &selectedCalendar
+		}
+		displayOrder, orderError := NextLaneDisplayOrder(databaseConnection, calendar.ID)
+		if orderError != nil {
+			return nil, orderError
+		}
+		newLane, laneError := NewFiniteLane(calendar.ID, title, referenceTime, endsAt, displayOrder)
+		if laneError != nil {
+			return nil, laneError
+		}
+		if createError := databaseConnection.Create(newLane).Error; createError != nil {
+			return nil, fmt.Errorf("create independent event lane: %w", createError)
+		}
+		lane = *newLane
+	} else {
+		var anchor Event
+		if findError := anchor.FindByIDAndOwner(databaseConnection, *anchorEventID, organizer.ID); findError != nil {
+			return nil, fmt.Errorf("find anchor event %s: %w", *anchorEventID, findError)
+		}
+		if anchor.RelationType == EventRelationDependent || (calendarID != "" && anchor.Lane.CalendarID != calendarID) {
+			return nil, ErrEventMembershipInvalid
+		}
+		lane = anchor.Lane
+		dependentRelation, relationError := DependentEventRelation(anchor.ID)
+		if relationError != nil {
+			return nil, relationError
+		}
+		relation = dependentRelation
+		if lane.EndsAt != nil && endsAt.After(*lane.EndsAt) {
+			canonicalEnd := endsAt.UTC()
+			lane.EndsAt = &canonicalEnd
+			if updateError := databaseConnection.Save(&lane).Error; updateError != nil {
+				return nil, fmt.Errorf("extend dependency lane %s: %w", lane.ID, updateError)
+			}
+		}
 	}
 	eventTime, eventTimeError := NewIntervalEventTime(startsAt, endsAt, timezone)
 	if eventTimeError != nil {
 		return nil, eventTimeError
 	}
-	event, eventError := NewEvent(lane.ID, title, description, venueID, IndependentEventRelation(), eventTime)
+	event, eventError := NewEvent(lane.ID, title, description, venueID, relation, eventTime)
+	if eventError != nil {
+		return nil, eventError
+	}
+	if createError := event.Create(databaseConnection); createError != nil {
+		return nil, createError
+	}
+	if boundsError := RecalculateFiniteLaneEnd(databaseConnection, lane.ID); boundsError != nil {
+		return nil, fmt.Errorf("recalculate lane %s after event creation: %w", lane.ID, boundsError)
+	}
+	return event, nil
+}
+
+// CreateSeriesOccurrenceIntervalEvent creates one local occurrence on its event series lane.
+func CreateSeriesOccurrenceIntervalEvent(databaseConnection *gorm.DB, organizerID string, eventSeriesID string, title string, description string, venueID *string, startsAt time.Time, endsAt time.Time, timezone Timezone) (*Event, error) {
+	var createdEvent *Event
+	transactionError := databaseConnection.Transaction(func(transaction *gorm.DB) error {
+		var createError error
+		createdEvent, createError = createSeriesOccurrenceIntervalEvent(transaction, organizerID, eventSeriesID, title, description, venueID, startsAt, endsAt, timezone)
+		return createError
+	})
+	return createdEvent, transactionError
+}
+
+func createSeriesOccurrenceIntervalEvent(databaseConnection *gorm.DB, organizerID string, eventSeriesID string, title string, description string, venueID *string, startsAt time.Time, endsAt time.Time, timezone Timezone) (*Event, error) {
+	var series EventSeries
+	findError := databaseConnection.Model(&EventSeries{}).
+		Joins("JOIN "+config.TableLanes+" ON "+config.TableLanes+".id = "+config.TableEventSeries+".lane_id AND "+config.TableLanes+".deleted_at IS NULL").
+		Joins("JOIN "+config.TableCalendars+" ON "+config.TableCalendars+".id = "+config.TableLanes+".calendar_id AND "+config.TableCalendars+".deleted_at IS NULL").
+		Where(config.TableEventSeries+".id = ? AND "+config.TableCalendars+".organizer_id = ?", eventSeriesID, organizerID).
+		First(&series).Error
+	if findError != nil {
+		return nil, fmt.Errorf("find event series %s for organizer %s: %w", eventSeriesID, organizerID, findError)
+	}
+	var lane Lane
+	if laneError := databaseConnection.First(&lane, "id = ?", series.LaneID).Error; laneError != nil {
+		return nil, fmt.Errorf("find event series lane %s: %w", series.LaneID, laneError)
+	}
+	relation, relationError := SeriesOccurrenceRelation(series.ID)
+	if relationError != nil {
+		return nil, relationError
+	}
+	eventTime, eventTimeError := NewIntervalEventTime(startsAt, endsAt, timezone)
+	if eventTimeError != nil {
+		return nil, eventTimeError
+	}
+	event, eventError := NewEvent(lane.ID, title, description, venueID, relation, eventTime)
 	if eventError != nil {
 		return nil, eventError
 	}

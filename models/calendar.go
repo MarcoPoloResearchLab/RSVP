@@ -3,6 +3,7 @@ package models
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/tyemirov/RSVP/pkg/config"
 	"gorm.io/gorm"
@@ -47,9 +48,9 @@ type Calendar struct {
 func NewCalendar(organizerID string, name string, symbol string, colorToken string, displayOrder int) (*Calendar, error) {
 	calendar := &Calendar{
 		OrganizerID:  organizerID,
-		Name:         name,
-		Symbol:       symbol,
-		ColorToken:   colorToken,
+		Name:         strings.TrimSpace(name),
+		Symbol:       strings.TrimSpace(symbol),
+		ColorToken:   strings.TrimSpace(colorToken),
 		DisplayOrder: displayOrder,
 		Visible:      true,
 	}
@@ -57,6 +58,29 @@ func NewCalendar(organizerID string, name string, symbol string, colorToken stri
 		return nil, validationError
 	}
 	return calendar, nil
+}
+
+// NextCalendarDisplayOrder returns the next order value for an organizer.
+func NextCalendarDisplayOrder(databaseConnection *gorm.DB, organizerID string) (int, error) {
+	var maximumDisplayOrder *int
+	if maximumError := databaseConnection.Unscoped().Model(&Calendar{}).
+		Select("MAX(display_order)").
+		Where("organizer_id = ?", organizerID).
+		Scan(&maximumDisplayOrder).Error; maximumError != nil {
+		return 0, fmt.Errorf("find maximum calendar order for organizer %s: %w", organizerID, maximumError)
+	}
+	if maximumDisplayOrder == nil {
+		return 0, nil
+	}
+	return *maximumDisplayOrder + 1, nil
+}
+
+// FindCalendarsByOwner returns one organizer's calendars in display order.
+func FindCalendarsByOwner(databaseConnection *gorm.DB, organizerID string) ([]Calendar, error) {
+	var calendars []Calendar
+	queryError := databaseConnection.Where("organizer_id = ?", organizerID).
+		Order("display_order ASC").Order("id ASC").Find(&calendars).Error
+	return calendars, queryError
 }
 
 // Validate checks the calendar invariants.
