@@ -5,6 +5,25 @@
 {{ end }}
 
 {{ define "content" }}
+    {{ if .NeedsTimezoneSetup }}
+    <section class="horizon-view horizon-setup" aria-labelledby="horizon-title" data-horizon-setup tabindex="-1">
+        <header class="horizon-heading">
+            <div>
+                <p class="horizon-eyebrow">Your time, in motion</p>
+                <h1 id="horizon-title">Set up Horizon</h1>
+                <p class="horizon-window">Create your first calendar to use your local timezone and open the 90-day Horizon.</p>
+            </div>
+        </header>
+        <form class="horizon-resource-form horizon-setup-form" data-horizon-setup-form data-resource-url="{{ .CalendarCreateURL }}">
+            <label>Calendar name <input name="name" value="RSVP Events" required></label>
+            <label>Symbol <input name="symbol" value="R" required></label>
+            <input name="color_token" type="hidden" value="rsvp-events">
+            <input name="timezone" type="hidden" data-client-timezone>
+            <button type="submit">Start Horizon</button>
+        </form>
+        <p class="visually-hidden" aria-live="polite" data-horizon-setup-status></p>
+    </section>
+    {{ else }}
     <section
         class="horizon-view"
         aria-labelledby="horizon-title"
@@ -56,8 +75,9 @@
 
         <details class="horizon-management" data-quick-add>
             <summary>Quick add</summary>
-            <form class="horizon-resource-form" data-resource-form data-method="POST" data-resource-url="{{ .NaturalLanguageCreateURL }}">
+            <form class="horizon-resource-form" data-resource-form data-method="POST" data-resource-url="{{ .IngestionDraftCreateURL }}">
                 <h2>Natural-language draft</h2>
+                <input name="source" type="hidden" value="natural_language">
                 <label>Request <textarea name="input_text" required></textarea></label>
                 <label>Calendar <select name="calendar_id" required>{{ range .Calendars }}<option value="{{ .ID }}">{{ .Symbol }} {{ .Name }}</option>{{ end }}</select></label>
                 <input name="reference_time" type="hidden" data-reference-time>
@@ -65,6 +85,7 @@
                 <button type="submit">Parse into draft</button>
             </form>
             <form class="horizon-resource-form" data-resource-form data-ingestion-draft-form data-quick-add-form data-method="POST" data-resource-url="{{ .IngestionDraftCreateURL }}">
+                <input name="source" type="hidden" value="quick">
                 <label>Mode <select name="mode" data-quick-mode><option value="dated_event">Dated event</option><option value="open_lane">Open lane</option></select></label>
                 <label>Calendar <select name="calendar_id" required>{{ range .Calendars }}<option value="{{ .ID }}">{{ .Symbol }} {{ .Name }}</option>{{ end }}</select></label>
                 <label>Title <input name="title" required></label>
@@ -303,6 +324,7 @@
             </div>
         </div>
     </section>
+    {{ end }}
 {{ end }}
 
 {{ define "scripts" }}
