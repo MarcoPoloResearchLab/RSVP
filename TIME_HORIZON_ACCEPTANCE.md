@@ -120,6 +120,8 @@ The issue identifiers refer to [.mprlab/ISSUES.md](.mprlab/ISSUES.md).
 | TH-095 | Venue relationships stay stable in canonical operations. | Canonical fixture comparison. | I002, I003 |
 | TH-096 | No obsolete temporal contract exists. | Source, schema, route, and asset scan. | I003 |
 | TH-097 | Desktop and mobile browsers render the complete horizon. | Deterministic end-to-end suite. | I003 |
+| TH-098 | A new organizer gets Horizon setup before the default window. | HTML setup, typed JSON error, and browser tests. | B043 |
+| TH-099 | Horizon uses one REST interface for methods, errors, and draft creation. | Registered HTTP and browser contract tests. | B044 |
 
 ## Completion Rule
 
