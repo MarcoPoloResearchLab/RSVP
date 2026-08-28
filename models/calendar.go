@@ -10,10 +10,10 @@ import (
 )
 
 const (
-	// DefaultCalendarName is the calendar name for the existing RSVP event workflow.
-	DefaultCalendarName       = "RSVP Events"
+	// DefaultCalendarName is the semantic calendar name for local events.
+	DefaultCalendarName       = "Personal"
 	defaultCalendarSymbol     = "calendar"
-	defaultCalendarColorToken = "rsvp-primary"
+	defaultCalendarColorToken = "personal"
 )
 
 var (
