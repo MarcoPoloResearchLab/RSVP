@@ -1,5 +1,7 @@
 package config
 
+import "time"
+
 const (
 	GoogleCalendarAuthorizationEndpoint = "https://accounts.google.com/o/oauth2/v2/auth"
 	GoogleCalendarListEndpoint          = "https://www.googleapis.com/calendar/v3/users/me/calendarList"
@@ -18,7 +20,6 @@ const (
 	WebCalendarAuthorizationRequests     = "/calendar-authorization-requests/"
 	WebCalendarConnectionCallbacksGoogle = "/calendar-connection-callbacks/google/"
 	WebCalendarConnections               = "/calendar-connections/"
-	WebCalendarSyncs                     = "/calendar-syncs/"
 	WebEvents                            = "/events/"
 	WebDerivedMarkerRules                = "/derived-marker-rules/"
 	WebHorizon                           = "/horizon/"
@@ -199,10 +200,11 @@ const (
 )
 
 const (
-	AttentionClockInterval        = 60 * 1e9
+	AttentionClockInterval        = time.Minute
+	CalendarSyncInterval          = 5 * time.Minute
 	ServerHTTPPort                = 8080
 	ServerHTTPAddress             = "0.0.0.0"
-	ServerGracefulShutdownTimeout = 10 * 1e9
+	ServerGracefulShutdownTimeout = 10 * time.Second
 )
 
 const (

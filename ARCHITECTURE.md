@@ -383,9 +383,7 @@ The machine-readable contract is `api/horizon.openapi.json`.
 | `GET` | `/calendar-connection-callbacks/google/` | Validate the Google consent result without a database change. |
 | `POST` | `/calendar-connections/` | Exchange the approved code and create a connection. |
 | `DELETE` | `/calendar-connections/{connection_id}` | Delete one connection and its credentials. |
-| `PUT` | `/calendar-connections/{connection_id}/source-calendars/` | Replace the selected source calendars. |
-| `POST` | `/calendar-syncs/` | Create a calendar synchronization operation. |
-| `GET` | `/calendar-syncs/{sync_id}` | Read one synchronization result. |
+| `PUT` | `/calendar-connections/{connection_id}/source-calendars/` | Replace and synchronize the selected source calendars. |
 | `POST` | `/derived-marker-rules/` | Create one derived marker rule. |
 | `PATCH` | `/derived-marker-rules/{rule_id}` | Change one derived marker rule. |
 | `DELETE` | `/derived-marker-rules/{rule_id}` | Delete one derived marker rule. |
@@ -405,8 +403,11 @@ An unauthenticated request to `/` keeps the public landing page.
 The current event, RSVP, venue, QR, and public response routes stay current contracts.
 
 Create operations return `201 Created` with a `Location` header.
-A calendar synchronization operation returns `202 Accepted` with a `Location` header.
 Successful delete operations return `204 No Content`.
+
+The server synchronizes each selected source calendar immediately.
+The server repeats the reconciliation every five minutes.
+The browser does not provide synchronization controls.
 
 A malformed request returns `400 Bad Request`.
 A semantically invalid time window returns `422 Unprocessable Content`.

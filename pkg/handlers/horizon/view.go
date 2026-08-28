@@ -73,15 +73,6 @@ type horizonConnectionView struct {
 	Status            models.CalendarConnectionStatus
 	ManagementURL     string
 	SourceCalendarURL string
-	Synchronizations  []horizonSynchronizationView
-}
-
-type horizonSynchronizationView struct {
-	MappingID    string
-	CalendarName string
-	State        string
-	ErrorCode    string
-	CreateURL    string
 }
 
 type horizonTimeScaleTick struct {

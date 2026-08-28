@@ -159,28 +159,12 @@ func (horizonHandler *handler) serveHTTP(responseWriter http.ResponseWriter, req
 		return
 	}
 	var connection models.CalendarConnection
-	connectionError := horizonHandler.baseHandler.ApplicationContext.Database.WithContext(request.Context()).Preload("Mappings.Calendar").First(&connection, "organizer_id = ?", currentUser.ID).Error
+	connectionError := horizonHandler.baseHandler.ApplicationContext.Database.WithContext(request.Context()).First(&connection, "organizer_id = ?", currentUser.ID).Error
 	if connectionError == nil {
 		viewData.CalendarConnection = &horizonConnectionView{
 			ID: connection.ID, Status: connection.Status,
 			ManagementURL:     config.WebCalendarConnections + connection.ID,
 			SourceCalendarURL: config.WebCalendarConnections + connection.ID + "/source-calendars/",
-			Synchronizations:  make([]horizonSynchronizationView, 0, len(connection.Mappings)),
-		}
-		for _, mapping := range connection.Mappings {
-			syncView := horizonSynchronizationView{MappingID: mapping.ID, CalendarName: mapping.Calendar.Name, State: "not synchronized", CreateURL: config.WebCalendarSyncs}
-			var synchronization models.CalendarSync
-			syncError := horizonHandler.baseHandler.ApplicationContext.Database.WithContext(request.Context()).Where("mapping_id = ?", mapping.ID).Order("started_at DESC").First(&synchronization).Error
-			if syncError == nil {
-				syncView.State = string(synchronization.State)
-				if synchronization.ErrorCode != nil {
-					syncView.ErrorCode = *synchronization.ErrorCode
-				}
-			} else if !errors.Is(syncError, gorm.ErrRecordNotFound) {
-				horizonHandler.writeError(responseWriter, http.StatusInternalServerError, horizonInternalErrorCode, horizonInternalErrorMessage, syncError)
-				return
-			}
-			viewData.CalendarConnection.Synchronizations = append(viewData.CalendarConnection.Synchronizations, syncView)
 		}
 	} else if !errors.Is(connectionError, gorm.ErrRecordNotFound) {
 		horizonHandler.writeError(responseWriter, http.StatusInternalServerError, horizonInternalErrorCode, horizonInternalErrorMessage, connectionError)

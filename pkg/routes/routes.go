@@ -2,6 +2,13 @@
 package routes
 
 import (
+	"context"
+	"errors"
+	"html/template"
+	"net/http"
+	"path/filepath"
+	"time"
+
 	"github.com/tyemirov/GAuss/pkg/constants"
 	"github.com/tyemirov/GAuss/pkg/gauss"
 	"github.com/tyemirov/GAuss/pkg/session"
@@ -24,16 +31,13 @@ import (
 	"github.com/tyemirov/RSVP/pkg/services"
 	"github.com/tyemirov/RSVP/pkg/utils"
 	staticassets "github.com/tyemirov/RSVP/static"
-	"html/template"
-	"net/http"
-	"path/filepath"
-	"time"
 )
 
 // Routes holds shared resources and environment configuration.
 type Routes struct {
-	ApplicationContext *config.ApplicationContext
-	EnvConfig          *config.EnvConfig
+	ApplicationContext       *config.ApplicationContext
+	EnvConfig                *config.EnvConfig
+	calendarConnectionRoutes *calendarconnection.Resources
 }
 
 // New creates and returns a new Routes instance.
@@ -187,10 +191,10 @@ func (appRoutes *Routes) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle(config.WebIngestionDrafts, strictProtectedChain(ingestionDraftResources.Handler()))
 	calendarConnectionResources, calendarConnectionError := calendarconnection.New(appRoutes.ApplicationContext, *appRoutes.EnvConfig, time.Now)
 	if calendarConnectionError == nil {
+		appRoutes.calendarConnectionRoutes = calendarConnectionResources
 		mux.Handle(config.WebCalendarAuthorizationRequests, strictProtectedChain(calendarConnectionResources.AuthorizationRequests()))
 		mux.Handle(config.WebCalendarConnectionCallbacksGoogle, strictProtectedChain(calendarConnectionResources.Callback()))
 		mux.Handle(config.WebCalendarConnections, strictProtectedChain(calendarConnectionResources.Connections()))
-		mux.Handle(config.WebCalendarSyncs, strictProtectedChain(calendarConnectionResources.CalendarSyncs()))
 	} else {
 		unavailable := http.HandlerFunc(func(responseWriter http.ResponseWriter, _ *http.Request) {
 			if responseError := handlers.WriteTypedError(responseWriter, http.StatusServiceUnavailable, "calendar_connection_unavailable", "Calendar connection is unavailable."); responseError != nil {
@@ -200,7 +204,6 @@ func (appRoutes *Routes) RegisterRoutes(mux *http.ServeMux) {
 		mux.Handle(config.WebCalendarAuthorizationRequests, strictProtectedChain(unavailable))
 		mux.Handle(config.WebCalendarConnectionCallbacksGoogle, strictProtectedChain(unavailable))
 		mux.Handle(config.WebCalendarConnections, strictProtectedChain(unavailable))
-		mux.Handle(config.WebCalendarSyncs, strictProtectedChain(unavailable))
 	}
 	mux.Handle(config.WebAttentionPolicies, strictProtectedChain(attentionpolicy.Handler(appRoutes.ApplicationContext, time.Now)))
 	mux.Handle(config.WebLanes, strictProtectedChain(lane.Handler(appRoutes.ApplicationContext, time.Now)))
@@ -241,4 +244,30 @@ func (appRoutes *Routes) RegisterRoutes(mux *http.ServeMux) {
 	})
 	mux.Handle(config.WebVenues, protectedChain(venueBaseDispatcher))
 	appRoutes.ApplicationContext.Logger.Println("Application-specific routes registered successfully.")
+}
+
+// RunCalendarSyncClock immediately reconciles calendars and repeats until shutdown.
+func (appRoutes *Routes) RunCalendarSyncClock(ctx context.Context, interval time.Duration) error {
+	if interval <= 0 {
+		return errors.New("calendar synchronization interval must be positive")
+	}
+	if appRoutes.calendarConnectionRoutes == nil {
+		return errors.New("calendar synchronization is unavailable")
+	}
+	synchronize := func() {
+		if synchronizationError := appRoutes.calendarConnectionRoutes.SynchronizeAll(ctx); synchronizationError != nil && !errors.Is(synchronizationError, context.Canceled) {
+			appRoutes.ApplicationContext.Logger.Printf("ERROR: Automatic calendar synchronization failed: %v", synchronizationError)
+		}
+	}
+	synchronize()
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-ticker.C:
+			synchronize()
+		}
+	}
 }

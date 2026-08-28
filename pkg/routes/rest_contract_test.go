@@ -44,8 +44,6 @@ func TestHorizonOpenAPIContainsCanonicalResourceSurface(testingContext *testing.
 		config.WebCalendarConnections:                                       {"post"},
 		config.WebCalendarConnections + "{connection_id}":                   {"get", "delete"},
 		config.WebCalendarConnections + "{connection_id}/source-calendars/": {"get", "put"},
-		config.WebCalendarSyncs:                                             {"post"},
-		config.WebCalendarSyncs + "{sync_id}":                               {"get"},
 		config.WebDerivedMarkerRules:                                        {"post"},
 		config.WebDerivedMarkerRules + "{rule_id}":                          {"get", "patch", "delete"},
 		config.WebIngestionDrafts:                                           {"post"},

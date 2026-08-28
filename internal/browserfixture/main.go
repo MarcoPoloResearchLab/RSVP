@@ -3,6 +3,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -142,7 +143,7 @@ func main() {
 		}
 	})
 	browserBaseURL := "http://" + browserFixtureAddress
-	routes.New(applicationContext, config.EnvConfig{
+	fixtureRoutes := routes.New(applicationContext, config.EnvConfig{
 		CalendarCredentialEncryptionKey: base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{0x42}, 32)),
 		GoogleClientID:                  "browser-client", GoogleClientSecret: "browser-secret",
 		GoogleCalendarAuthorizationEndpoint: browserBaseURL + browserGoogleAuthorizePath,
@@ -151,7 +152,13 @@ func main() {
 		GoogleCalendarEventsEndpoint:        browserBaseURL + browserGoogleEventsPath,
 		NaturalLanguageParserEndpoint:       browserBaseURL + browserNaturalLanguagePath,
 		NaturalLanguageParserAPIKey:         "browser-parser-key",
-	}).RegisterRoutes(mux)
+	})
+	fixtureRoutes.RegisterRoutes(mux)
+	go func() {
+		if synchronizationError := fixtureRoutes.RunCalendarSyncClock(context.Background(), 2*time.Second); synchronizationError != nil {
+			logger.Printf("Calendar synchronization clock stopped: %v", synchronizationError)
+		}
+	}()
 	logger.Printf("Listening on http://%s", browserFixtureAddress)
 	if serveError := http.ListenAndServe(browserFixtureAddress, mux); serveError != nil {
 		logger.Fatalf("Serve browser fixture: %v", serveError)

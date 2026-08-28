@@ -50,13 +50,7 @@
     },
     "/calendar-connections/{connection_id}/source-calendars/": {
       "get": {"operationId": "listSourceCalendars", "responses": {"200": {"description": "Source calendars"}}},
-      "put": {"operationId": "replaceSourceCalendars", "responses": {"200": {"description": "Source calendars replaced"}}}
-    },
-    "/calendar-syncs/": {
-      "post": {"operationId": "createCalendarSync", "responses": {"202": {"description": "Calendar synchronization accepted"}}}
-    },
-    "/calendar-syncs/{sync_id}": {
-      "get": {"operationId": "readCalendarSync", "responses": {"200": {"description": "Calendar synchronization"}}}
+      "put": {"operationId": "replaceSourceCalendars", "responses": {"200": {"description": "Source calendars replaced and synchronized"}}}
     },
     "/derived-marker-rules/": {
       "post": {"operationId": "createDerivedMarkerRule", "responses": {"201": {"description": "Derived marker rule created"}}}

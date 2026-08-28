@@ -2,21 +2,15 @@ package services
 
 import (
 	"context"
-	"crypto/sha256"
-	"crypto/subtle"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
-	"strings"
+	"sync"
 	"time"
 
 	"github.com/tyemirov/RSVP/models"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
-
-const createCalendarSyncOperation = "create_calendar_sync"
 
 // ErrSourceOwnedMarker indicates that provider synchronization owns one event.
 var ErrSourceOwnedMarker = errors.New("source-owned marker fields cannot change locally")
@@ -27,6 +21,7 @@ type CalendarSyncService struct {
 	adapter  CalendarProviderAdapter
 	cipher   *CredentialCipher
 	now      func() time.Time
+	mutex    sync.Mutex
 }
 
 func NewCalendarSyncService(database *gorm.DB, adapter CalendarProviderAdapter, credentialCipher *CredentialCipher, now func() time.Time) (*CalendarSyncService, error) {
@@ -36,29 +31,23 @@ func NewCalendarSyncService(database *gorm.DB, adapter CalendarProviderAdapter, 
 	return &CalendarSyncService{database: database, adapter: adapter, cipher: credentialCipher, now: now}, nil
 }
 
-// Create synchronizes one organizer-owned source mapping and records its result.
-func (service *CalendarSyncService) Create(ctx context.Context, organizerID string, mappingID string, idempotencyKey string) (*models.CalendarSync, bool, error) {
-	if strings.TrimSpace(idempotencyKey) == "" {
-		return nil, false, ErrIdempotencyKeyRequired
-	}
-	payload, _ := json.Marshal(map[string]string{"mapping_id": mappingID})
-	keyHash := sha256.Sum256([]byte(idempotencyKey))
-	requestHash := sha256.Sum256(payload)
-	if existing, found, lookupError := service.readIdempotentSync(ctx, organizerID, keyHash[:], requestHash[:]); lookupError != nil || found {
-		return existing, found, lookupError
-	}
+// Synchronize reconciles one organizer-owned source mapping and records its result.
+func (service *CalendarSyncService) Synchronize(ctx context.Context, organizerID string, mappingID string) (*models.CalendarSync, error) {
+	service.mutex.Lock()
+	defer service.mutex.Unlock()
+
 	mapping, credential, mappingError := service.mappingCredential(ctx, organizerID, mappingID)
 	if mappingError != nil {
-		return nil, false, mappingError
+		return nil, mappingError
 	}
 	startedAt := service.now().UTC()
 	synchronization, syncError := models.NewCalendarSync(mapping.ID, startedAt)
 	if syncError != nil {
-		return nil, false, syncError
+		return nil, syncError
 	}
 	synchronization.State = models.CalendarSyncRunning
 	if createError := service.database.WithContext(ctx).Create(synchronization).Error; createError != nil {
-		return nil, false, fmt.Errorf("create calendar synchronization: %w", createError)
+		return nil, fmt.Errorf("create calendar synchronization: %w", createError)
 	}
 	cursor := ""
 	if mapping.SyncCursor != nil {
@@ -71,8 +60,7 @@ func (service *CalendarSyncService) Create(ctx context.Context, organizerID stri
 		completeReconciliation = true
 	}
 	if providerError != nil {
-		service.failSync(ctx, synchronization, "provider_failed")
-		return nil, false, providerError
+		return nil, errors.Join(providerError, service.failSync(ctx, synchronization, "provider_failed"))
 	}
 	transactionError := service.database.WithContext(ctx).Transaction(func(transaction *gorm.DB) error {
 		var lockedMapping models.SourceCalendarMapping
@@ -85,40 +73,48 @@ func (service *CalendarSyncService) Create(ctx context.Context, organizerID stri
 		finishedAt := service.now().UTC()
 		synchronization.State = models.CalendarSyncSucceeded
 		synchronization.FinishedAt = &finishedAt
-		if saveError := transaction.Save(synchronization).Error; saveError != nil {
-			return saveError
-		}
-		record, recordError := models.NewIdempotencyRecord(organizerID, createCalendarSyncOperation, keyHash[:], requestHash[:], http.StatusAccepted, "calendar_sync", synchronization.ID, finishedAt.Add(idempotencyLifetime))
-		if recordError != nil {
-			return recordError
-		}
-		return transaction.Create(record).Error
+		return transaction.Save(synchronization).Error
 	})
 	if transactionError != nil {
-		service.failSync(ctx, synchronization, "persistence_failed")
-		return nil, false, transactionError
+		return nil, errors.Join(transactionError, service.failSync(ctx, synchronization, "persistence_failed"))
 	}
-	return synchronization, false, nil
+	return synchronization, nil
 }
 
-// Read returns one organizer-owned synchronization result.
-func (service *CalendarSyncService) Read(ctx context.Context, organizerID string, syncID string) (*models.CalendarSync, error) {
-	var synchronization models.CalendarSync
-	if findError := service.database.WithContext(ctx).First(&synchronization, "id = ?", syncID).Error; findError != nil {
-		return nil, findError
+// SynchronizeMappings reconciles each selected source mapping and continues after failures.
+func (service *CalendarSyncService) SynchronizeMappings(ctx context.Context, organizerID string, mappings []models.SourceCalendarMapping) error {
+	var synchronizationErrors []error
+	for mappingIndex := range mappings {
+		if _, synchronizationError := service.Synchronize(ctx, organizerID, mappings[mappingIndex].ID); synchronizationError != nil {
+			synchronizationErrors = append(synchronizationErrors, fmt.Errorf("synchronize mapping %s: %w", mappings[mappingIndex].ID, synchronizationError))
+		}
 	}
-	var ownerID string
-	ownerError := service.database.WithContext(ctx).Table("source_calendar_mappings AS mappings").
-		Select("connections.organizer_id").
+	return errors.Join(synchronizationErrors...)
+}
+
+// SynchronizeAll reconciles every selected source calendar on a connected account.
+func (service *CalendarSyncService) SynchronizeAll(ctx context.Context) error {
+	type ownedMapping struct {
+		ID          string
+		OrganizerID string
+	}
+	var mappings []ownedMapping
+	findError := service.database.WithContext(ctx).Table("source_calendar_mappings AS mappings").
+		Select("mappings.id, connections.organizer_id").
 		Joins("JOIN calendar_connections AS connections ON connections.id = mappings.connection_id AND connections.deleted_at IS NULL").
-		Where("mappings.id = ? AND mappings.deleted_at IS NULL", synchronization.MappingID).Scan(&ownerID).Error
-	if ownerError != nil {
-		return nil, ownerError
+		Where("mappings.deleted_at IS NULL AND connections.status = ?", models.CalendarConnectionConnected).
+		Order("mappings.id ASC").
+		Scan(&mappings).Error
+	if findError != nil {
+		return fmt.Errorf("list calendar synchronization mappings: %w", findError)
 	}
-	if ownerID != organizerID {
-		return nil, ErrResourceForbidden
+	var synchronizationErrors []error
+	for _, mapping := range mappings {
+		if _, synchronizationError := service.Synchronize(ctx, mapping.OrganizerID, mapping.ID); synchronizationError != nil {
+			synchronizationErrors = append(synchronizationErrors, fmt.Errorf("synchronize mapping %s: %w", mapping.ID, synchronizationError))
+		}
 	}
-	return &synchronization, nil
+	return errors.Join(synchronizationErrors...)
 }
 
 func (service *CalendarSyncService) mappingCredential(ctx context.Context, organizerID string, mappingID string) (*models.SourceCalendarMapping, CalendarProviderCredential, error) {
@@ -442,33 +438,11 @@ func deleteExternalEvent(database *gorm.DB, mappingID string, providerEventID st
 	return database.Unscoped().Delete(&models.Lane{}, "id = ?", laneID).Error
 }
 
-func (service *CalendarSyncService) failSync(ctx context.Context, synchronization *models.CalendarSync, code string) {
+func (service *CalendarSyncService) failSync(ctx context.Context, synchronization *models.CalendarSync, code string) error {
 	finishedAt := service.now().UTC()
 	synchronization.State, synchronization.FinishedAt, synchronization.ErrorCode = models.CalendarSyncFailed, &finishedAt, &code
-	_ = service.database.WithContext(ctx).Save(synchronization).Error
-}
-
-func (service *CalendarSyncService) readIdempotentSync(ctx context.Context, organizerID string, keyHash []byte, requestHash []byte) (*models.CalendarSync, bool, error) {
-	var record models.IdempotencyRecord
-	findError := service.database.WithContext(ctx).First(&record, "organizer_id = ? AND operation = ? AND key_hash = ?", organizerID, createCalendarSyncOperation, keyHash).Error
-	if errors.Is(findError, gorm.ErrRecordNotFound) {
-		return nil, false, nil
+	if saveError := service.database.WithContext(ctx).Save(synchronization).Error; saveError != nil {
+		return fmt.Errorf("record failed calendar synchronization: %w", saveError)
 	}
-	if findError != nil {
-		return nil, false, findError
-	}
-	if !record.ExpiresAt.After(service.now().UTC()) {
-		if deleteError := service.database.WithContext(ctx).Unscoped().Delete(&record).Error; deleteError != nil {
-			return nil, false, deleteError
-		}
-		return nil, false, nil
-	}
-	if subtle.ConstantTimeCompare(record.RequestHash, requestHash) != 1 {
-		return nil, false, ErrIdempotencyConflict
-	}
-	var synchronization models.CalendarSync
-	if findError := service.database.WithContext(ctx).First(&synchronization, "id = ?", record.ResourceID).Error; findError != nil {
-		return nil, false, findError
-	}
-	return &synchronization, true, nil
+	return nil
 }

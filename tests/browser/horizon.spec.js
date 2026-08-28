@@ -191,7 +191,7 @@ test('shows and completes a durable attention probe', async ({page}) => {
     await expect(waitingLane.locator('[data-probe-state="pending"]')).toBeVisible();
 });
 
-test('connects Google Calendar and selects two source calendars', async ({page}) => {
+test('connects Google Calendar and synchronizes selected calendars automatically', async ({page}) => {
     await openCalendarAndLaneSettings(page);
     await page.getByRole('button', {name: 'Connect Google Calendar'}).click();
     await expect(page.locator('[data-calendar-confirmation]')).toBeVisible();
@@ -210,16 +210,14 @@ test('connects Google Calendar and selects two source calendars', async ({page})
 
     await expect(page.locator('.horizon-calendar-toggle', {hasText: 'Google Personal'})).toBeVisible();
     await expect(page.locator('.horizon-calendar-toggle', {hasText: 'Google Work'})).toBeVisible();
+    await expect(page.getByRole('button', {name: /Synchronize/})).toHaveCount(0);
+    await expect(page.locator('[data-lane-id]', {hasText: 'Ada provider birthday'})).toHaveCount(2);
+    await expect(page.locator('[data-lane-id]', {hasText: 'Lin provider birthday'})).toHaveCount(2);
+    await expect(page.locator('[data-lane-id]', {hasText: 'Maya provider birthday'})).toHaveCount(2);
 
-    await openCalendarAndLaneSettings(page);
-    await page.getByRole('button', {name: 'Synchronize Google Personal'}).click();
-    await expect(page.locator('[data-lane-id]', {hasText: 'Ada provider birthday'})).toBeVisible();
-    await expect(page.locator('[data-lane-id]', {hasText: 'Lin provider birthday'})).toBeVisible();
-    await expect(page.locator('[data-lane-id]', {hasText: 'Maya provider birthday'})).toBeVisible();
-
-    await openCalendarAndLaneSettings(page);
-    await page.getByRole('button', {name: 'Synchronize Google Personal'}).click();
-    await expect(page.locator('[data-lane-id]', {hasText: 'Ada provider birthday updated'})).toBeVisible();
+    await page.waitForTimeout(2500);
+    await page.reload();
+    await expect(page.locator('[data-lane-id]', {hasText: 'Ada provider birthday updated'})).toHaveCount(2);
     await expect(page.locator('[data-lane-id]', {hasText: 'Lin provider birthday'})).toHaveCount(0);
     await expect(page.locator('[data-lane-id]', {hasText: 'Maya provider birthday'})).toHaveCount(0);
 

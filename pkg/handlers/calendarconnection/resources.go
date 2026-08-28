@@ -2,6 +2,7 @@
 package calendarconnection
 
 import (
+	"context"
 	"crypto/rand"
 	"errors"
 	"html/template"
@@ -61,68 +62,6 @@ func New(applicationContext *config.ApplicationContext, environmentConfig config
 		return nil, syncServiceError
 	}
 	return &Resources{applicationContext: applicationContext, service: service, syncService: syncService}, nil
-}
-
-// CalendarSyncs returns the synchronization collection and item handler.
-func (resources *Resources) CalendarSyncs() http.Handler {
-	return http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
-		setPrivateHeaders(responseWriter)
-		currentUser, userFound := currentOrganizer(request)
-		if !userFound {
-			writeError(resources.applicationContext, responseWriter, http.StatusUnauthorized, "authentication_required", "Authentication is required.", nil)
-			return
-		}
-		if resources.syncService == nil {
-			writeError(resources.applicationContext, responseWriter, http.StatusServiceUnavailable, "calendar_sync_unavailable", "Calendar synchronization is unavailable.", nil)
-			return
-		}
-		if request.URL.Path == config.WebCalendarSyncs {
-			if request.Method != http.MethodPost {
-				responseWriter.Header().Set("Allow", http.MethodPost)
-				writeError(resources.applicationContext, responseWriter, http.StatusMethodNotAllowed, "method_not_allowed", http.StatusText(http.StatusMethodNotAllowed), nil)
-				return
-			}
-			var body struct {
-				MappingID string `json:"mapping_id"`
-			}
-			if decodeError := handlers.DecodeJSON(responseWriter, request, requestBodyBytes, &body); decodeError != nil {
-				writeDecodeError(resources.applicationContext, responseWriter, decodeError)
-				return
-			}
-			synchronization, reused, createError := resources.syncService.Create(request.Context(), currentUser.ID, body.MappingID, request.Header.Get(config.IdempotencyKeyHeader))
-			if createError != nil {
-				writeServiceError(resources.applicationContext, responseWriter, createError)
-				return
-			}
-			statusCode := http.StatusAccepted
-			if reused {
-				statusCode = http.StatusOK
-			}
-			responseWriter.Header().Set("Location", config.WebCalendarSyncs+synchronization.ID)
-			if encodeError := handlers.WriteJSON(responseWriter, statusCode, synchronization); encodeError != nil {
-				resources.applicationContext.Logger.Printf("ERROR: Write calendar synchronization response: %v", encodeError)
-			}
-			return
-		}
-		syncID := strings.Trim(strings.TrimPrefix(request.URL.Path, config.WebCalendarSyncs), "/")
-		if syncID == "" || strings.Contains(syncID, "/") {
-			http.NotFound(responseWriter, request)
-			return
-		}
-		if request.Method != http.MethodGet {
-			responseWriter.Header().Set("Allow", http.MethodGet)
-			writeError(resources.applicationContext, responseWriter, http.StatusMethodNotAllowed, "method_not_allowed", http.StatusText(http.StatusMethodNotAllowed), nil)
-			return
-		}
-		synchronization, readError := resources.syncService.Read(request.Context(), currentUser.ID, syncID)
-		if readError != nil {
-			writeServiceError(resources.applicationContext, responseWriter, readError)
-			return
-		}
-		if encodeError := handlers.WriteJSON(responseWriter, http.StatusOK, synchronization); encodeError != nil {
-			resources.applicationContext.Logger.Printf("ERROR: Write calendar synchronization response: %v", encodeError)
-		}
-	})
 }
 
 // NewWithService constructs connection resources with an existing service.
@@ -336,6 +275,11 @@ func (resources *Resources) replaceSources(currentUser *models.User, connectionI
 		writeServiceError(resources.applicationContext, responseWriter, replaceError)
 		return
 	}
+	if resources.syncService != nil {
+		if synchronizationError := resources.syncService.SynchronizeMappings(request.Context(), currentUser.ID, mappings); synchronizationError != nil {
+			resources.applicationContext.Logger.Printf("ERROR: Automatic calendar synchronization failed: %v", synchronizationError)
+		}
+	}
 	type mappingRepresentation struct {
 		ID                 string `json:"id"`
 		CalendarID         string `json:"calendar_id"`
@@ -348,6 +292,14 @@ func (resources *Resources) replaceSources(currentUser *models.User, connectionI
 	if encodeError := handlers.WriteJSON(responseWriter, http.StatusOK, map[string]any{"mappings": response}); encodeError != nil {
 		resources.applicationContext.Logger.Printf("ERROR: Write source calendar selection response: %v", encodeError)
 	}
+}
+
+// SynchronizeAll reconciles every selected source calendar.
+func (resources *Resources) SynchronizeAll(ctx context.Context) error {
+	if resources.syncService == nil {
+		return errors.New("calendar synchronization is unavailable")
+	}
+	return resources.syncService.SynchronizeAll(ctx)
 }
 
 func writeConnection(applicationContext *config.ApplicationContext, responseWriter http.ResponseWriter, statusCode int, connection *models.CalendarConnection) {
