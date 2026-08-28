@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	gaussConstants "github.com/tyemirov/GAuss/pkg/constants"
@@ -100,7 +101,15 @@ func main() {
 			return
 		}
 		responseWriter.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(responseWriter, `{"items":[{"id":"google-personal","summary":"Google Personal","timeZone":"America/Los_Angeles","backgroundColor":"#405060"},{"id":"google-work","summary":"Google Work","timeZone":"America/Los_Angeles","backgroundColor":"#102030"}]}`)
+		if request.URL.Query().Get("syncToken") != "" {
+			fmt.Fprint(responseWriter, `{"items":[],"nextSyncToken":"browser-calendar-list-2"}`)
+			return
+		}
+		if request.URL.Query().Get("showHidden") != "true" {
+			http.Error(responseWriter, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+			return
+		}
+		fmt.Fprint(responseWriter, `{"items":[{"id":"google-primary","summary":"temirov@gmail.com","timeZone":"America/Los_Angeles","backgroundColor":"#9a9cff","selected":true,"accessRole":"owner","primary":true},{"id":"google-holidays","summary":"Holidays","timeZone":"America/Los_Angeles","backgroundColor":"#42d692","selected":true,"accessRole":"reader"},{"id":"google-family","summary":"Family","timeZone":"America/Los_Angeles","backgroundColor":"#9fc6e7","selected":false,"accessRole":"reader"}],"nextSyncToken":"browser-calendar-list-1"}`)
 	})
 	mux.HandleFunc(browserGoogleEventsPath+"/", func(responseWriter http.ResponseWriter, request *http.Request) {
 		if request.Header.Get("Authorization") != "Bearer browser-access" || request.URL.Query().Get("singleEvents") != "true" || request.URL.Query().Get("showDeleted") != "true" {
@@ -108,11 +117,31 @@ func main() {
 			return
 		}
 		responseWriter.Header().Set("Content-Type", "application/json")
-		if request.URL.Query().Get("syncToken") == "browser-sync-1" {
-			fmt.Fprint(responseWriter, `{"timeZone":"America/Los_Angeles","items":[{"id":"birthday-ada","status":"confirmed","summary":"Ada provider birthday updated","start":{"date":"2026-09-15"},"end":{"date":"2026-09-16"}},{"id":"birthday-lin","status":"cancelled"},{"id":"birthday-maya","status":"cancelled"}],"nextSyncToken":"browser-sync-2"}`)
+		if strings.HasSuffix(request.URL.Path, "/google-holidays/events") {
+			if request.URL.Query().Get("syncToken") != "" {
+				fmt.Fprint(responseWriter, `{"timeZone":"America/Los_Angeles","items":[],"nextSyncToken":"browser-holidays-sync-2"}`)
+				return
+			}
+			fmt.Fprint(responseWriter, `{"timeZone":"America/Los_Angeles","items":[{"id":"holiday-founders","status":"confirmed","summary":"Provider Founders Day","start":{"date":"2026-09-20"},"end":{"date":"2026-09-21"}},{"id":"holiday-autumn","status":"confirmed","summary":"Provider Autumn Holiday","start":{"date":"2026-10-12"},"end":{"date":"2026-10-13"}}],"nextSyncToken":"browser-holidays-sync-1"}`)
 			return
 		}
-		fmt.Fprint(responseWriter, `{"timeZone":"America/Los_Angeles","items":[{"id":"birthday-ada","status":"confirmed","summary":"Ada provider birthday","start":{"date":"2026-09-15"},"end":{"date":"2026-09-16"}},{"id":"birthday-lin","status":"confirmed","summary":"Lin provider birthday","start":{"date":"2026-10-01"},"end":{"date":"2026-10-02"}},{"id":"birthday-maya","status":"confirmed","summary":"Maya provider birthday","start":{"date":"2026-10-20"},"end":{"date":"2026-10-21"}}],"nextSyncToken":"browser-sync-1"}`)
+		if strings.HasSuffix(request.URL.Path, "/google-family/events") {
+			if request.URL.Query().Get("syncToken") != "" {
+				fmt.Fprint(responseWriter, `{"timeZone":"America/Los_Angeles","items":[],"nextSyncToken":"browser-family-sync-2"}`)
+				return
+			}
+			fmt.Fprint(responseWriter, `{"timeZone":"America/Los_Angeles","items":[{"id":"family-dinner-1","recurringEventId":"family-dinner","status":"confirmed","summary":"Provider family dinner","start":{"dateTime":"2026-09-18T18:00:00-07:00","timeZone":"America/Los_Angeles"},"end":{"dateTime":"2026-09-18T19:00:00-07:00","timeZone":"America/Los_Angeles"}},{"id":"family-dinner-2","recurringEventId":"family-dinner","status":"confirmed","summary":"Provider family dinner","start":{"dateTime":"2026-09-25T18:00:00-07:00","timeZone":"America/Los_Angeles"},"end":{"dateTime":"2026-09-25T19:00:00-07:00","timeZone":"America/Los_Angeles"}}],"nextSyncToken":"browser-family-sync-1"}`)
+			return
+		}
+		if !strings.HasSuffix(request.URL.Path, "/google-primary/events") {
+			http.Error(responseWriter, http.StatusText(http.StatusNotFound), http.StatusNotFound)
+			return
+		}
+		if request.URL.Query().Get("syncToken") != "" {
+			fmt.Fprint(responseWriter, `{"timeZone":"America/Los_Angeles","items":[{"id":"primary-review","eventType":"default","status":"confirmed","summary":"Primary review birthday","start":{"dateTime":"2026-09-10T09:00:00-07:00","timeZone":"America/Los_Angeles"},"end":{"dateTime":"2026-09-10T10:00:00-07:00","timeZone":"America/Los_Angeles"}},{"id":"birthday-ada","eventType":"default","status":"confirmed","summary":"Ada provider birthday updated","start":{"date":"2026-09-15"},"end":{"date":"2026-09-16"}},{"id":"birthday-lin","status":"cancelled"},{"id":"birthday-maya","status":"cancelled"}],"nextSyncToken":"browser-primary-sync-2"}`)
+			return
+		}
+		fmt.Fprint(responseWriter, `{"timeZone":"America/Los_Angeles","items":[{"id":"primary-review","eventType":"default","status":"confirmed","summary":"Primary review","start":{"dateTime":"2026-09-10T09:00:00-07:00","timeZone":"America/Los_Angeles"},"end":{"dateTime":"2026-09-10T10:00:00-07:00","timeZone":"America/Los_Angeles"}},{"id":"primary-future-type","eventType":"providerFutureType","status":"confirmed","summary":"Provider future event","start":{"dateTime":"2026-09-11T09:00:00-07:00","timeZone":"America/Los_Angeles"},"end":{"dateTime":"2026-09-11T10:00:00-07:00","timeZone":"America/Los_Angeles"}},{"id":"birthday-ada","eventType":"default","status":"confirmed","summary":"Ada provider birthday","start":{"date":"2026-09-15"},"end":{"date":"2026-09-16"}},{"id":"birthday-lin","eventType":"birthday","status":"confirmed","summary":"Lin provider birthday","start":{"date":"2026-10-01"},"end":{"date":"2026-10-02"}},{"id":"birthday-maya","birthdayProperties":{},"status":"confirmed","summary":"Maya provider birthday","start":{"date":"2026-10-20"},"end":{"date":"2026-10-21"}}],"nextSyncToken":"browser-primary-sync-1"}`)
 	})
 	mux.HandleFunc(browserNaturalLanguagePath, func(responseWriter http.ResponseWriter, request *http.Request) {
 		if request.Method != http.MethodPost || request.Header.Get("Authorization") != "Bearer browser-parser-key" {
