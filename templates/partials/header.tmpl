@@ -6,12 +6,20 @@
             <a class="navbar-brand px-3" href="{{ .URLForEventsManager }}">{{ .EventsManagerLabel }}</a>
             <a class="navbar-brand px-3" href="{{ .URLForVenueManager }}">{{ .VenueManagerLabel }}</a>
         </div>
-        <form action="{{ .URLForLogout }}" method="POST" class="d-inline">
-            <button type="submit" class="btn btn-outline-secondary btn-sm d-inline-flex align-items-center">
-                <img src="{{ .UserPicture }}" alt="User avatar" class="rounded-circle me-2" style="width:24px; height:24px;">
-                {{ .LabelSignOut }}
-            </button>
-        </form>
+        <details class="user-menu" data-user-menu>
+            <summary aria-label="Open user menu">
+                <img src="{{ .UserPicture }}" alt="User avatar" class="rounded-circle">
+                <span>{{ if .UserName }}{{ .UserName }}{{ else }}Account{{ end }}</span>
+            </summary>
+            <div class="user-menu-dropdown">
+                {{ template "header-settings" .Data }}
+                <form action="{{ .URLForLogout }}" method="POST">
+                    <button type="submit" class="user-menu-sign-out">{{ .LabelSignOut }}</button>
+                </form>
+            </div>
+        </details>
     </div>
 </nav>
 {{ end }}
+
+{{ define "header-settings" }}{{ end }}

@@ -57,6 +57,7 @@ if (horizonSetup instanceof HTMLElement) {
 const horizonView = document.querySelector('[data-horizon-view]');
 
 if (horizonView instanceof HTMLElement) {
+    const resourceRoot = document;
     const viewport = horizonView.querySelector('[data-horizon-viewport]');
     const board = horizonView.querySelector('[data-horizon-board]');
     const status = horizonView.querySelector('[data-horizon-status]');
@@ -75,7 +76,7 @@ if (horizonView instanceof HTMLElement) {
     if (!browserTimezone) {
         throw new Error('The browser did not supply an IANA timezone.');
     }
-    for (const timezoneInput of horizonView.querySelectorAll('[data-client-timezone]')) {
+    for (const timezoneInput of resourceRoot.querySelectorAll('[data-client-timezone]')) {
         if (!(timezoneInput instanceof HTMLInputElement)) {
             throw new TypeError('A timezone input is invalid.');
         }
@@ -119,7 +120,7 @@ if (horizonView instanceof HTMLElement) {
         return payload;
     };
 
-    for (const kindSelect of horizonView.querySelectorAll('[data-lane-kind]')) {
+    for (const kindSelect of resourceRoot.querySelectorAll('[data-lane-kind]')) {
         if (!(kindSelect instanceof HTMLSelectElement)) {
             throw new TypeError('A lane kind control is invalid.');
         }
@@ -173,7 +174,7 @@ if (horizonView instanceof HTMLElement) {
         });
     }
 
-    for (const resourceForm of horizonView.querySelectorAll('[data-resource-form]')) {
+    for (const resourceForm of resourceRoot.querySelectorAll('[data-resource-form]')) {
         if (!(resourceForm instanceof HTMLFormElement)) {
             throw new TypeError('A resource form is invalid.');
         }
@@ -207,7 +208,7 @@ if (horizonView instanceof HTMLElement) {
         });
     }
 
-    for (const actionButton of horizonView.querySelectorAll('[data-resource-action]')) {
+    for (const actionButton of resourceRoot.querySelectorAll('[data-resource-action]')) {
         if (!(actionButton instanceof HTMLButtonElement)) {
             throw new TypeError('A resource action is invalid.');
         }
@@ -247,7 +248,7 @@ if (horizonView instanceof HTMLElement) {
         });
     }
 
-    const authorizationButton = horizonView.querySelector('[data-calendar-authorize]');
+    const authorizationButton = resourceRoot.querySelector('[data-calendar-authorize]');
     if (authorizationButton instanceof HTMLButtonElement) {
         authorizationButton.addEventListener('click', async () => {
             const resourceURL = authorizationButton.dataset.resourceUrl;
@@ -274,9 +275,9 @@ if (horizonView instanceof HTMLElement) {
         });
     }
 
-    const loadSourcesButton = horizonView.querySelector('[data-load-source-calendars]');
-    const saveSourcesButton = horizonView.querySelector('[data-save-source-calendars]');
-    const sourceList = horizonView.querySelector('[data-source-calendar-list]');
+    const loadSourcesButton = resourceRoot.querySelector('[data-load-source-calendars]');
+    const saveSourcesButton = resourceRoot.querySelector('[data-save-source-calendars]');
+    const sourceList = resourceRoot.querySelector('[data-source-calendar-list]');
     if (loadSourcesButton instanceof HTMLButtonElement && saveSourcesButton instanceof HTMLButtonElement && sourceList instanceof HTMLElement) {
         const sourceURL = loadSourcesButton.dataset.sourceUrl;
         if (!sourceURL || sourceURL !== saveSourcesButton.dataset.sourceUrl) {
@@ -335,7 +336,7 @@ if (horizonView instanceof HTMLElement) {
         });
     }
 
-    for (const syncButton of horizonView.querySelectorAll('[data-calendar-sync]')) {
+    for (const syncButton of resourceRoot.querySelectorAll('[data-calendar-sync]')) {
         if (!(syncButton instanceof HTMLButtonElement)) {
             throw new TypeError('A calendar synchronization control is invalid.');
         }

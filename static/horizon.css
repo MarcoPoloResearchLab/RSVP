@@ -155,6 +155,25 @@ main:has(.horizon-view) {
     padding: 0.65rem 0.8rem;
 }
 
+.horizon-settings {
+    display: grid;
+    gap: 0.45rem;
+    min-width: 0;
+}
+
+.horizon-settings > h2 {
+    color: var(--horizon-muted);
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    margin: 0;
+    text-transform: uppercase;
+}
+
+.horizon-settings .horizon-management {
+    margin: 0;
+}
+
 .horizon-management > summary,
 .horizon-lane-controls > summary {
     cursor: pointer;
@@ -522,6 +541,14 @@ main:has(.horizon-view) {
     .fixed-navbar .btn-outline-secondary {
         padding-inline: 0.55rem;
         white-space: nowrap;
+    }
+
+    .fixed-navbar .user-menu > summary {
+        padding-right: 0.25rem;
+    }
+
+    .fixed-navbar .user-menu > summary span {
+        display: none;
     }
 
     .horizon-heading {
