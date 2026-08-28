@@ -193,7 +193,12 @@ func (resources *Resources) Connections() http.Handler {
 				writeServiceError(resources.applicationContext, responseWriter, readError)
 				return
 			}
-			writeConnection(resources.applicationContext, responseWriter, http.StatusOK, connection)
+			synchronization, synchronizationError := readConnectionSynchronization(resources.applicationContext.Database.WithContext(request.Context()), connection.ID)
+			if synchronizationError != nil {
+				writeServiceError(resources.applicationContext, responseWriter, synchronizationError)
+				return
+			}
+			writeConnection(resources.applicationContext, responseWriter, http.StatusOK, connection, &synchronization)
 		case http.MethodDelete:
 			if deleteError := resources.service.DeleteConnection(request.Context(), currentUser.ID, connectionID); deleteError != nil {
 				writeServiceError(resources.applicationContext, responseWriter, deleteError)
@@ -223,7 +228,7 @@ func (resources *Resources) createConnection(currentUser *models.User, responseW
 		statusCode = http.StatusOK
 	}
 	responseWriter.Header().Set("Location", config.WebCalendarConnections+connection.ID)
-	writeConnection(resources.applicationContext, responseWriter, statusCode, connection)
+	writeConnection(resources.applicationContext, responseWriter, statusCode, connection, nil)
 }
 
 func (resources *Resources) listSources(organizerID string, connectionID string, responseWriter http.ResponseWriter, request *http.Request) {
@@ -298,8 +303,11 @@ func (resources *Resources) SynchronizeAll(ctx context.Context) error {
 	return resources.syncService.SynchronizeAll(ctx)
 }
 
-func writeConnection(applicationContext *config.ApplicationContext, responseWriter http.ResponseWriter, statusCode int, connection *models.CalendarConnection) {
+func writeConnection(applicationContext *config.ApplicationContext, responseWriter http.ResponseWriter, statusCode int, connection *models.CalendarConnection, synchronization *connectionSynchronization) {
 	value := map[string]any{"id": connection.ID, "provider": connection.Provider, "status": connection.Status}
+	if synchronization != nil {
+		value["synchronization"] = synchronization
+	}
 	if encodeError := handlers.WriteJSON(responseWriter, statusCode, value); encodeError != nil {
 		applicationContext.Logger.Printf("ERROR: Write calendar connection response: %v", encodeError)
 	}

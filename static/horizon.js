@@ -57,7 +57,7 @@ if (horizonSetup instanceof HTMLElement) {
 const horizonView = document.querySelector('[data-horizon-view]');
 
 if (horizonView instanceof HTMLElement) {
-    const resourceRoot = document;
+    const resourceRoot = horizonView;
     const viewport = horizonView.querySelector('[data-horizon-viewport]');
     const board = horizonView.querySelector('[data-horizon-board]');
     const status = horizonView.querySelector('[data-horizon-status]');
@@ -251,94 +251,6 @@ if (horizonView instanceof HTMLElement) {
                 status.classList.remove('visually-hidden');
                 status.textContent = error instanceof Error ? error.message : 'Resource operation failed.';
                 actionButton.disabled = false;
-            }
-        });
-    }
-
-    const authorizationButton = resourceRoot.querySelector('[data-calendar-authorize]');
-    if (authorizationButton instanceof HTMLButtonElement) {
-        authorizationButton.addEventListener('click', async () => {
-            const resourceURL = authorizationButton.dataset.resourceUrl;
-            if (!resourceURL) {
-                throw new Error('The calendar authorization URL is absent.');
-            }
-            authorizationButton.disabled = true;
-            try {
-                const response = await fetch(resourceURL, {
-                    method: 'POST', credentials: 'same-origin',
-                    headers: {'Content-Type': 'application/json'}, body: '{}',
-                });
-                await requireResourceResponse(response);
-                const body = await response.json();
-                if (!body || typeof body.authorization_url !== 'string') {
-                    throw new Error('The calendar authorization response is invalid.');
-                }
-                window.location.assign(body.authorization_url);
-            } catch (error) {
-                status.classList.remove('visually-hidden');
-                status.textContent = error instanceof Error ? error.message : 'Calendar authorization failed.';
-                authorizationButton.disabled = false;
-            }
-        });
-    }
-
-    const loadSourcesButton = resourceRoot.querySelector('[data-load-source-calendars]');
-    const saveSourcesButton = resourceRoot.querySelector('[data-save-source-calendars]');
-    const sourceList = resourceRoot.querySelector('[data-source-calendar-list]');
-    if (loadSourcesButton instanceof HTMLButtonElement && saveSourcesButton instanceof HTMLButtonElement && sourceList instanceof HTMLElement) {
-        const sourceURL = loadSourcesButton.dataset.sourceUrl;
-        if (!sourceURL || sourceURL !== saveSourcesButton.dataset.sourceUrl) {
-            throw new Error('The source calendar URL is invalid.');
-        }
-        loadSourcesButton.addEventListener('click', async () => {
-            loadSourcesButton.disabled = true;
-            try {
-                const response = await fetch(sourceURL, {credentials: 'same-origin', headers: {'Accept': 'application/json'}});
-                await requireResourceResponse(response);
-                const body = await response.json();
-                if (!body || !Array.isArray(body.sources)) {
-                    throw new Error('The source calendar response is invalid.');
-                }
-                sourceList.replaceChildren();
-                for (const source of body.sources) {
-                    if (!source || typeof source.id !== 'string' || typeof source.name !== 'string' || typeof source.selected !== 'boolean') {
-                        throw new Error('A source calendar is invalid.');
-                    }
-                    const label = document.createElement('label');
-                    const input = document.createElement('input');
-                    input.type = 'checkbox';
-                    input.value = source.id;
-                    input.checked = source.selected;
-                    input.dataset.sourceCalendar = '';
-                    label.append(input, document.createTextNode(` ${source.name}`));
-                    sourceList.append(label);
-                }
-                saveSourcesButton.hidden = false;
-            } catch (error) {
-                status.classList.remove('visually-hidden');
-                status.textContent = error instanceof Error ? error.message : 'Source calendar listing failed.';
-                loadSourcesButton.disabled = false;
-            }
-        });
-        saveSourcesButton.addEventListener('click', async () => {
-            saveSourcesButton.disabled = true;
-            const providerCalendarIDs = Array.from(sourceList.querySelectorAll('[data-source-calendar]:checked')).map((input) => {
-                if (!(input instanceof HTMLInputElement)) {
-                    throw new TypeError('A source calendar control is invalid.');
-                }
-                return input.value;
-            });
-            try {
-                const response = await fetch(sourceURL, {
-                    method: 'PUT', credentials: 'same-origin', headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({provider_calendar_ids: providerCalendarIDs, timezone: browserTimezone}),
-                });
-                await requireResourceResponse(response);
-                window.location.reload();
-            } catch (error) {
-                status.classList.remove('visually-hidden');
-                status.textContent = error instanceof Error ? error.message : 'Source calendar selection failed.';
-                saveSourcesButton.disabled = false;
             }
         });
     }

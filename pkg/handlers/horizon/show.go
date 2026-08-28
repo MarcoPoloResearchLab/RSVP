@@ -18,7 +18,6 @@ import (
 	"github.com/tyemirov/RSVP/pkg/handlers"
 	"github.com/tyemirov/RSVP/pkg/middleware"
 	"github.com/tyemirov/RSVP/pkg/services"
-	"gorm.io/gorm"
 )
 
 const (
@@ -158,22 +157,6 @@ func (horizonHandler *handler) serveHTTP(responseWriter http.ResponseWriter, req
 		horizonHandler.writeError(responseWriter, http.StatusInternalServerError, horizonInternalErrorCode, horizonInternalErrorMessage, viewDataError)
 		return
 	}
-	var connection models.CalendarConnection
-	connectionError := horizonHandler.baseHandler.ApplicationContext.Database.WithContext(request.Context()).First(&connection, "organizer_id = ?", currentUser.ID).Error
-	if connectionError == nil {
-		viewData.CalendarConnection = &horizonConnectionView{
-			ID: connection.ID, Status: connection.Status,
-			ManagementURL:     config.WebCalendarConnections + connection.ID,
-			SourceCalendarURL: config.WebCalendarConnections + connection.ID + "/source-calendars/",
-		}
-		if syncStateError := loadConnectionSyncState(horizonHandler.baseHandler.ApplicationContext.Database.WithContext(request.Context()), connection.ID, viewData.CalendarConnection); syncStateError != nil {
-			horizonHandler.writeError(responseWriter, http.StatusInternalServerError, horizonInternalErrorCode, horizonInternalErrorMessage, syncStateError)
-			return
-		}
-	} else if !errors.Is(connectionError, gorm.ErrRecordNotFound) {
-		horizonHandler.writeError(responseWriter, http.StatusInternalServerError, horizonInternalErrorCode, horizonInternalErrorMessage, connectionError)
-		return
-	}
 	var drafts []models.IngestionDraft
 	if draftsError := horizonHandler.baseHandler.ApplicationContext.Database.WithContext(request.Context()).Preload("Calendar").Preload("DerivedMarkerRules").Where("organizer_id = ? AND status IN ?", currentUser.ID, []models.IngestionDraftStatus{models.IngestionDraftReady, models.IngestionDraftIncomplete}).Order("created_at ASC").Find(&drafts).Error; draftsError != nil {
 		horizonHandler.writeError(responseWriter, http.StatusInternalServerError, horizonInternalErrorCode, horizonInternalErrorMessage, draftsError)
@@ -219,50 +202,6 @@ func (horizonHandler *handler) serveHTTP(responseWriter http.ResponseWriter, req
 	}
 	responseWriter.Header().Set("Content-Type", horizonHTMLMediaType+"; charset=utf-8")
 	horizonHandler.baseHandler.RenderView(responseWriter, request, config.TemplateHorizon, viewData)
-}
-
-func loadConnectionSyncState(database *gorm.DB, connectionID string, connectionView *horizonConnectionView) error {
-	var synchronizations []models.CalendarSync
-	queryError := database.Model(&models.CalendarSync{}).
-		Joins("JOIN source_calendar_mappings ON source_calendar_mappings.id = calendar_syncs.mapping_id AND source_calendar_mappings.deleted_at IS NULL").
-		Where("source_calendar_mappings.connection_id = ?", connectionID).
-		Order("calendar_syncs.started_at DESC").
-		Find(&synchronizations).Error
-	if queryError != nil {
-		return fmt.Errorf("read synchronization state for calendar connection %s: %w", connectionID, queryError)
-	}
-	seenMappings := make(map[string]bool)
-	for synchronizationIndex := range synchronizations {
-		synchronization := &synchronizations[synchronizationIndex]
-		if synchronization.State == models.CalendarSyncSucceeded && synchronization.FinishedAt != nil {
-			formattedTime := synchronization.FinishedAt.UTC().Format(time.RFC3339)
-			if connectionView.LastSuccessfulSync == "" || formattedTime > connectionView.LastSuccessfulSync {
-				connectionView.LastSuccessfulSync = formattedTime
-			}
-		}
-		if seenMappings[synchronization.MappingID] {
-			continue
-		}
-		seenMappings[synchronization.MappingID] = true
-		switch synchronization.State {
-		case models.CalendarSyncFailed:
-			connectionView.SyncState = models.CalendarSyncFailed
-			connectionView.SyncError = true
-		case models.CalendarSyncRunning:
-			if !connectionView.SyncError {
-				connectionView.SyncState = models.CalendarSyncRunning
-			}
-		case models.CalendarSyncPending:
-			if connectionView.SyncState == "" || connectionView.SyncState == models.CalendarSyncSucceeded {
-				connectionView.SyncState = models.CalendarSyncPending
-			}
-		case models.CalendarSyncSucceeded:
-			if connectionView.SyncState == "" {
-				connectionView.SyncState = models.CalendarSyncSucceeded
-			}
-		}
-	}
-	return nil
 }
 
 func (horizonHandler *handler) writeError(responseWriter http.ResponseWriter, statusCode int, code string, message string, cause error) {

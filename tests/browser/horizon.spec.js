@@ -10,15 +10,26 @@ test.beforeEach(async ({page}) => {
     await expect(page).toHaveURL(/\/horizon\/$/);
 });
 
-async function openCalendarAndLaneSettings(page) {
-    const userMenu = page.locator('[data-user-menu]');
-    if (!await userMenu.evaluate((element) => element.open)) {
-        await userMenu.locator(':scope > summary').click();
+async function openSettings(page, rubric = 'Calendars & lanes') {
+    const dialog = page.locator('[data-settings-dialog]');
+    if (!await dialog.evaluate((element) => element.open)) {
+        const userMenu = page.locator('[data-user-menu]');
+        if (!await userMenu.evaluate((element) => element.open)) {
+            await userMenu.locator(':scope > summary').click();
+        }
+        await userMenu.getByRole('button', {name: 'Settings', exact: true}).click();
     }
-    const management = page.locator('[data-horizon-management]');
-    if (!await management.evaluate((element) => element.open)) {
-        await management.locator(':scope > summary').click();
+    const rubricTab = dialog.getByRole('tab', {name: rubric, exact: true});
+    if (await rubricTab.getAttribute('aria-selected') !== 'true') {
+        await rubricTab.click();
     }
+}
+
+async function closeSettings(page) {
+    const dialog = page.locator('[data-settings-dialog]');
+    await page.waitForLoadState('domcontentloaded');
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole('button', {name: 'Close settings'}).click();
 }
 
 test('sets up Horizon after the first authentication', async ({context, page}) => {
@@ -101,53 +112,73 @@ test('persists complete calendar visibility for the organizer', async ({context,
     await expect(page.locator('[data-calendar-id="CALBIRTH"]')).toBeVisible();
 });
 
-test('places calendar and lane management in the avatar settings menu', async ({page}) => {
+test('opens global settings from a compact avatar menu', async ({page}) => {
     const userMenu = page.locator('[data-user-menu]');
-    const management = page.locator('[data-horizon-management]');
+    const dialog = page.locator('[data-settings-dialog]');
 
-    await expect(page.locator('main [data-horizon-management]')).toHaveCount(0);
+    await expect(page.locator('main [data-settings-dialog]')).toHaveCount(0);
     await expect(userMenu.getByRole('img', {name: 'User avatar'})).toBeVisible();
-    await expect(management).toBeHidden();
+    await expect(dialog).toBeHidden();
 
     await userMenu.locator(':scope > summary').click();
-    await expect(page.getByRole('heading', {name: 'Settings'})).toBeVisible();
-    await expect(management).toBeVisible();
-    await expect(page.getByRole('heading', {name: 'Google Calendar'})).toBeHidden();
+    await expect(userMenu.getByRole('button', {name: 'Settings', exact: true})).toBeVisible();
+    await expect(userMenu.getByRole('button', {name: 'Sign Out', exact: true})).toBeVisible();
+    await expect(dialog).toBeHidden();
 
-    await management.locator(':scope > summary').click();
-    await expect(page.getByRole('heading', {name: 'Google Calendar'})).toBeVisible();
-    await expect(page.getByRole('heading', {name: 'Create calendar'})).toBeVisible();
-    await expect(page.getByRole('heading', {name: 'Create lane'})).toBeVisible();
+    await openSettings(page);
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByRole('heading', {name: 'Create calendar'})).toBeVisible();
+    await expect(dialog.getByRole('heading', {name: 'Create lane'})).toBeVisible();
+    await expect(page).toHaveURL(/#settings\/calendars-lanes$/);
+
+    await dialog.getByRole('tab', {name: 'Integrations'}).click();
+    await expect(dialog.getByRole('heading', {name: 'Google Calendar'}).first()).toBeVisible();
+    await expect(page).toHaveURL(/#settings\/integrations$/);
+    await page.keyboard.press('Escape');
+    await expect(dialog).toBeHidden();
+    await expect(userMenu.locator(':scope > summary')).toBeFocused();
+
+    await page.goto('/events/');
+    await openSettings(page);
+    await expect(page.locator('[data-settings-dialog]')).toBeVisible();
+    await closeSettings(page);
+
+    await page.goto('/venues/');
+    await openSettings(page);
+    await expect(page.locator('[data-settings-dialog]')).toBeVisible();
 });
 
 test('creates, reorders, resolves, and persists calendar lanes', async ({context, page}) => {
-    await openCalendarAndLaneSettings(page);
-    const calendarForm = page.locator('form[data-resource-url="/calendars/"]');
+    await openSettings(page);
+    const calendarForm = page.locator('form[data-settings-resource-form][data-resource-url="/calendars/"]');
     await calendarForm.locator('[name="name"]').fill('Browser Calendar');
     await calendarForm.locator('[name="symbol"]').fill('B');
     await calendarForm.locator('[name="color_token"]').fill('browser-calendar');
     await calendarForm.getByRole('button', {name: 'Create calendar'}).click();
+    await closeSettings(page);
 
     await expect(page.locator('[data-calendar-toggle]').last()).toHaveAttribute('data-calendar-toggle', /.+/);
     await expect(page.locator('.horizon-calendar-toggle').last()).toContainText('Browser Calendar');
     const calendarID = await page.locator('[data-calendar-toggle]').last().getAttribute('data-calendar-toggle');
     expect(calendarID).toBeTruthy();
 
-    await openCalendarAndLaneSettings(page);
-    const calendarManagement = page.locator(`[data-calendar-management="${calendarID}"]`);
-    await calendarManagement.getByRole('button', {name: 'Move calendar up'}).click();
+    await openSettings(page);
+    const calendarManagement = page.locator(`[data-settings-calendar="${calendarID}"]`);
+    await calendarManagement.getByRole('button', {name: 'Move up'}).click();
+    await closeSettings(page);
     await expect(page.locator('[data-calendar-toggle]').nth(4)).toHaveAttribute('data-calendar-toggle', calendarID);
 
-    await openCalendarAndLaneSettings(page);
-    const laneForm = page.locator('form[data-resource-url="/lanes/"]');
+    await openSettings(page);
+    const laneForm = page.locator('form[data-settings-resource-form][data-resource-url="/lanes/"]');
     await laneForm.locator('[name="calendar_id"]').selectOption(calendarID);
     await laneForm.locator('[name="title"]').fill('Browser open lane');
     await laneForm.getByRole('button', {name: 'Create lane'}).click();
+    await closeSettings(page);
     const openLane = page.locator(`[data-calendar-id="${calendarID}"] [data-lane-id]`, {hasText: 'Browser open lane'});
     await expect(openLane).toBeVisible();
     await expect(openLane).toHaveAttribute('data-lane-open', 'true');
 
-    await openCalendarAndLaneSettings(page);
+    await openSettings(page);
     await laneForm.locator('[name="calendar_id"]').selectOption(calendarID);
     await laneForm.locator('[name="title"]').fill('Browser finite lane');
     await laneForm.locator('[name="kind"]').selectOption('finite');
@@ -158,6 +189,7 @@ test('creates, reorders, resolves, and persists calendar lanes', async ({context
     });
     await laneForm.locator('[name="ends_at"]').fill(localEnd);
     await laneForm.getByRole('button', {name: 'Create lane'}).click();
+    await closeSettings(page);
     const finiteLane = page.locator(`[data-calendar-id="${calendarID}"] [data-lane-id]`, {hasText: 'Browser finite lane'});
     await expect(finiteLane).toBeVisible();
     await expect(finiteLane).toHaveAttribute('data-lane-open', 'false');
@@ -199,7 +231,7 @@ test('shows and completes a durable attention probe', async ({page}) => {
 });
 
 test('connects Google Calendar and synchronizes selected calendars automatically', async ({page}) => {
-    await openCalendarAndLaneSettings(page);
+    await openSettings(page, 'Integrations');
     await page.getByRole('button', {name: 'Connect Google Calendar'}).click();
     await expect(page.locator('[data-calendar-confirmation]')).toBeVisible();
     await expect(page.getByText('Consent verified')).toBeVisible();
@@ -208,12 +240,14 @@ test('connects Google Calendar and synchronizes selected calendars automatically
     await page.getByRole('button', {name: 'Create connection'}).click();
     await expect(page).toHaveURL(/\/horizon\/$/);
 
-    await openCalendarAndLaneSettings(page);
-    await expect(page.getByText('Connection state:')).toBeVisible();
+    await openSettings(page, 'Integrations');
+    await expect(page.getByText('Connected', {exact: true})).toBeVisible();
     await page.getByRole('button', {name: 'Select source calendars'}).click();
     await page.getByLabel('Google Personal').check();
     await page.getByLabel('Google Work').check();
     await page.getByRole('button', {name: 'Save source calendars'}).click();
+
+    await closeSettings(page);
 
     await expect(page.locator('.horizon-calendar-toggle', {hasText: 'Google Personal'})).toBeVisible();
     await expect(page.locator('.horizon-calendar-toggle', {hasText: 'Google Work'})).toBeVisible();
@@ -222,16 +256,20 @@ test('connects Google Calendar and synchronizes selected calendars automatically
     await expect(page.locator('[data-lane-id]', {hasText: 'Lin provider birthday'})).toHaveCount(2);
     await expect(page.locator('[data-lane-id]', {hasText: 'Maya provider birthday'})).toHaveCount(2);
 
-    await page.waitForTimeout(2500);
-    await page.reload();
-    await expect(page.locator('[data-lane-id]', {hasText: 'Ada provider birthday updated'})).toHaveCount(2);
+    await expect.poll(async () => {
+        await page.waitForTimeout(500);
+        await page.reload();
+        return page.locator('[data-lane-id]', {hasText: 'Ada provider birthday updated'}).count();
+    }, {timeout: 10000}).toBe(2);
     await expect(page.locator('[data-lane-id]', {hasText: 'Lin provider birthday'})).toHaveCount(0);
     await expect(page.locator('[data-lane-id]', {hasText: 'Maya provider birthday'})).toHaveCount(0);
 
-    await openCalendarAndLaneSettings(page);
-    await page.getByRole('button', {name: 'Delete connection'}).click();
+    await openSettings(page, 'Integrations');
+    await expect(page.locator('[data-calendar-sync-state]')).not.toBeEmpty();
+    await expect(page.locator('[data-calendar-last-success]')).toHaveAttribute('datetime', /^\d{4}-\d{2}-\d{2}T/);
+    await page.getByRole('button', {name: 'Disconnect Google Calendar'}).click();
     await page.waitForLoadState('networkidle');
-    await openCalendarAndLaneSettings(page);
+    await openSettings(page, 'Integrations');
     await expect(page.getByRole('button', {name: 'Connect Google Calendar'})).toBeVisible();
 });
 
@@ -446,8 +484,16 @@ test('renders the interactive view at the supported mobile width', async ({page}
     expect(headingBox.y).toBeGreaterThanOrEqual(navigationBox.y + navigationBox.height);
 
     await page.locator('[data-user-menu] > summary').click();
-    const settingsBox = await page.locator('.user-menu-dropdown').boundingBox();
+    const menuBox = await page.locator('.user-menu-dropdown').boundingBox();
+    expect(menuBox).not.toBeNull();
+    expect(menuBox.x).toBeGreaterThanOrEqual(0);
+    expect(menuBox.x + menuBox.width).toBeLessThanOrEqual(390);
+
+    await page.getByRole('button', {name: 'Settings', exact: true}).click();
+    const settingsBox = await page.locator('.settings-shell').boundingBox();
     expect(settingsBox).not.toBeNull();
     expect(settingsBox.x).toBeGreaterThanOrEqual(0);
     expect(settingsBox.x + settingsBox.width).toBeLessThanOrEqual(390);
+    await expect(page.getByRole('tab', {name: 'Calendars & lanes'})).toBeVisible();
+    await expect(page.getByRole('tab', {name: 'Integrations'})).toBeVisible();
 });

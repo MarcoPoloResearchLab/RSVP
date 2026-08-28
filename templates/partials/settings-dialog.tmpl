@@ -1,0 +1,140 @@
+{{ define "partials/settings-dialog" }}
+<dialog class="settings-dialog" data-settings-dialog aria-labelledby="settings-title">
+    <div class="settings-shell">
+        <header class="settings-header">
+            <div>
+                <p class="settings-eyebrow">Account workspace</p>
+                <h1 id="settings-title">Settings</h1>
+            </div>
+            <button type="button" class="settings-close" data-settings-close aria-label="Close settings">×</button>
+        </header>
+
+        <div class="settings-layout">
+            <div class="settings-rubrics" role="tablist" aria-label="Settings rubrics">
+                <button type="button" role="tab" id="settings-tab-calendars-lanes" aria-controls="settings-panel-calendars-lanes" aria-selected="true" data-settings-tab="calendars-lanes">Calendars &amp; lanes</button>
+                <button type="button" role="tab" id="settings-tab-integrations" aria-controls="settings-panel-integrations" aria-selected="false" tabindex="-1" data-settings-tab="integrations">Integrations</button>
+            </div>
+
+            <div class="settings-content">
+                <section class="settings-panel" role="tabpanel" id="settings-panel-calendars-lanes" aria-labelledby="settings-tab-calendars-lanes" data-settings-panel="calendars-lanes">
+                    <div class="settings-section-heading">
+                        <div>
+                            <p class="settings-kicker">Calendars &amp; lanes</p>
+                            <h2>Organize the Horizon</h2>
+                        </div>
+                        <p>Calendars control visibility and grouping. Lanes hold independent timelines.</p>
+                    </div>
+
+                    <div class="settings-card-grid">
+                        <form class="settings-card settings-form" data-settings-resource-form data-method="POST" data-resource-url="{{ .CalendarCreateURL }}">
+                            <h3>Create calendar</h3>
+                            <label>Name <input name="name" required></label>
+                            <div class="settings-field-row">
+                                <label>Symbol <input name="symbol" required maxlength="8"></label>
+                                <label>Color token <input name="color_token" required></label>
+                            </div>
+                            <input type="hidden" name="timezone" data-settings-client-timezone>
+                            <button type="submit" class="settings-primary-action">Create calendar</button>
+                        </form>
+
+                        <form class="settings-card settings-form" data-settings-resource-form data-method="POST" data-resource-url="{{ .LaneCreateURL }}">
+                            <h3>Create lane</h3>
+                            <label>Calendar
+                                <select name="calendar_id" required>
+                                    {{ range .Calendars }}<option value="{{ .ID }}">{{ .Symbol }} {{ .Name }}</option>{{ end }}
+                                </select>
+                            </label>
+                            <label>Title <input name="title" required></label>
+                            <div class="settings-field-row">
+                                <label>Kind
+                                    <select name="kind" data-settings-lane-kind>
+                                        <option value="open">Open</option>
+                                        <option value="finite">Finite</option>
+                                    </select>
+                                </label>
+                                <label>End <input type="datetime-local" name="ends_at" data-settings-lane-end></label>
+                            </div>
+                            <input type="hidden" name="timezone" data-settings-client-timezone>
+                            <button type="submit" class="settings-primary-action"{{ if not .Calendars }} disabled{{ end }}>Create lane</button>
+                        </form>
+                    </div>
+
+                    <section class="settings-resource-section" aria-labelledby="settings-calendar-list-title">
+                        <div class="settings-section-heading settings-section-heading-compact">
+                            <div>
+                                <p class="settings-kicker">Manage calendars</p>
+                                <h2 id="settings-calendar-list-title">Presentation and order</h2>
+                            </div>
+                        </div>
+                        {{ if .Calendars }}
+                        <div class="settings-resource-list">
+                            {{ range .Calendars }}
+                            <article class="settings-resource-card" data-settings-calendar="{{ .ID }}">
+                                <form class="settings-form" data-settings-resource-form data-method="PATCH" data-resource-url="{{ .ManagementURL }}">
+                                    <div class="settings-field-row settings-field-row-calendar">
+                                        <label>Name <input name="name" value="{{ .Name }}" required></label>
+                                        <label>Symbol <input name="symbol" value="{{ .Symbol }}" required maxlength="8"></label>
+                                        <label>Color token <input name="color_token" value="{{ .ColorToken }}" required></label>
+                                    </div>
+                                    <button type="submit" class="settings-secondary-action">Save calendar</button>
+                                </form>
+                                <div class="settings-resource-actions" aria-label="Actions for {{ .Name }}">
+                                    {{ if .CanMoveUp }}<button type="button" data-settings-resource-action="PATCH" data-resource-url="{{ .ManagementURL }}" data-display-order="{{ .PreviousOrder }}">Move up</button>{{ end }}
+                                    {{ if .CanMoveDown }}<button type="button" data-settings-resource-action="PATCH" data-resource-url="{{ .ManagementURL }}" data-display-order="{{ .NextOrder }}">Move down</button>{{ end }}
+                                    <button type="button" class="settings-danger-action" data-settings-resource-action="DELETE" data-resource-url="{{ .ManagementURL }}">Delete</button>
+                                </div>
+                            </article>
+                            {{ end }}
+                        </div>
+                        {{ else }}
+                        <p class="settings-empty-state">Create a calendar to begin organizing the Horizon.</p>
+                        {{ end }}
+                    </section>
+                </section>
+
+                <section class="settings-panel" role="tabpanel" id="settings-panel-integrations" aria-labelledby="settings-tab-integrations" data-settings-panel="integrations" hidden>
+                    <div class="settings-section-heading">
+                        <div>
+                            <p class="settings-kicker">Integrations</p>
+                            <h2>Google Calendar</h2>
+                        </div>
+                        <p>RSVP synchronizes selected calendars automatically and retries temporary failures.</p>
+                    </div>
+
+                    <section class="settings-integration-card" data-settings-calendar-connection>
+                        <div class="settings-integration-identity">
+                            <span class="settings-provider-mark" aria-hidden="true">G</span>
+                            <div>
+                                <h3>Google Calendar</h3>
+                                {{ if .CalendarConnection }}
+                                <p class="settings-connection-state"><span aria-hidden="true"></span> Connected</p>
+                                {{ else }}
+                                <p>Bring external events into RSVP as a read-only source.</p>
+                                {{ end }}
+                            </div>
+                        </div>
+
+                        {{ if .CalendarConnection }}
+                        <dl class="settings-sync-status" data-settings-sync-status data-status-url="{{ .CalendarConnection.ManagementURL }}">
+                            <div><dt>Connection</dt><dd>{{ .CalendarConnection.Status }}</dd></div>
+                            <div data-calendar-sync-state-row hidden><dt>Automatic sync</dt><dd data-calendar-sync-state></dd></div>
+                            <div data-calendar-last-success-row hidden><dt>Last completed</dt><dd><time data-calendar-last-success></time></dd></div>
+                        </dl>
+                        <p class="settings-alert" data-calendar-sync-error hidden>Google Calendar did not complete the latest request. RSVP will retry automatically.</p>
+                        <div class="settings-source-controls">
+                            <button type="button" class="settings-primary-action" data-settings-load-source-calendars data-source-url="{{ .CalendarConnection.SourceCalendarURL }}">Select source calendars</button>
+                            <div class="settings-source-list" data-settings-source-calendar-list></div>
+                            <button type="button" class="settings-primary-action" data-settings-save-source-calendars data-source-url="{{ .CalendarConnection.SourceCalendarURL }}" hidden>Save source calendars</button>
+                        </div>
+                        <button type="button" class="settings-danger-action settings-disconnect" data-settings-resource-action="DELETE" data-resource-url="{{ .CalendarConnection.ManagementURL }}">Disconnect Google Calendar</button>
+                        {{ else }}
+                        <button type="button" class="settings-primary-action" data-settings-calendar-authorize data-resource-url="{{ .CalendarAuthorizationURL }}">Connect Google Calendar</button>
+                        {{ end }}
+                    </section>
+                </section>
+            </div>
+        </div>
+        <p class="settings-status visually-hidden" aria-live="polite" data-settings-status></p>
+    </div>
+</dialog>
+{{ end }}

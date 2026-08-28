@@ -288,7 +288,7 @@ func TestHorizonHTMLAndJSONContainOneProjection(testingContext *testing.T) {
 	}
 }
 
-func TestHorizonHTMLShowsCurrentCalendarSynchronizationFailure(testingContext *testing.T) {
+func TestHorizonHTMLDefersCalendarSynchronizationStatus(testingContext *testing.T) {
 	fixture := testsupport.NewFixture(testingContext)
 	testsupport.LoadTemplates(testingContext)
 	owner := fixture.CreateUser(testsupport.OwnerUserID)
@@ -331,6 +331,21 @@ func TestHorizonHTMLShowsCurrentCalendarSynchronizationFailure(testingContext *t
 	if createError := fixture.Database.Create(failed).Error; createError != nil {
 		testingContext.Fatalf("create failed synchronization: %v", createError)
 	}
+	synchronizationQueryCount := 0
+	queryCallbackName := "test:horizon_defers_calendar_synchronization_status"
+	callbackError := fixture.Database.Callback().Query().Before("gorm:query").Register(queryCallbackName, func(queryDatabase *gorm.DB) {
+		if queryDatabase.Statement.Table == config.TableCalendarSyncs {
+			synchronizationQueryCount++
+		}
+	})
+	if callbackError != nil {
+		testingContext.Fatalf("register synchronization query callback: %v", callbackError)
+	}
+	testingContext.Cleanup(func() {
+		if removeError := fixture.Database.Callback().Query().Remove(queryCallbackName); removeError != nil {
+			testingContext.Errorf("remove synchronization query callback: %v", removeError)
+		}
+	})
 
 	response := requestHorizon(testingContext, fixture, owner, config.WebHorizon, horizonHTMLMediaType, referenceTime)
 
@@ -338,10 +353,18 @@ func TestHorizonHTMLShowsCurrentCalendarSynchronizationFailure(testingContext *t
 		testingContext.Fatalf("horizon status = %d, body = %s", response.Code, response.Body.String())
 	}
 	body := response.Body.String()
-	for _, fragment := range []string{`data-calendar-sync-state`, `>failed</strong>`, `data-calendar-sync-error`, succeededAt.UTC().Format(time.RFC3339)} {
+	for _, fragment := range []string{`data-settings-sync-status`, `data-status-url="` + config.WebCalendarConnections + connection.ID + `"`} {
 		if !strings.Contains(body, fragment) {
-			testingContext.Fatalf("horizon synchronization state does not contain %q: %s", fragment, body)
+			testingContext.Fatalf("horizon deferred synchronization contract does not contain %q: %s", fragment, body)
 		}
+	}
+	for _, deferredValue := range []string{`>failed</dd>`, succeededAt.UTC().Format(time.RFC3339)} {
+		if strings.Contains(body, deferredValue) {
+			testingContext.Fatalf("horizon eagerly rendered synchronization value %q", deferredValue)
+		}
+	}
+	if synchronizationQueryCount != 0 {
+		testingContext.Fatalf("Horizon synchronization query count = %d, want 0", synchronizationQueryCount)
 	}
 }
 
