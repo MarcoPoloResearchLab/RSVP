@@ -80,11 +80,25 @@ The parser result stays a draft until explicit confirmation.
 
 Open **Manage horizon**.
 Select **Connect Google Calendar** and complete the separate consent flow.
-Select the source calendars that RSVP can read.
+RSVP imports each Google calendar that has event read access.
+This import includes hidden calendars such as Birthdays, Holidays, and Family.
+RSVP also imports birthday events from the primary Google calendar into `Birthdays`.
+RSVP translates Google API values into useful calendar names.
+RSVP also recognizes the complete title words `birthday`, `birthdays`, and `bday`.
+This rule corrects birthday events that Google labels as ordinary events.
+An unknown Google event type stays in its Google calendar and does not create a new group.
+The first complete import replaces prior local calendar groupings.
 
-Select **Synchronize** for each source calendar.
-Later synchronizations use the saved sync cursor.
-Calendar visibility and display order remain RSVP values.
+Each Google calendar becomes one RSVP calendar.
+Independent events use separate lanes in that calendar.
+Occurrences in one event series use one shared lane.
+
+Google selection sets the initial RSVP calendar visibility.
+RSVP uses the calendar meaning for its name and symbol.
+RSVP gives each visible calendar a distinct presentation color.
+You can then change the RSVP visibility, symbol, color, and display order.
+Background synchronization keeps these RSVP values.
+It imports new Google calendars and applies Google calendar name changes automatically.
 
 ## Use Public Invitations
 
