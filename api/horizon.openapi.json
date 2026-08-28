@@ -49,8 +49,7 @@
       "delete": {"operationId": "deleteCalendarConnection", "responses": {"204": {"description": "Calendar connection deleted"}}}
     },
     "/calendar-connections/{connection_id}/source-calendars/": {
-      "get": {"operationId": "listSourceCalendars", "responses": {"200": {"description": "Source calendars"}}},
-      "put": {"operationId": "replaceSourceCalendars", "responses": {"200": {"description": "Source calendars replaced and synchronized"}}}
+      "get": {"operationId": "listSourceCalendars", "responses": {"200": {"description": "Imported source calendars"}}}
     },
     "/derived-marker-rules/": {
       "post": {"operationId": "createDerivedMarkerRule", "responses": {"201": {"description": "Derived marker rule created"}}}
