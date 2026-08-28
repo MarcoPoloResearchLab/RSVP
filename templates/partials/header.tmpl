@@ -12,14 +12,12 @@
                 <span>{{ if .UserName }}{{ .UserName }}{{ else }}Account{{ end }}</span>
             </summary>
             <div class="user-menu-dropdown">
-                {{ template "header-settings" .Data }}
+                <button type="button" class="user-menu-action" data-settings-open aria-haspopup="dialog">Settings</button>
                 <form action="{{ .URLForLogout }}" method="POST">
-                    <button type="submit" class="user-menu-sign-out">{{ .LabelSignOut }}</button>
+                    <button type="submit" class="user-menu-action">{{ .LabelSignOut }}</button>
                 </form>
             </div>
         </details>
     </div>
 </nav>
 {{ end }}
-
-{{ define "header-settings" }}{{ end }}

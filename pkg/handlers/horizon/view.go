@@ -13,23 +13,21 @@ import (
 const horizonScaleIntervalDays = 7
 
 type horizonViewData struct {
-	NeedsTimezoneSetup       bool
-	Window                   services.HorizonWindowProjection
-	StylesURL                string
-	ScriptURL                string
-	WindowDays               int
-	TodayPosition            *string
-	TimeScaleTicks           []horizonTimeScaleTick
-	Calendars                []horizonCalendarView
-	CalendarCreateURL        string
-	LaneCreateURL            string
-	AttentionCreateURL       string
-	CalendarAuthorizationURL string
-	CalendarConnection       *horizonConnectionView
-	DerivedCreateURL         string
-	IngestionDraftCreateURL  string
-	IngestionDraftViews      []horizonDraftView
-	AnchorEvents             []horizonAnchorView
+	NeedsTimezoneSetup      bool
+	Window                  services.HorizonWindowProjection
+	StylesURL               string
+	ScriptURL               string
+	WindowDays              int
+	TodayPosition           *string
+	TimeScaleTicks          []horizonTimeScaleTick
+	Calendars               []horizonCalendarView
+	CalendarCreateURL       string
+	LaneCreateURL           string
+	AttentionCreateURL      string
+	DerivedCreateURL        string
+	IngestionDraftCreateURL string
+	IngestionDraftViews     []horizonDraftView
+	AnchorEvents            []horizonAnchorView
 }
 
 func newHorizonSetupViewData() horizonViewData {
@@ -66,16 +64,6 @@ type horizonDraftView struct {
 	ProposedLane              string
 	MissingFields             []string
 	DerivedRuleSummaries      []string
-}
-
-type horizonConnectionView struct {
-	ID                 string
-	Status             models.CalendarConnectionStatus
-	SyncState          models.CalendarSyncState
-	SyncError          bool
-	LastSuccessfulSync string
-	ManagementURL      string
-	SourceCalendarURL  string
 }
 
 type horizonTimeScaleTick struct {
@@ -162,13 +150,12 @@ func newHorizonViewData(projection services.HorizonProjection, referenceTime tim
 		Window:    projection.Window,
 		StylesURL: config.HorizonStylesPath, ScriptURL: config.HorizonScriptPath,
 		CalendarCreateURL: config.WebCalendars, LaneCreateURL: config.WebLanes,
-		AttentionCreateURL:       config.WebAttentionPolicies,
-		DerivedCreateURL:         config.WebDerivedMarkerRules,
-		IngestionDraftCreateURL:  config.WebIngestionDrafts,
-		IngestionDraftViews:      make([]horizonDraftView, 0),
-		AnchorEvents:             make([]horizonAnchorView, 0),
-		CalendarAuthorizationURL: config.WebCalendarAuthorizationRequests,
-		TimeScaleTicks:           make([]horizonTimeScaleTick, 0), Calendars: make([]horizonCalendarView, 0, len(projection.Calendars)),
+		AttentionCreateURL:      config.WebAttentionPolicies,
+		DerivedCreateURL:        config.WebDerivedMarkerRules,
+		IngestionDraftCreateURL: config.WebIngestionDrafts,
+		IngestionDraftViews:     make([]horizonDraftView, 0),
+		AnchorEvents:            make([]horizonAnchorView, 0),
+		TimeScaleTicks:          make([]horizonTimeScaleTick, 0), Calendars: make([]horizonCalendarView, 0, len(projection.Calendars)),
 	}
 	localStart := windowStart.In(location)
 	localEnd := windowEnd.In(location)

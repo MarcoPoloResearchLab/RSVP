@@ -8,7 +8,9 @@ import (
 
 	gconstants "github.com/tyemirov/GAuss/pkg/constants"
 	"github.com/tyemirov/GAuss/pkg/session"
+	"github.com/tyemirov/RSVP/models"
 	"github.com/tyemirov/RSVP/pkg/config"
+	"github.com/tyemirov/RSVP/pkg/middleware"
 	"github.com/tyemirov/RSVP/pkg/templates"
 	"github.com/tyemirov/RSVP/pkg/utils"
 )
@@ -34,6 +36,9 @@ type PageData struct {
 	LabelWelcome        string
 	LabelSignOut        string
 	LabelNotSignedIn    string
+	Settings            SettingsViewData
+	SettingsStylesURL   string
+	SettingsScriptURL   string
 }
 
 // LoggedUserData holds essential user information retrieved from the session.
@@ -211,6 +216,8 @@ func (handler *BaseHttpHandler) RenderView(
 		LabelWelcome:        config.LabelWelcome,
 		LabelSignOut:        config.LabelSignOut,
 		LabelNotSignedIn:    config.LabelNotSignedIn,
+		SettingsStylesURL:   config.SettingsStylesPath,
+		SettingsScriptURL:   config.SettingsScriptPath,
 	}
 	if !isPublicPage {
 		loggedUserData := handler.GetUserSessionData(httpRequest)
@@ -219,6 +226,18 @@ func (handler *BaseHttpHandler) RenderView(
 		if pageData.UserName == "" && pageData.UserPicture == "" {
 			handler.ApplicationContext.Logger.Printf("WARN: Rendering non-public view '%s' but user session data (Name/Picture) seems incomplete for %s.", viewName, httpRequest.URL.Path)
 		}
+		currentUser, userFound := httpRequest.Context().Value(middleware.ContextKeyUser).(*models.User)
+		if !userFound || currentUser == nil || currentUser.ID == "" {
+			handler.HandleError(httpResponseWriter, nil, utils.ServerError, utils.ErrMsgInternalServer)
+			return
+		}
+		settings, settingsError := newSettingsViewData(handler.ApplicationContext.Database.WithContext(httpRequest.Context()), currentUser.ID)
+		if settingsError != nil {
+			handler.ApplicationContext.Logger.Printf("ERROR: Build settings for organizer %s: %v", currentUser.ID, settingsError)
+			handler.HandleError(httpResponseWriter, settingsError, utils.ServerError, utils.ErrMsgInternalServer)
+			return
+		}
+		pageData.Settings = settings
 	}
 	templateSet, exists := templates.PrecompiledTemplatesMap[viewName]
 	if !exists {

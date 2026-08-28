@@ -6,7 +6,7 @@ import (
 	"net/http"
 )
 
-//go:embed horizon.css horizon.js
+//go:embed horizon.css horizon.js settings.css settings.js
 var files embed.FS
 
 // Handler returns the embedded static asset handler.

@@ -177,15 +177,11 @@
                 z-index: 1040;
             }
 
-            .user-menu-dropdown:has([data-horizon-settings]) {
-                width: min(54rem, calc(100vw - 1rem));
-            }
-
             .user-menu-dropdown form {
                 margin: 0;
             }
 
-            .user-menu-sign-out {
+            .user-menu-action {
                 background: transparent;
                 border: 1px solid var(--medium-gray);
                 border-radius: 0.375rem;
@@ -197,9 +193,10 @@
                 width: 100%;
             }
 
-            .user-menu-sign-out:hover,
-            .user-menu-sign-out:focus-visible {
+            .user-menu-action:hover,
+            .user-menu-action:focus-visible {
                 border-color: var(--secondary-color);
+                background: var(--light-gray);
                 outline: none;
             }
 
@@ -432,6 +429,7 @@
         {{/* Head block - View template can provide extra CSS/meta via {{define "head"}} */}}
         {{/* The context here is PageData.Data */}}
         {{ block "head" .Data }}{{ end }}
+        {{ if not .IsPublicPage }}<link rel="stylesheet" href="{{ .SettingsStylesURL }}">{{ end }}
     </head>
     <body>
 
@@ -452,6 +450,8 @@
             </nav>
         </header>
     {{ end }}
+
+    {{ if not .IsPublicPage }}{{ template "partials/settings-dialog" .Settings }}{{ end }}
 
     <!-- Main Content Area -->
     <main> <!-- Removed flex-grow, handled by body style -->
@@ -476,6 +476,7 @@
     {{/* Scripts block - View template can provide extra JS via {{define "scripts"}} */}}
     {{/* The context here is PageData.Data */}}
     {{ block "scripts" .Data }}{{ end }}
+    {{ if not .IsPublicPage }}<script src="{{ .SettingsScriptURL }}"></script>{{ end }}
 
     </body>
     </html>

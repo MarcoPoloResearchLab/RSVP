@@ -35,20 +35,22 @@ const (
 )
 
 const (
-	TemplateEvents    = "events"
-	TemplateHorizon   = "horizon"
-	TemplateRSVP      = "rsvp"
-	TemplateRSVPs     = "rsvps"
-	TemplateResponse  = "response"
-	TemplateThankYou  = "thankyou"
-	TemplateVenues    = "venues"
-	TemplateExtension = ".tmpl"
-	TemplateLayout    = "layout"
-	TemplateLanding   = "landing"
-	TemplatesDir      = "templates"
-	PartialsDir       = "partials"
-	HorizonStylesPath = WebStatic + "horizon.css"
-	HorizonScriptPath = WebStatic + "horizon.js"
+	TemplateEvents     = "events"
+	TemplateHorizon    = "horizon"
+	TemplateRSVP       = "rsvp"
+	TemplateRSVPs      = "rsvps"
+	TemplateResponse   = "response"
+	TemplateThankYou   = "thankyou"
+	TemplateVenues     = "venues"
+	TemplateExtension  = ".tmpl"
+	TemplateLayout     = "layout"
+	TemplateLanding    = "landing"
+	TemplatesDir       = "templates"
+	PartialsDir        = "partials"
+	HorizonStylesPath  = WebStatic + "horizon.css"
+	HorizonScriptPath  = WebStatic + "horizon.js"
+	SettingsStylesPath = WebStatic + "settings.css"
+	SettingsScriptPath = WebStatic + "settings.js"
 )
 
 const (

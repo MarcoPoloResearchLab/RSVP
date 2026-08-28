@@ -338,7 +338,7 @@ func TestHorizonHTMLShowsCurrentCalendarSynchronizationFailure(testingContext *t
 		testingContext.Fatalf("horizon status = %d, body = %s", response.Code, response.Body.String())
 	}
 	body := response.Body.String()
-	for _, fragment := range []string{`data-calendar-sync-state`, `>failed</strong>`, `data-calendar-sync-error`, succeededAt.UTC().Format(time.RFC3339)} {
+	for _, fragment := range []string{`data-calendar-sync-state`, `>failed</dd>`, `data-calendar-sync-error`, succeededAt.UTC().Format(time.RFC3339)} {
 		if !strings.Contains(body, fragment) {
 			testingContext.Fatalf("horizon synchronization state does not contain %q: %s", fragment, body)
 		}
