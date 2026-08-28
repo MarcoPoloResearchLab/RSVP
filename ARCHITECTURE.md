@@ -84,8 +84,8 @@ RSVP stores that value as the organizer timezone.
 | Derived marker rule | `id`, `lane_id`, `anchor_type`, `anchor_id`, `anchor_edge`, `offset_seconds` |
 | Derived marker | `id`, `rule_id`, `lane_id`, `at`, `timezone` |
 | Calendar authorization request | `id`, `organizer_id`, `provider`, `state_hash`, `redirect_uri`, `expires_at`, optional `used_at` |
-| Calendar connection | `id`, `organizer_id`, `provider`, encrypted credential fields, `status` |
-| Source calendar mapping | `id`, `connection_id`, `calendar_id`, `provider_calendar_id`, optional `sync_cursor` |
+| Calendar connection | `id`, `organizer_id`, `provider`, encrypted credential fields, `status`, optional `calendar_list_sync_cursor`, optional `calendar_import_cutover_at` |
+| Source calendar mapping | `id`, `connection_id`, `calendar_id`, `provider_calendar_id`, `semantic_group`, optional `sync_cursor` |
 | External event series link | `id`, `mapping_id`, `event_series_id`, `provider_series_id` |
 | External event link | `id`, `mapping_id`, `event_id`, `provider_event_id`, optional `provider_series_id` |
 | Calendar sync | `id`, `mapping_id`, `state`, `started_at`, optional `finished_at`, optional `error_code` |
@@ -105,7 +105,7 @@ The service constructs one valid domain type before persistence.
 
 One organizer cannot have two calendars with the same display order.
 One calendar cannot have two lanes with the same display order.
-One provider calendar cannot have two source mappings in one connection.
+One provider calendar and semantic calendar group cannot have two source mappings in one connection.
 One RSVP calendar cannot have two source calendar mappings.
 One provider series cannot have two external event series links in one mapping.
 One provider event cannot have two external event links in one mapping.
@@ -383,7 +383,7 @@ The machine-readable contract is `api/horizon.openapi.json`.
 | `GET` | `/calendar-connection-callbacks/google/` | Validate the Google consent result without a database change. |
 | `POST` | `/calendar-connections/` | Exchange the approved code and create a connection. |
 | `DELETE` | `/calendar-connections/{connection_id}` | Delete one connection and its credentials. |
-| `PUT` | `/calendar-connections/{connection_id}/source-calendars/` | Replace and synchronize the selected source calendars. |
+| `GET` | `/calendar-connections/{connection_id}/source-calendars/` | Read the imported source calendars. |
 | `POST` | `/derived-marker-rules/` | Create one derived marker rule. |
 | `PATCH` | `/derived-marker-rules/{rule_id}` | Change one derived marker rule. |
 | `DELETE` | `/derived-marker-rules/{rule_id}` | Delete one derived marker rule. |
@@ -405,7 +405,8 @@ The current event, RSVP, venue, QR, and public response routes stay current cont
 Create operations return `201 Created` with a `Location` header.
 Successful delete operations return `204 No Content`.
 
-The server synchronizes each selected source calendar immediately.
+The server imports each readable Google source calendar when it creates the connection.
+It synchronizes the imported events immediately.
 The server repeats the reconciliation every five minutes.
 The browser does not provide synchronization controls.
 
@@ -485,21 +486,62 @@ The confirmation request exchanges the code and stores the encrypted credential.
 RSVP does not store the authorization code.
 
 A calendar connection belongs to one organizer.
-A source calendar mapping connects one selected source calendar to one RSVP calendar.
-RSVP stores one sync cursor for each source calendar mapping.
+A source calendar mapping connects one provider calendar and semantic calendar group to one RSVP calendar.
+RSVP includes hidden entries when it reads the complete Google CalendarList.
+It stores one CalendarList sync cursor for each connection.
+It stores one event sync cursor for each source calendar mapping.
 
-The first calendar synchronization imports the selected source data.
+The Google adapter owns the translation from Google API values to semantic calendar groups.
+The current semantic groups are `calendar` and `birthdays`.
+Google birthday metadata maps an event to the `Birthdays` calendar.
+The complete title words `birthday`, `birthdays`, and `bday` also map an event to `Birthdays`.
+The title rule does not use partial word matches.
+The adapter does not use raw Google event types as RSVP calendar names.
+An unknown or non-semantic Google event type stays in the general `calendar` group.
+The historical Google Contacts birthday calendar does not create a second birthday group.
+
+The first complete CalendarList synchronization performs the calendar import cutover.
+It removes all prior calendars that do not have a source calendar mapping.
+It preserves source-mapped calendars during the I006 schema migration.
+It records the cutover time only after the complete reconciliation commits.
+
+RSVP creates one general mapping and one RSVP calendar for each readable entry.
+The normalized primary calendar also supplies a `Birthdays` mapping.
+The two primary-calendar groups use separate sync cursors.
+Each mapping reads the same Google event feed without an event-type filter.
+Each mapping applies its semantic group rule to that feed.
+An event change supplies a removal to the prior semantic group.
+The source `summaryOverride` value supplies the RSVP calendar name when it is present.
+Otherwise, the source `summary` value supplies the name.
+The source `selected` value supplies the initial visibility.
+RSVP uses the calendar meaning for the initial name and symbol.
+Later CalendarList updates can change the RSVP calendar name.
+They do not change the RSVP symbol, color token, visibility, or display order.
+RSVP stores the CalendarList cursor only after all mapping changes commit.
+
+The Horizon projection assigns evenly spaced hues to the displayed calendars.
+The assignment uses the complete calendar set and a stable calendar identity.
+Each displayed calendar has a distinct presentation color.
+
+The first event synchronization imports the source event data.
 RSVP stores the first sync cursor only after the last response page commits.
 Each later synchronization uses the stored sync cursor and the same query parameters.
 RSVP stores a replacement sync cursor only after the last response page commits.
 The external event links make each imported occurrence idempotent.
 
-When Google rejects a sync cursor, RSVP clears the cursor and starts a complete synchronization.
-The complete synchronization uses external links to reconcile source-owned resources.
+Before each scheduled event synchronization, RSVP reconciles the CalendarList.
+New readable entries create new RSVP calendars and mappings.
+Deleted or unreadable entries remove eligible mapped calendars.
+The current local-use rules stop a source calendar removal when local data depends on an imported event.
+RSVP records the failed source synchronization and keeps the CalendarList cursor unchanged.
+
+When Google rejects a CalendarList sync cursor, RSVP starts a complete CalendarList synchronization.
+When Google rejects an event sync cursor, RSVP starts a complete event synchronization.
+The complete event synchronization uses external links to reconcile source-owned resources.
 The source reconciliation keeps each RSVP identifier and each permitted local relationship.
 
 The calendar provider owns imported event titles, descriptions, times, recurrence data, and deletion state.
-RSVP owns calendar visibility, symbols, color tokens, and display order.
+RSVP owns calendar visibility, symbols, color tokens, and display order after initial calendar creation.
 RSVP rejects a local change to a source-owned marker field.
 
 Each independent provider event gets one lane.
@@ -515,6 +557,7 @@ When the organizer deletes a calendar connection, RSVP deletes its stored creden
 Use the [Google Calendar API scopes](https://developers.google.com/workspace/calendar/api/auth) for the scope identifiers.
 Use the [Google OAuth web server flow](https://developers.google.com/identity/protocols/oauth2/web-server) for state and code exchange.
 Use the [Google Calendar synchronization guide](https://developers.google.com/workspace/calendar/api/guides/sync) for page and sync cursor behavior.
+Use the [Google Calendar event types](https://developers.google.com/workspace/calendar/api/guides/event-types) for the provider normalization rules.
 
 ## Derived Marker Contract
 
@@ -571,12 +614,20 @@ The event and its derived markers use one lane.
 RSVP initializes an empty SQLite database with the complete canonical schema.
 Schema initialization occurs in one database transaction.
 
-RSVP opens an existing database only when each canonical table and required column is present.
+RSVP opens an existing database when the database uses the canonical schema.
 The event table must use lane ownership and the closed event constraints.
 An event-only database is outside the current runtime contract.
 
-The runtime contains no schema conversion operation.
-Startup contains no data repair or schema update path.
+The I006 startup migrations accept exact predecessor schemas only.
+The first predecessor does not contain `calendar_connections.calendar_list_sync_cursor`.
+The first migration adds the optional cursor column.
+The grouping predecessor does not contain the import cutover or `semantic_group` fields.
+The grouping migration adds both fields and replaces the source mapping unique index.
+It clears CalendarList and event sync cursors for one complete grouped synchronization.
+The previous I006 schema contains `provider_group` instead of `semantic_group`.
+Its migration renames the column and clears each event sync cursor.
+Startup rejects any database that does not use an accepted schema.
+Remove the I006 migrations after all database files use the canonical schema.
 
 ## Cutover Sequence
 
