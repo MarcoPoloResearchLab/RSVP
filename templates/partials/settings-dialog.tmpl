@@ -98,7 +98,7 @@
                             <p class="settings-kicker">Integrations</p>
                             <h2>Google Calendar</h2>
                         </div>
-                        <p>RSVP synchronizes selected calendars automatically and retries temporary failures.</p>
+                        <p>RSVP synchronizes readable Google calendars automatically and retries temporary failures.</p>
                     </div>
 
                     <section class="settings-integration-card" data-settings-calendar-connection>
@@ -121,11 +121,7 @@
                             <div data-calendar-last-success-row hidden><dt>Last completed</dt><dd><time data-calendar-last-success></time></dd></div>
                         </dl>
                         <p class="settings-alert" data-calendar-sync-error hidden>Google Calendar did not complete the latest request. RSVP will retry automatically.</p>
-                        <div class="settings-source-controls">
-                            <button type="button" class="settings-primary-action" data-settings-load-source-calendars data-source-url="{{ .CalendarConnection.SourceCalendarURL }}">Select source calendars</button>
-                            <div class="settings-source-list" data-settings-source-calendar-list></div>
-                            <button type="button" class="settings-primary-action" data-settings-save-source-calendars data-source-url="{{ .CalendarConnection.SourceCalendarURL }}" hidden>Save source calendars</button>
-                        </div>
+                        <p>RSVP imports Google calendars and birthdays automatically.</p>
                         <button type="button" class="settings-danger-action settings-disconnect" data-settings-resource-action="DELETE" data-resource-url="{{ .CalendarConnection.ManagementURL }}">Disconnect Google Calendar</button>
                         {{ else }}
                         <button type="button" class="settings-primary-action" data-settings-calendar-authorize data-resource-url="{{ .CalendarAuthorizationURL }}">Connect Google Calendar</button>
