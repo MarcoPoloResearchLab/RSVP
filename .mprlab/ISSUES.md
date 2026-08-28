@@ -8,6 +8,166 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 ## BugFixes
 
+- [ ] [B047] (P1) {I006} Correct Google calendar import semantics
+  Goal:
+  Google calendar import must preserve the organizer's source calendar groupings and normalized birthday meaning.
+  RSVP currently misclassifies Google events and can retain obsolete local groupings between local starts.
+  Requirements:
+  - Treat each readable CalendarList entry as one provider calendar.
+  - Include hidden and unselected entries during CalendarList synchronization.
+  - Use `selected` only as the initial RSVP visibility value.
+  - Use `summaryOverride` before `summary` for the initial RSVP name.
+  - Keep a source rename separate from RSVP group identity.
+  - Exclude `freeBusyReader` entries because they do not supply event details.
+  - Treat a deleted CalendarList entry as a provider calendar deletion.
+  - Treat the Google Contacts birthday entry as a semantic source, not a visible source calendar.
+  - Create `Birthdays` from normalized birthday meaning.
+  - Do not use a provider name, event type, or RSVP source as a semantic group.
+  - Preserve Holidays, Family, and other readable entries as separate RSVP calendars.
+  - Give each visible RSVP calendar one distinct presentation color.
+  - Keep at least 45 degrees of hue separation between visible calendar colors.
+
+  - Map `birthdayProperties.type=self` to `Birthdays`.
+  - Map `birthdayProperties.type=birthday` to `Birthdays`.
+  - Map absent `birthdayProperties.type` to `Birthdays` when `birthdayProperties` exists.
+  - Keep `anniversary`, `custom`, and `other` subtypes in the source calendar.
+  - Do not use `birthdayProperties.contact` as a grouping requirement.
+  - Do not use `customTypeName` as an RSVP group name.
+  - Map `eventType=birthday` without birthday properties to `Birthdays`.
+  - Map `eventType=default` to the provider calendar by default.
+  - Use complete title words as a fallback only for an untyped `default` event.
+  - Map `birthday`, `birthdays`, and `bday` title words to `Birthdays`.
+  - Do not match a partial word such as `Unbirthday`.
+  - Keep `focusTime`, `fromGmail`, `outOfOffice`, and `workingLocation` in the provider calendar.
+  - Keep an unknown `eventType` or birthday subtype in the provider calendar.
+  - Record a provider-safe diagnostic code for each unknown value.
+  - Use `Busy` when Google withholds event details.
+  - Apply available type metadata before the `Busy` title.
+  - Keep all occurrences of one recurring event in the same semantic group.
+  - Do not derive a semantic group from recurrence, date shape, visibility, or transparency.
+
+  - Evaluate grouping rules in one ordered Google classification table.
+  - Apply cancellation before all classification rules.
+  - Apply an explicit special-date subtype before `eventType`.
+  - Apply `eventType` before the title fallback.
+  - Apply the provider-calendar default after all other rules.
+  - Return one normalized event change from the provider adapter.
+  - Include the target semantic group in each normalized event change.
+  - Keep Google fields out of the synchronization service and database models.
+  - Request one unfiltered event feed for each provider calendar.
+  - Do not request one duplicate feed for each semantic group.
+  - Store one event sync cursor for each provider calendar.
+  - Keep each initial and incremental request parameter set consistent.
+  - Store `nextSyncToken` only after the final page and successful persistence.
+  - On `410 Gone`, clear the provider calendar state and complete a full reconciliation.
+
+  - Treat a canceled event as a deletion across all semantic group mappings.
+  - Use provider calendar ID and provider event ID as the event source identity.
+  - Do not require a canceled record to contain title or birthday metadata.
+  - Move a changed event between semantic groups in one database transaction.
+  - Remove the prior event placement before the transaction stores the new placement.
+  - Keep one external event link after a semantic group move.
+  - Remove absent source-owned events during a complete reconciliation.
+  - Keep provider copies from different source calendars as distinct source events.
+
+  - Stop the `rsvp-local` Compose project before each `make up` startup.
+  - Delete the local `rsvp-data` volume before each `make up` startup.
+  - Preserve the local environment file and calendar credential encryption key.
+  - Keep the production retained volume unchanged.
+  - Build and start the local services after the reset.
+
+  Deliverables:
+  - Add one closed provider-neutral semantic group type.
+  - Add one normalized provider event change type with source identity and semantic group.
+  - Remove the semantic group argument from `CalendarProviderAdapter.SynchronizeEvents`.
+  - Add one provider calendar sync-state model that owns the event cursor.
+  - Make each semantic group mapping reference that sync-state model.
+  - Make external event and series links use provider calendar source identity.
+  - Replace group-specific synchronization with one source-calendar reconciliation transaction.
+  - Add one declarative Google classification table with explicit precedence.
+  - Add one table-driven contract matrix for all documented Google event types.
+  - Add cases for every documented birthday subtype and each missing-field form.
+  - Add cancellation, semantic move, unknown-value, and complete-reconciliation cases.
+  - Add browser acceptance for personal, Birthdays, Holidays, Family, and unknown provider types.
+  - Update the architecture, acceptance matrix, user guide, and operator runbook.
+  - Use the official Google Event types, Events, CalendarList, and synchronization documents as source evidence.
+  Validation:
+  - Run the classification matrix without network access.
+  - Run one deterministic CalendarList and Events API server.
+  - Synchronize one provider calendar and confirm that RSVP makes one Events request.
+  - Return a Google self-birthday event and confirm that RSVP puts it only in `Birthdays`.
+  - Return a contact birthday and confirm that RSVP puts it only in `Birthdays`.
+  - Return an anniversary and confirm that RSVP keeps it only in the source calendar.
+  - Confirm that the browser shows `Happy birthday!` only in `Birthdays`.
+  - Change a default title to an explicit birthday title and confirm one atomic move.
+  - Change the title back and confirm the reverse move.
+  - Cancel each event form with a sparse canceled record and confirm complete deletion.
+  - Reject a sync cursor and confirm one complete source reconciliation.
+  - Confirm that a repeated synchronization creates no duplicate calendar, lane, event, or link.
+  - Run `make up` with an existing local database.
+  - Confirm that Docker creates a new local `rsvp-data` volume.
+  - Confirm that the new local database contains no organizer data.
+  - Confirm that the local health request succeeds.
+  - Run `make ci` and `make browser-test`.
+  - Run the Governor check and the language checker for each changed technical document.
+
+- [x] [B046] (P1) {F002} Refine lane and marker geometry
+  Goal:
+  The current finite lane cap overlaps the event marker and creates a clunky endpoint.
+  The lane rail and marker border also use too much visual weight.
+  Requirements:
+  - Keep the lane trajectory visible across the time grid.
+  - Use a narrow terminal tick for a finite lane.
+  - Mask the terminal tick behind a marker at the same position.
+  - Reduce the visible event marker size and border weight.
+  - Preserve a minimum 44-pixel marker interaction target.
+  - Keep selected, focus, pending, and missed marker states distinct.
+  Validation:
+  - Confirm that the lane rail height is between 8 and 12 pixels.
+  - Confirm that the event marker is between 16 and 20 pixels.
+  - Confirm that the finite terminal tick is no more than 4 pixels wide.
+  - Confirm that each marker interaction target is at least 44 pixels.
+  - Run `make ci` and `make browser-test`.
+
+- [x] [B045] (P1) {I006} Correct imported calendar groupings
+  Goal:
+  Google Calendar import must replace prior local groupings with distinct semantic calendar groupings.
+  Google currently labels some explicit birthday events as `default` events without birthday properties.
+  RSVP currently puts these events in the primary calendar instead of `Birthdays`.
+  Requirements:
+  - Remove all prior unmapped calendars and their temporal resources during the first complete import.
+  - Preserve calendars that already have a source calendar mapping during the I006 data migration.
+  - Use `Personal` as the local default calendar name.
+  - Normalize Google API calendar and event values into RSVP calendar groups at the provider boundary.
+  - Use `calendar` and `birthdays` as the current closed semantic group keys.
+  - Map Google birthday metadata to a separate `Birthdays` calendar.
+  - Map the complete title words `birthday`, `birthdays`, and `bday` to `Birthdays`.
+  - Do not classify a title from a partial word match.
+  - Request the same Google event feed without an event-type filter for each semantic group.
+  - Remove an event from its prior semantic group when its meaning changes.
+  - Keep the general calendar and birthday group cursors separate.
+  - Keep unknown or non-semantic Google event types in the general calendar group.
+  - Do not use a raw Google event type as an RSVP calendar name.
+  - Use the calendar meaning for each visible symbol and name.
+  - Do not create a visible grouping for the RSVP or Google source.
+  - Give each visible calendar a distinct and well-separated presentation color.
+  - Clear prior Google sync cursors during the schema migration.
+  - Store the source mapping group in `semantic_group`.
+  - Rename the exact `provider_group` predecessor column to `semantic_group`.
+  Validation:
+  - Import a Google account after a local calendar exists and confirm that RSVP removes the local calendar.
+  - Confirm that RSVP imports birthday events into `Birthdays`.
+  - Confirm that RSVP excludes birthday events from the primary calendar.
+  - Return a `default` event with an explicit birthday title and confirm that it appears only in `Birthdays`.
+  - Change a general event title to a birthday title and confirm that the event moves to `Birthdays`.
+  - Return `Unbirthday` in a title and confirm that the event stays in the general group.
+  - Return an unknown Google event type and confirm that it stays in the general calendar group.
+  - Confirm that all visible calendar colors are unique.
+  - Confirm that the four-calendar browser fixture has at least 45 degrees of hue separation.
+  - Migrate each I006 predecessor and confirm that RSVP preserves mapped calendars and clears event sync cursors.
+  - Run `make ci` and `make browser-test`.
+  - Run the Governor check and the language checker for each changed technical document.
+
 - [x] [B044] (P1) {I003} Use one REST interface for Horizon resources
   Goal:
   Horizon must use the repository REST contract for reads, writes, and errors.
@@ -276,6 +436,57 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Verify the public frontend, authentication surface, authorization boundary, and protected workspace separately.
   - Run the Governor check and the language checker for each changed technical document.
   Blocked: Approve the production TAuth configuration and LLM Proxy routing values before implementation.
+
+- [x] [I006] (P1) {F005,F006} Preserve Google source calendars during import
+  Goal:
+  This change preserves each Google source calendar as one RSVP calendar during connection and synchronization.
+  The current browser creates mappings only after manual source selection.
+  Background synchronization processes existing mappings and cannot discover other source calendars.
+  Requirements:
+  - Treat each non-deleted CalendarList entry with event read access as one source calendar.
+  - Request hidden CalendarList entries during each complete source calendar synchronization.
+  - Store one CalendarList sync cursor for each calendar connection.
+  - Store the cursor only after all source calendar mapping changes commit.
+  - Use `summaryOverride` when present for the RSVP calendar name.
+  - Use `summary` when `summaryOverride` is absent.
+  - Create one RSVP calendar and one source calendar mapping for each new provider calendar.
+  - Use Google `selected` as the initial RSVP calendar visibility value.
+  - Use Google `backgroundColor` as the initial RSVP calendar color token.
+  - Preserve the RSVP symbol, color token, visibility, and display order after initial creation.
+  - Update the RSVP calendar name when the source calendar name changes.
+  - Synchronize each source calendar mapping into its related RSVP calendar.
+  - Keep calendar membership separate from lane membership.
+  - Reconcile the source calendar list before each background event synchronization.
+  - When Google rejects a CalendarList sync cursor, do a complete source calendar synchronization.
+  - Apply the current local-use protection rules when Google deletes a source calendar.
+  - Record a source synchronization error when local use prevents source calendar deletion.
+  - Remove the manual source calendar selection controls and request contract.
+  - Keep the current Google Calendar read-only scopes.
+  Deliverables:
+  - Make `CalendarProviderAdapter.ListCalendars` accept a cursor and return a `ProviderCalendarBatch`.
+  - Add CalendarList pages, hidden entries, deletions, and sync cursors to `pkg/providers/googlecalendar/adapter.go`.
+  - Add the CalendarList sync cursor to `CalendarConnection` and the canonical database contract.
+  - Replace `ReplaceSourceCalendars` with `ReconcileSourceCalendars` in the calendar connection service.
+  - Run `ReconcileSourceCalendars` during connection creation and scheduled synchronization.
+  - Delete the manual source selection `PUT` operation.
+  - Delete the source calendar selection interface and its browser code.
+  - Update `ARCHITECTURE.md`, `TIME_HORIZON_ACCEPTANCE.md`, `USER_GUIDE.md`, and `OPERATOR_RUNBOOK.md`.
+  - Add adapter, service, HTTP, and browser contract tests.
+  Validation:
+  - Connect an account that contains Birthdays, Holidays, and Family calendars.
+  - Confirm that RSVP creates three source calendar mappings and three RSVP calendars.
+  - Confirm that each imported marker belongs to the RSVP calendar for its source calendar.
+  - Confirm that independent events use separate lanes inside each imported calendar.
+  - Confirm that occurrences from one event series use one lane.
+  - Repeat source calendar reconciliation and confirm that it creates no duplicate resource.
+  - Add a Google source calendar and confirm that scheduled synchronization creates its RSVP calendar.
+  - Rename a Google source calendar and confirm that RSVP keeps the mapping identifier.
+  - Import a source calendar with `selected=false` and confirm its initial RSVP visibility value.
+  - Reject a CalendarList sync cursor and confirm a complete reconciliation.
+  - Remove a source calendar and confirm the current local-use protection result.
+  - Confirm that connection completion requires no source selection step.
+  - Run `make ci` and `make browser-test`.
+  - Run the Governor check and the language checker for each changed technical document.
 
 ## Maintenance
 
@@ -804,6 +1015,97 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Reject an invalid provider response without a database change.
   - Run `make ci`.
   - Run the browser test target.
+
+- [ ] [F010] (P1) {F001,F002,F003} Add state cycles to Horizon
+  Goal:
+  This feature represents a subject that changes between states in one repeating schedule.
+  The horizon view shows the current state and the next state transition on one lane.
+
+  Requirements:
+  - Represent one state cycle on one dedicated lane.
+  - Keep the state cycle as the only primary temporal subject on its lane.
+  - Keep calendar membership separate from state cycle lane membership.
+  - Require two or more cycle states.
+  - Give each cycle state one label, color token, and display order.
+  - Define one cycle template as an ordered sequence of cycle phases.
+  - Give each cycle phase one cycle state and one positive whole-day duration.
+  - Permit unequal durations for different cycle phases.
+  - Permit one cycle state in multiple nonadjacent cycle phases.
+  - Require adjacent cycle phases to use different cycle states.
+  - Require the last and first cycle phases to use different cycle states.
+  - Give each state cycle one local anchor date and one IANA timezone.
+  - Calculate the cycle offset from the local date, anchor date, and complete cycle duration.
+  - Keep each cycle offset from zero through the complete cycle duration minus one.
+  - Calculate the next state transition from the active cycle phase boundary.
+  - Keep the cycle template as the canonical persisted schedule.
+  - Generate state intervals only for the requested horizon window.
+  - Use half-open local date ranges for generated state intervals.
+  - Return the current cycle state when the organizer's local date intersects the horizon window.
+  - Return the next transition date and next cycle state.
+  - Keep each state cycle lane active and open while the cycle exists.
+  - Create and replace a complete cycle template in one transaction.
+  - Reject each request that would create an incomplete cycle template.
+  - Require an idempotency key for each state cycle creation request.
+  - Require resource preconditions for each concurrent state cycle update.
+  - Return an entity tag for each state cycle representation.
+  - Delete the dedicated lane in the same transaction as its state cycle.
+  - Render one segmented band for each state cycle lane.
+  - Use segment width to show the duration of each generated state interval.
+  - Use stable state labels and colors for all segments.
+  - Mark the current date with one visible cursor.
+  - Show the current state, next state, and time to the next transition.
+  - Keep the full state and transition text available to assistive technology.
+  - Support two-state and three-state cycle templates with the same resource contract.
+
+  Deliverables:
+  - Add `StateCycle`, `CycleState`, and `CyclePhase` domain types and database tables.
+  - Give `StateCycle` the canonical `lane_id`, `anchor_date`, and `timezone` fields.
+  - Give `CycleState` the canonical `state_cycle_id`, `label`, `color_token`, and `display_order` fields.
+  - Give `CyclePhase` the canonical `state_cycle_id`, `cycle_state_id`, `duration_days`, and `display_order` fields.
+  - Add database constraints for ownership, order, references, and positive phase durations.
+  - Add smart constructors that enforce the complete cycle template invariants.
+  - Add owner-scoped state cycle create, read, replace, and delete services.
+  - Add `POST /state-cycles/` for atomic lane, state cycle, state, and phase creation.
+  - Add `GET /state-cycles/{cycle_id}` and `DELETE /state-cycles/{cycle_id}`.
+  - Add `GET` and `PUT` operations for `/state-cycles/{cycle_id}/template`.
+  - Require `If-Match` for each state cycle template replacement and deletion.
+  - Add the state cycle resources and typed errors to `api/horizon.openapi.json`.
+  - Add a `state_cycle` object to each related horizon lane projection.
+  - Return states, generated intervals, the current state, and the next transition in that object.
+  - Add one bounded projection algorithm for cycle windows.
+  - Add the segmented cycle band, current cursor, and transition summary to the horizon view.
+  - Add state cycle create and edit controls to the organizer interface.
+  - Add uneven binary and three-state cycle data to the browser fixture.
+  - Update `ARCHITECTURE.md`, `TIME_HORIZON_ACCEPTANCE.md`, and `USER_GUIDE.md`.
+  - Update each affected database, REST, service, and browser contract test.
+
+  Open Decisions:
+  - Select how RSVP converts imported provider intervals when the provider gives no state cycle identifier.
+  - Define how RSVP preserves provider event identity after a confirmed conversion.
+  - Select how RSVP replaces one generated state interval for a temporary schedule exception.
+
+  Validation:
+  - Create a binary cycle with phase durations of four, two, five, and one day.
+  - Confirm the state and next transition at each phase boundary.
+  - Confirm that the cycle repeats after the complete twelve-day duration.
+  - Project a window that starts and ends inside generated state intervals.
+  - Confirm that the projection clips the first and last state intervals to the window.
+  - Project the cycle across a daylight time change.
+  - Confirm that each local date keeps the correct cycle state.
+  - Create a three-state cycle and confirm the same projection contract.
+  - Reject a cycle with fewer than two cycle states.
+  - Reject a phase with a zero or negative duration.
+  - Reject adjacent phases with the same cycle state.
+  - Reject a template whose last and first phases use the same cycle state.
+  - Replace one complete cycle template and confirm that the horizon changes in one transaction.
+  - Submit a stale resource precondition and confirm that the update fails.
+  - Delete a state cycle and confirm that its dedicated lane is absent.
+  - Confirm that calendar visibility hides and shows the complete state cycle lane.
+  - Confirm that one binary cycle renders as one segmented lane.
+  - Move the current date through each segment and confirm the transition summary.
+  - Confirm the full state and transition text at narrow browser widths.
+  - Run `make ci` and `make browser-test`.
+  - Run the Governor check and the language checker for each changed technical document.
 
 ## Planning
 
