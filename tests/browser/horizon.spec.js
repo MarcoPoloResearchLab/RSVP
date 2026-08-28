@@ -37,12 +37,12 @@ test('sets up Horizon after the first authentication', async ({context, page}) =
     await page.goto('/browser-new-login/');
     await expect(page).toHaveURL(/\/horizon\/$/);
     await expect(page.locator('[data-horizon-setup]')).toBeVisible();
-    await expect(page.getByRole('textbox', {name: 'Calendar name'})).toHaveValue('RSVP Events');
+    await expect(page.getByRole('textbox', {name: 'Calendar name'})).toHaveValue('Personal');
     await page.getByRole('button', {name: 'Start Horizon'}).click();
 
     await expect(page.locator('[data-horizon-view]')).toBeVisible();
     await expect(page.locator('[data-calendar-toggle]')).toHaveCount(1);
-    await expect(page.locator('.horizon-calendar-toggle')).toContainText('RSVP Events');
+    await expect(page.locator('.horizon-calendar-toggle')).toContainText('Personal');
     await expect(page.locator('.horizon-window')).toContainText('America/Los_Angeles');
 });
 
@@ -62,13 +62,19 @@ test('renders the lane and marker contract', async ({page}) => {
     expect(openLineBox).not.toBeNull();
     expect(Math.abs(openLineBox.x - openTrackBox.x)).toBeLessThanOrEqual(1);
     expect(Math.abs((openLineBox.x + openLineBox.width) - (openTrackBox.x + openTrackBox.width))).toBeLessThanOrEqual(1);
-    expect(openLineBox.height).toBeGreaterThanOrEqual(12);
-    expect(openLineBox.height).toBeLessThanOrEqual(16);
+    expect(openLineBox.height).toBeGreaterThanOrEqual(8);
+    expect(openLineBox.height).toBeLessThanOrEqual(12);
 
     const openEndStyle = await openLane.locator('.horizon-lane-line').evaluate((line) => getComputedStyle(line, '::after').borderLeftStyle);
-    const finiteEndStyle = await page.locator('.horizon-lane-line.is-finite').first().evaluate((line) => getComputedStyle(line, '::after').borderStyle);
+    const finiteEndGeometry = await page.locator('.horizon-lane-line.is-finite').first().evaluate((line) => {
+        const style = getComputedStyle(line, '::after');
+        return {backgroundColor: style.backgroundColor, height: Number.parseFloat(style.height), width: Number.parseFloat(style.width)};
+    });
     expect(openEndStyle).toBe('solid');
-    expect(finiteEndStyle).toContain('solid');
+    expect(finiteEndGeometry.backgroundColor).not.toBe('rgba(0, 0, 0, 0)');
+    expect(finiteEndGeometry.height).toBeGreaterThanOrEqual(14);
+    expect(finiteEndGeometry.height).toBeLessThanOrEqual(18);
+    expect(finiteEndGeometry.width).toBeLessThanOrEqual(4);
     const continuingEndStyle = await page.locator('[data-lane-id="LANLONG0"] .horizon-lane-line.is-continuing').evaluate((line) => getComputedStyle(line, '::after').borderLeftStyle);
     expect(continuingEndStyle).toBe('solid');
 
@@ -78,10 +84,10 @@ test('renders the lane and marker contract', async ({page}) => {
     expect(markerDotBox).not.toBeNull();
     expect(markerTargetBox.width).toBeGreaterThanOrEqual(44);
     expect(markerTargetBox.height).toBeGreaterThanOrEqual(44);
-    expect(markerDotBox.width).toBeGreaterThanOrEqual(20);
-    expect(markerDotBox.width).toBeLessThanOrEqual(24);
-    expect(markerDotBox.height).toBeGreaterThanOrEqual(20);
-    expect(markerDotBox.height).toBeLessThanOrEqual(24);
+    expect(markerDotBox.width).toBeGreaterThanOrEqual(16);
+    expect(markerDotBox.width).toBeLessThanOrEqual(20);
+    expect(markerDotBox.height).toBeGreaterThanOrEqual(16);
+    expect(markerDotBox.height).toBeLessThanOrEqual(20);
 
     const boundaryTrackBox = await page.locator('[data-lane-id="LANBOUND"] .horizon-lane-track').boundingBox();
     const boundaryTargetBox = await page.locator('[data-marker-id="EVTBOUND"]').boundingBox();
@@ -230,7 +236,13 @@ test('shows and completes a durable attention probe', async ({page}) => {
     await expect(waitingLane.locator('[data-probe-state="pending"]')).toBeVisible();
 });
 
-test('connects Google Calendar and synchronizes selected calendars automatically', async ({page}) => {
+test('connects Google Calendar and retains its calendar groups automatically', async ({context, page}) => {
+	await context.clearCookies();
+	await page.goto('/browser-new-login/');
+	if (await page.locator('[data-horizon-setup]').count() !== 0) {
+		await page.getByRole('button', {name: 'Start Horizon'}).click();
+	}
+	await expect(page.locator('.horizon-calendar-toggle', {hasText: 'Personal'})).toHaveCount(1);
     await openSettings(page, 'Integrations');
     await page.getByRole('button', {name: 'Connect Google Calendar'}).click();
     await expect(page.locator('[data-calendar-confirmation]')).toBeVisible();
@@ -240,29 +252,55 @@ test('connects Google Calendar and synchronizes selected calendars automatically
     await page.getByRole('button', {name: 'Create connection'}).click();
     await expect(page).toHaveURL(/\/horizon\/$/);
 
-    await openSettings(page, 'Integrations');
-    await expect(page.getByText('Connected', {exact: true})).toBeVisible();
-    await page.getByRole('button', {name: 'Select source calendars'}).click();
-    await page.getByLabel('Google Personal').check();
-    await page.getByLabel('Google Work').check();
-    await page.getByRole('button', {name: 'Save source calendars'}).click();
+	await openSettings(page, 'Integrations');
+	await expect(page.getByText('Connected', {exact: true})).toBeVisible();
+	await expect(page.getByText('RSVP imports Google calendars and birthdays automatically.')).toBeVisible();
+	await expect(page.getByRole('button', {name: 'Select source calendars'})).toHaveCount(0);
 
-    await closeSettings(page);
+	await closeSettings(page);
 
-    await expect(page.locator('.horizon-calendar-toggle', {hasText: 'Google Personal'})).toBeVisible();
-    await expect(page.locator('.horizon-calendar-toggle', {hasText: 'Google Work'})).toBeVisible();
-    await expect(page.getByRole('button', {name: /Synchronize/})).toHaveCount(0);
-    await expect(page.locator('[data-lane-id]', {hasText: 'Ada provider birthday'})).toHaveCount(2);
-    await expect(page.locator('[data-lane-id]', {hasText: 'Lin provider birthday'})).toHaveCount(2);
-    await expect(page.locator('[data-lane-id]', {hasText: 'Maya provider birthday'})).toHaveCount(2);
+	const birthdayToggle = page.locator('.horizon-calendar-toggle', {hasText: 'Birthdays'}).locator('[data-calendar-toggle]');
+	const holidayToggle = page.locator('.horizon-calendar-toggle', {hasText: 'Holidays'}).locator('[data-calendar-toggle]');
+	const familyToggle = page.locator('.horizon-calendar-toggle', {hasText: 'Family'}).locator('[data-calendar-toggle]');
+	const primaryToggle = page.locator('.horizon-calendar-toggle', {hasText: 'temirov@gmail.com'}).locator('[data-calendar-toggle]');
+	await expect(birthdayToggle).toBeChecked();
+	await expect(holidayToggle).toBeChecked();
+	await expect(familyToggle).not.toBeChecked();
+	const birthdayCalendarID = await birthdayToggle.getAttribute('data-calendar-toggle');
+	const holidayCalendarID = await holidayToggle.getAttribute('data-calendar-toggle');
+	const familyCalendarID = await familyToggle.getAttribute('data-calendar-toggle');
+	const primaryCalendarID = await primaryToggle.getAttribute('data-calendar-toggle');
+	await expect(page.locator(`[data-calendar-id="${birthdayCalendarID}"] [data-lane-id]`)).toHaveCount(3);
+	await expect(page.locator(`[data-calendar-id="${holidayCalendarID}"] [data-lane-id]`)).toHaveCount(2);
+	await expect(page.locator(`[data-calendar-id="${familyCalendarID}"] [data-lane-id]`)).toHaveCount(1);
+	await expect(page.locator(`[data-calendar-id="${primaryCalendarID}"] [data-lane-id]`, {hasText: 'Provider future event'})).toHaveCount(1);
+	await expect(page.locator('.horizon-calendar-toggle', {hasText: 'providerFutureType'})).toHaveCount(0);
+	await expect(page.locator(`[data-calendar-id="${familyCalendarID}"]`)).toBeHidden();
+	await expect(page.locator('.horizon-calendar-toggle', {hasText: 'Personal'})).toHaveCount(0);
+	const presentationColors = await page.locator('.horizon-calendar-toggle').evaluateAll((controls) => controls.map((control) => getComputedStyle(control).getPropertyValue('--calendar-color').trim()));
+	expect(new Set(presentationColors).size).toBe(presentationColors.length);
+	const presentationHues = presentationColors.map((color) => Number(/^hsl\((\d+)/.exec(color)?.[1]));
+	for (let left = 0; left < presentationHues.length; left += 1) {
+		for (let right = left + 1; right < presentationHues.length; right += 1) {
+			const difference = Math.abs(presentationHues[left] - presentationHues[right]);
+			expect(Math.min(difference, 360 - difference)).toBeGreaterThanOrEqual(45);
+		}
+	}
+	await expect(page.getByRole('button', {name: /Synchronize/})).toHaveCount(0);
+	await expect(page.locator('[data-lane-id]', {hasText: 'Ada provider birthday'})).toHaveCount(1);
+	await expect(page.locator('[data-lane-id]', {hasText: 'Lin provider birthday'})).toHaveCount(1);
+	await expect(page.locator('[data-lane-id]', {hasText: 'Maya provider birthday'})).toHaveCount(1);
 
-    await expect.poll(async () => {
-        await page.waitForTimeout(500);
-        await page.reload();
-        return page.locator('[data-lane-id]', {hasText: 'Ada provider birthday updated'}).count();
-    }, {timeout: 10000}).toBe(2);
-    await expect(page.locator('[data-lane-id]', {hasText: 'Lin provider birthday'})).toHaveCount(0);
-    await expect(page.locator('[data-lane-id]', {hasText: 'Maya provider birthday'})).toHaveCount(0);
+	await expect.poll(async () => {
+		await page.waitForTimeout(500);
+		await page.reload();
+		return page.locator('[data-lane-id]', {hasText: 'Ada provider birthday updated'}).count();
+	}, {timeout: 10000}).toBe(1);
+	await expect(page.locator('[data-lane-id]', {hasText: 'Lin provider birthday'})).toHaveCount(0);
+	await expect(page.locator('[data-lane-id]', {hasText: 'Maya provider birthday'})).toHaveCount(0);
+	await expect(page.locator(`[data-calendar-id="${birthdayCalendarID}"] [data-lane-id]`, {hasText: 'Primary review birthday'})).toHaveCount(1);
+	await expect(page.locator(`[data-calendar-id="${primaryCalendarID}"] [data-lane-id]`, {hasText: 'Primary review'})).toHaveCount(0);
+	await expect(familyToggle).not.toBeChecked();
 
     await openSettings(page, 'Integrations');
     await expect(page.locator('[data-calendar-sync-state]')).not.toBeEmpty();
