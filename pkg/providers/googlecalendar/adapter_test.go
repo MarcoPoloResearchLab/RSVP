@@ -130,7 +130,7 @@ func TestAdapterPaginatesEventsAndReportsRejectedCursor(testingContext *testing.
 		}
 		responseWriter.Header().Set("Content-Type", "application/json")
 		if request.URL.Query().Get("pageToken") == "page-2" {
-			fmt.Fprint(responseWriter, `{"timeZone":"America/Los_Angeles","items":[{"id":"occurrence","recurringEventId":"series","status":"confirmed","summary":"Review","start":{"dateTime":"2026-09-02T09:00:00-07:00","timeZone":"America/Los_Angeles"},"end":{"dateTime":"2026-09-02T10:00:00-07:00","timeZone":"America/Los_Angeles"}}],"nextSyncToken":"cursor-1"}`)
+			fmt.Fprint(responseWriter, `{"timeZone":"America/Los_Angeles","items":[{"id":"occurrence","recurringEventId":"series","status":"confirmed","summary":"Review","start":{"dateTime":"2026-09-02T09:00:00-07:00","timeZone":"America/Los_Angeles"},"end":{"dateTime":"2026-09-02T10:00:00-07:00","timeZone":"America/Los_Angeles"}},{"id":"point","status":"confirmed","summary":"Deadline","start":{"dateTime":"2026-09-02T12:00:00-07:00","timeZone":"America/Los_Angeles"},"end":{"dateTime":"2026-09-02T12:00:00-07:00","timeZone":"America/Los_Angeles"},"endTimeUnspecified":true},{"id":"same-day","status":"confirmed","summary":"One day","start":{"date":"2026-09-03"},"end":{"date":"2026-09-03"}}],"nextSyncToken":"cursor-1"}`)
 			return
 		}
 		fmt.Fprint(responseWriter, `{"timeZone":"America/Los_Angeles","items":[{"id":"birthday","status":"confirmed","summary":"Birthday","start":{"date":"2026-09-01"},"end":{"date":"2026-09-02"}}],"nextPageToken":"page-2"}`)
@@ -145,7 +145,7 @@ func TestAdapterPaginatesEventsAndReportsRejectedCursor(testingContext *testing.
 	if syncError != nil {
 		testingContext.Fatalf("synchronize events: %v", syncError)
 	}
-	if len(batch.Events) != 2 || batch.NextSyncCursor != "cursor-1" || batch.Events[0].StartDate != "2026-09-01" || batch.Events[1].SeriesID != "series" {
+	if len(batch.Events) != 4 || batch.NextSyncCursor != "cursor-1" || batch.Events[0].StartDate != "2026-09-01" || batch.Events[1].SeriesID != "series" || batch.Events[2].At == nil || batch.Events[2].StartsAt != nil || batch.Events[2].EndsAt != nil || batch.Events[3].StartDate != "2026-09-03" || batch.Events[3].EndDate != "2026-09-04" {
 		testingContext.Fatalf("batch = %#v", batch)
 	}
 	if _, rejectedError := adapter.SynchronizeEvents(context.Background(), credential, "source/calendar", "expired"); !errors.Is(rejectedError, services.ErrCalendarSyncCursorRejected) {

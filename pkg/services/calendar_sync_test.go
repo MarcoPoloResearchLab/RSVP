@@ -65,12 +65,14 @@ func TestCalendarSynchronizationIsIdempotentIncrementalAndReconcilesRejectedCurs
 	seriesEndOne := seriesStartOne.Add(time.Hour)
 	seriesStartTwo := seriesStartOne.AddDate(0, 0, 7)
 	seriesEndTwo := seriesStartTwo.Add(time.Hour)
+	pointAt := time.Date(2026, time.September, 4, 16, 0, 0, 0, time.UTC)
 	adapter := &synchronizationAdapter{batches: map[string]services.ProviderEventBatch{}, rejected: map[string]bool{}}
 	adapter.batches[""] = services.ProviderEventBatch{NextSyncCursor: "cursor-1", Events: []services.ProviderEvent{
 		{ID: "birthday", Title: "Birthday", Status: "confirmed", Timezone: testsupport.TimezoneName, StartDate: "2026-09-01", EndDate: "2026-09-02"},
 		{ID: "holiday", Title: "Holiday", Status: "confirmed", Timezone: testsupport.TimezoneName, StartsAt: &timedStart, EndsAt: &timedEnd},
 		{ID: "series-1", SeriesID: "series", Title: "Weekly review", Status: "confirmed", Timezone: testsupport.TimezoneName, StartsAt: &seriesStartOne, EndsAt: &seriesEndOne},
 		{ID: "series-2", SeriesID: "series", Title: "Weekly review", Status: "confirmed", Timezone: testsupport.TimezoneName, StartsAt: &seriesStartTwo, EndsAt: &seriesEndTwo},
+		{ID: "deadline", Title: "Deadline", Status: "confirmed", Timezone: testsupport.TimezoneName, At: &pointAt},
 	}}
 	updatedStart := timedStart.Add(2 * time.Hour)
 	updatedEnd := updatedStart.Add(2 * time.Hour)
@@ -118,7 +120,7 @@ func TestCalendarSynchronizationIsIdempotentIncrementalAndReconcilesRejectedCurs
 	if adapter.refreshCount != 1 || len(adapter.synchronizedCredentials) != 1 || adapter.synchronizedCredentials[0].AccessToken != "renewed-access" {
 		testingContext.Fatalf("refreshes = %d, synchronized credentials = %#v", adapter.refreshCount, adapter.synchronizedCredentials)
 	}
-	assertSourceCounts(testingContext, fixture.Database, 4, 3, 1)
+	assertSourceCounts(testingContext, fixture.Database, 5, 4, 1)
 	repeated, repeatedReuse, repeatedError := syncService.Create(context.Background(), owner.ID, mappings[0].ID, "initial")
 	if repeatedError != nil || !repeatedReuse || repeated.ID != initial.ID || len(adapter.cursors) != 1 {
 		testingContext.Fatalf("repeated sync = %#v, reused = %t, cursors = %#v, error = %v", repeated, repeatedReuse, adapter.cursors, repeatedError)
@@ -148,7 +150,7 @@ func TestCalendarSynchronizationIsIdempotentIncrementalAndReconcilesRejectedCurs
 	if _, _, incrementalError := syncService.Create(context.Background(), owner.ID, mappings[0].ID, "incremental"); incrementalError != nil {
 		testingContext.Fatalf("incremental sync: %v", incrementalError)
 	}
-	assertSourceCounts(testingContext, fixture.Database, 3, 2, 1)
+	assertSourceCounts(testingContext, fixture.Database, 4, 3, 1)
 	var birthdayLink models.ExternalEventLink
 	if findError := fixture.Database.First(&birthdayLink, "provider_event_id = ?", "birthday").Error; findError != nil {
 		testingContext.Fatalf("find birthday link: %v", findError)

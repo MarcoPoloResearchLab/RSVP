@@ -318,15 +318,28 @@ func decodeProviderEvent(item googleEventItem, calendarTimezone string) (service
 		if item.Start.Date == "" || item.End.Date == "" || event.Timezone == "" {
 			return services.ProviderEvent{}, errors.New("Google Calendar all-day event is invalid")
 		}
-		event.StartDate, event.EndDate = item.Start.Date, item.End.Date
+		startDate, startDateError := time.Parse(time.DateOnly, item.Start.Date)
+		endDate, endDateError := time.Parse(time.DateOnly, item.End.Date)
+		if startDateError != nil || endDateError != nil || endDate.Before(startDate) {
+			return services.ProviderEvent{}, errors.New("Google Calendar all-day event is invalid")
+		}
+		if endDate.Equal(startDate) {
+			endDate = startDate.AddDate(0, 0, 1)
+		}
+		event.StartDate, event.EndDate = startDate.Format(time.DateOnly), endDate.Format(time.DateOnly)
 		return event, nil
 	}
 	start, startError := time.Parse(time.RFC3339, item.Start.DateTime)
 	end, endError := time.Parse(time.RFC3339, item.End.DateTime)
-	if startError != nil || endError != nil || !end.After(start) || event.Timezone == "" {
+	if startError != nil || endError != nil || end.Before(start) || event.Timezone == "" {
 		return services.ProviderEvent{}, errors.New("Google Calendar timed event is invalid")
 	}
-	canonicalStart, canonicalEnd := start.UTC(), end.UTC()
+	canonicalStart := start.UTC()
+	if end.Equal(start) {
+		event.At = &canonicalStart
+		return event, nil
+	}
+	canonicalEnd := end.UTC()
 	event.StartsAt, event.EndsAt = &canonicalStart, &canonicalEnd
 	return event, nil
 }

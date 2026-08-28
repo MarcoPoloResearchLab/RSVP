@@ -209,7 +209,7 @@ func recalculateMappingLaneBounds(database *gorm.DB, mappingID string) error {
 func upsertExternalEvent(database *gorm.DB, mapping *models.SourceCalendarMapping, startedAt time.Time, providerEvent ProviderEvent) error {
 	eventTime, boundsStart, boundsEnd, timeError := providerEventTime(providerEvent)
 	if timeError != nil {
-		return timeError
+		return fmt.Errorf("convert source event time: %w", timeError)
 	}
 	var link models.ExternalEventLink
 	findError := database.First(&link, "mapping_id = ? AND provider_event_id = ?", mapping.ID, providerEvent.ID).Error
@@ -220,7 +220,7 @@ func upsertExternalEvent(database *gorm.DB, mapping *models.SourceCalendarMappin
 		}
 		candidate, candidateError := models.NewEvent(event.LaneID, providerEvent.Title, providerEvent.Description, nil, eventRelation(event), eventTime)
 		if candidateError != nil {
-			return candidateError
+			return fmt.Errorf("construct updated source event: %w", candidateError)
 		}
 		if boundsError := expandSourceLane(database, event.LaneID, startedAt, boundsStart, boundsEnd); boundsError != nil {
 			return boundsError
@@ -239,7 +239,7 @@ func upsertExternalEvent(database *gorm.DB, mapping *models.SourceCalendarMappin
 	}
 	lane, series, laneError := sourceLane(database, mapping, startedAt, boundsStart, boundsEnd, providerEvent)
 	if laneError != nil {
-		return laneError
+		return fmt.Errorf("prepare source event lane: %w", laneError)
 	}
 	relation := models.IndependentEventRelation()
 	if series != nil {
@@ -250,7 +250,7 @@ func upsertExternalEvent(database *gorm.DB, mapping *models.SourceCalendarMappin
 	}
 	event, eventError := models.NewEvent(lane.ID, providerEvent.Title, providerEvent.Description, nil, relation, eventTime)
 	if eventError != nil {
-		return eventError
+		return fmt.Errorf("construct source event: %w", eventError)
 	}
 	if createError := database.Create(event).Error; createError != nil {
 		return createError
@@ -374,6 +374,10 @@ func providerEventTime(event ProviderEvent) (models.EventTime, time.Time, time.T
 		temporary, _ := models.NewEvent("temporary", event.Title, event.Description, nil, models.IndependentEventRelation(), eventTime)
 		start, end, boundsError := temporary.MarkerBounds()
 		return eventTime, start, end, boundsError
+	}
+	if event.At != nil {
+		eventTime, eventTimeError := models.NewPointEventTime(*event.At, timezone)
+		return eventTime, event.At.UTC(), event.At.UTC(), eventTimeError
 	}
 	if event.StartsAt == nil || event.EndsAt == nil {
 		return models.EventTime{}, time.Time{}, time.Time{}, models.ErrEventTimeInvalid
