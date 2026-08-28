@@ -73,7 +73,7 @@ The issue identifiers refer to [.mprlab/ISSUES.md](.mprlab/ISSUES.md).
 | TH-051 | The connection requests the two approved read-only scopes. | Authorization request contract test. | F005 |
 | TH-052 | RSVP encrypts stored refresh credentials. | Storage and key failure tests. | F005 |
 | TH-053 | Logs contain no authorization secrets. | Captured log test. | F005 |
-| TH-054 | One source calendar connects to one RSVP calendar. | Mapping constraint and interface tests. | F005 |
+| TH-054 | One provider calendar and semantic calendar group connect to one RSVP calendar. | Mapping constraint and automatic reconciliation tests. | F005, I006, B045 |
 | TH-055 | Each successful mapping synchronization stores its last-page sync cursor. | Pagination and transaction tests. | F006 |
 | TH-056 | Initial synchronization creates no duplicate marker. | Repeated initial synchronization test. | F006 |
 | TH-057 | Incremental synchronization uses the sync cursor. | Deterministic provider update test. | F006 |
@@ -85,6 +85,20 @@ The issue identifiers refer to [.mprlab/ISSUES.md](.mprlab/ISSUES.md).
 | TH-063 | Connection deletion removes eligible provider resources. | Database deletion, conflict, and log tests. | F005, F006 |
 | TH-064 | A rejected sync cursor starts one complete source reconciliation. | Provider error and stable-identifier tests. | F006 |
 | TH-065 | Authorization callbacks are safe and have no stored code. | Database snapshot, header, and storage tests. | F005 |
+| TH-066 | Connection completion imports all readable CalendarList entries, including hidden entries. | HTTP and browser connection tests with Holidays and Family calendars. | I006 |
+| TH-067 | Each successful CalendarList reconciliation stores its last-page cursor after all mapping changes commit. | Adapter pagination and transaction tests. | I006 |
+| TH-068 | A source rename keeps the mapping identifier and changes only the RSVP calendar name. | Incremental reconciliation and stable-identifier tests. | I006 |
+| TH-069 | Google selection sets the initial visibility. Later reconciliation keeps local presentation changes. | Service and browser visibility tests. | I006, B045 |
+| TH-070 | A new source creates one mapping and calendar. An eligible deleted source removes both resources. | Incremental add and delete tests. | I006 |
+| TH-071 | Local use stops source deletion, records a failed synchronization, and keeps the CalendarList cursor. | Conflict, synchronization record, and cursor tests. | I006 |
+| TH-072 | A rejected CalendarList cursor starts one complete CalendarList reconciliation. | Provider rejection and full reconciliation tests. | I006 |
+| TH-073 | The first complete import removes prior unmapped calendar groupings. | Service and browser cutover tests. | B045 |
+| TH-074 | Primary-calendar birthday events appear only in the `Birthdays` calendar. | Provider normalization, service, and browser event tests. | B045 |
+| TH-075 | Each displayed calendar has a distinct color. The four-calendar browser fixture has at least 45 degrees of hue separation. | Browser presentation test. | B045 |
+| TH-076 | Raw and unknown Google event types do not create RSVP group names. | Provider normalization test with a future event type. | B045 |
+| TH-077 | An explicit birthday title maps to `Birthdays` when Google supplies no birthday metadata. | Provider and browser event tests. | B045 |
+| TH-078 | A provider event moves between semantic groups when its meaning changes. | Incremental provider and browser event tests. | B045 |
+| TH-079 | The previous I006 schema migrates from `provider_group` to `semantic_group` and clears event cursors. | Database migration test. | B045 |
 
 ## Derived Markers And Ingestion
 
