@@ -21,6 +21,14 @@ var (
 	ErrNonCanonicalDatabase = errors.New("database does not use the canonical calendar lane schema")
 )
 
+const (
+	calendarListSyncCursorColumn   = "calendar_list_sync_cursor"
+	calendarImportCutoverAtColumn  = "calendar_import_cutover_at"
+	semanticGroupColumn            = "semantic_group"
+	providerGroupPredecessorColumn = "provider_group"
+	sourceProviderCalendarIndex    = "source_provider_calendar"
+)
+
 var canonicalModels = []any{
 	&models.User{},
 	&models.Calendar{},
@@ -80,8 +88,8 @@ var canonicalColumns = map[string][]string{
 	config.TableAttentionPolicies:             {"id", "created_at", "updated_at", "deleted_at", "lane_id", "review_interval_seconds", "next_probe_at", "escalation_interval_seconds"},
 	config.TableProbes:                        {"id", "created_at", "updated_at", "deleted_at", "policy_id", "lane_id", "due_at", "escalates_at", "state", "completed_at"},
 	config.TableCalendarAuthorizationRequests: {"id", "created_at", "updated_at", "deleted_at", "organizer_id", "provider", "state_hash", "redirect_uri", "expires_at", "used_at"},
-	config.TableCalendarConnections:           {"id", "created_at", "updated_at", "deleted_at", "organizer_id", "provider", "credential_nonce", "credential_ciphertext", "status"},
-	config.TableSourceCalendarMappings:        {"id", "created_at", "updated_at", "deleted_at", "connection_id", "calendar_id", "provider_calendar_id", "sync_cursor"},
+	config.TableCalendarConnections:           {"id", "created_at", "updated_at", "deleted_at", "organizer_id", "provider", "credential_nonce", "credential_ciphertext", "status", calendarListSyncCursorColumn, calendarImportCutoverAtColumn},
+	config.TableSourceCalendarMappings:        {"id", "created_at", "updated_at", "deleted_at", "connection_id", "calendar_id", "provider_calendar_id", semanticGroupColumn, "sync_cursor"},
 	config.TableIdempotencyRecords:            {"id", "created_at", "updated_at", "deleted_at", "organizer_id", "operation", "key_hash", "request_hash", "response_status", "resource_type", "resource_id", "expires_at"},
 	config.TableExternalEventSeriesLinks:      {"id", "created_at", "updated_at", "deleted_at", "mapping_id", "event_series_id", "provider_series_id"},
 	config.TableExternalEventLinks:            {"id", "created_at", "updated_at", "deleted_at", "mapping_id", "event_id", "provider_event_id", "provider_series_id"},
@@ -130,7 +138,7 @@ var canonicalUniqueIndexes = map[string][][]string{
 	config.TableProbes:                        {{"policy_id", "due_at"}},
 	config.TableCalendarAuthorizationRequests: {{"state_hash"}},
 	config.TableCalendarConnections:           {{"organizer_id", "provider"}},
-	config.TableSourceCalendarMappings:        {{"connection_id", "provider_calendar_id"}, {"calendar_id"}},
+	config.TableSourceCalendarMappings:        {{"connection_id", "provider_calendar_id", semanticGroupColumn}, {"calendar_id"}},
 	config.TableIdempotencyRecords:            {{"organizer_id", "operation", "key_hash"}},
 	config.TableExternalEventSeriesLinks:      {{"mapping_id", "provider_series_id"}, {"event_series_id"}},
 	config.TableExternalEventLinks:            {{"mapping_id", "provider_event_id"}, {"event_id"}},
@@ -148,6 +156,7 @@ var canonicalCheckConstraints = map[string][]string{
 	config.TableProbes:                        {"probe_state"},
 	config.TableCalendarAuthorizationRequests: {"calendar_authorization_provider"},
 	config.TableCalendarConnections:           {"calendar_connection_provider", "calendar_connection_status"},
+	config.TableSourceCalendarMappings:        {"source_calendar_group"},
 	config.TableCalendarSyncs:                 {"calendar_sync_state"},
 	config.TableDerivedMarkerRules:            {"derived_anchor_type", "derived_anchor_edge"},
 	config.TableIngestionDrafts:               {"ingestion_draft_status", "ingestion_draft_mode", "ingestion_draft_source"},
@@ -197,6 +206,13 @@ func OpenDatabase(databaseFileName string) (*gorm.DB, error) {
 		}
 	} else if presentTableCount != len(canonicalTableNames) || userTableCount != len(canonicalTableNames) {
 		return nil, fmt.Errorf("%w: found %d of %d required tables among %d user tables", ErrNonCanonicalDatabase, presentTableCount, len(canonicalTableNames), userTableCount)
+	} else {
+		if migrationError := migrateCalendarListSyncCursor(databaseConnection); migrationError != nil {
+			return nil, migrationError
+		}
+		if migrationError := migrateCalendarGroupingContract(databaseConnection); migrationError != nil {
+			return nil, migrationError
+		}
 	}
 
 	if validationError := validateCanonicalSchema(databaseConnection); validationError != nil {
@@ -206,6 +222,10 @@ func OpenDatabase(databaseFileName string) (*gorm.DB, error) {
 }
 
 func validateCanonicalSchema(databaseConnection *gorm.DB) error {
+	return validateCanonicalSchemaContract(databaseConnection, canonicalColumns, canonicalUniqueIndexes, canonicalCheckConstraints)
+}
+
+func validateCanonicalSchemaContract(databaseConnection *gorm.DB, expectedColumns map[string][]string, expectedUniqueIndexes map[string][][]string, expectedCheckConstraints map[string][]string) error {
 	var foreignKeysEnabled int
 	if pragmaError := databaseConnection.Raw("PRAGMA foreign_keys").Scan(&foreignKeysEnabled).Error; pragmaError != nil {
 		return fmt.Errorf("read SQLite foreign key state: %w", pragmaError)
@@ -214,20 +234,158 @@ func validateCanonicalSchema(databaseConnection *gorm.DB) error {
 		return fmt.Errorf("%w: SQLite foreign keys are disabled", ErrNonCanonicalDatabase)
 	}
 	for _, tableName := range canonicalTableNames {
-		if columnError := validateCanonicalColumns(databaseConnection, tableName, canonicalColumns[tableName]); columnError != nil {
+		if columnError := validateCanonicalColumns(databaseConnection, tableName, expectedColumns[tableName]); columnError != nil {
 			return columnError
 		}
 		if foreignKeyError := validateCanonicalForeignKeys(databaseConnection, tableName, canonicalForeignKeys[tableName]); foreignKeyError != nil {
 			return foreignKeyError
 		}
-		if indexError := validateCanonicalUniqueIndexes(databaseConnection, tableName, canonicalUniqueIndexes[tableName]); indexError != nil {
+		if indexError := validateCanonicalUniqueIndexes(databaseConnection, tableName, expectedUniqueIndexes[tableName]); indexError != nil {
 			return indexError
 		}
-		if constraintError := validateCanonicalCheckConstraints(databaseConnection, tableName, canonicalCheckConstraints[tableName]); constraintError != nil {
+		if constraintError := validateCanonicalCheckConstraints(databaseConnection, tableName, expectedCheckConstraints[tableName]); constraintError != nil {
 			return constraintError
 		}
 	}
 	return nil
+}
+
+func migrateCalendarListSyncCursor(databaseConnection *gorm.DB) error {
+	if databaseConnection.Migrator().HasColumn(&models.CalendarConnection{}, "CalendarListSyncCursor") {
+		return nil
+	}
+
+	predecessorColumns, predecessorUniqueIndexes, predecessorCheckConstraints := calendarGroupingPredecessorContract()
+	predecessorColumns[config.TableCalendarConnections] = columnsWithout(predecessorColumns[config.TableCalendarConnections], calendarListSyncCursorColumn)
+	if validationError := validateCanonicalSchemaContract(databaseConnection, predecessorColumns, predecessorUniqueIndexes, predecessorCheckConstraints); validationError != nil {
+		return validationError
+	}
+
+	if migrationError := databaseConnection.Transaction(func(transaction *gorm.DB) error {
+		return transaction.Exec("ALTER TABLE " + config.TableCalendarConnections + " ADD COLUMN " + calendarListSyncCursorColumn + " TEXT").Error
+	}); migrationError != nil {
+		return fmt.Errorf("add CalendarList sync cursor to canonical schema: %w", migrationError)
+	}
+	return nil
+}
+
+func migrateCalendarGroupingContract(databaseConnection *gorm.DB) error {
+	hasCutoverColumn := databaseConnection.Migrator().HasColumn(&models.CalendarConnection{}, "CalendarImportCutoverAt")
+	hasSemanticGroupColumn := databaseConnection.Migrator().HasColumn(&models.SourceCalendarMapping{}, "SemanticGroup")
+	hasProviderGroupPredecessorColumn := databaseConnection.Migrator().HasColumn(config.TableSourceCalendarMappings, providerGroupPredecessorColumn)
+	if hasCutoverColumn && hasSemanticGroupColumn && !hasProviderGroupPredecessorColumn {
+		return nil
+	}
+	if hasCutoverColumn && !hasSemanticGroupColumn && hasProviderGroupPredecessorColumn {
+		predecessorColumns, predecessorUniqueIndexes, predecessorCheckConstraints := providerGroupingPredecessorContract()
+		if validationError := validateCanonicalSchemaContract(databaseConnection, predecessorColumns, predecessorUniqueIndexes, predecessorCheckConstraints); validationError != nil {
+			return validationError
+		}
+		if migrationError := databaseConnection.Transaction(func(transaction *gorm.DB) error {
+			if renameError := transaction.Exec("ALTER TABLE " + config.TableSourceCalendarMappings + " RENAME COLUMN " + providerGroupPredecessorColumn + " TO " + semanticGroupColumn).Error; renameError != nil {
+				return renameError
+			}
+			return transaction.Exec("UPDATE " + config.TableSourceCalendarMappings + " SET sync_cursor = NULL").Error
+		}); migrationError != nil {
+			return fmt.Errorf("migrate provider groups to semantic groups: %w", migrationError)
+		}
+		return nil
+	}
+	if hasCutoverColumn || hasSemanticGroupColumn || hasProviderGroupPredecessorColumn {
+		return fmt.Errorf("%w: calendar grouping migration is incomplete", ErrNonCanonicalDatabase)
+	}
+
+	predecessorColumns, predecessorUniqueIndexes, predecessorCheckConstraints := calendarGroupingPredecessorContract()
+	if validationError := validateCanonicalSchemaContract(databaseConnection, predecessorColumns, predecessorUniqueIndexes, predecessorCheckConstraints); validationError != nil {
+		return validationError
+	}
+
+	migrationError := databaseConnection.Transaction(func(transaction *gorm.DB) error {
+		statements := []string{
+			"ALTER TABLE " + config.TableCalendarConnections + " ADD COLUMN " + calendarImportCutoverAtColumn + " datetime",
+			"ALTER TABLE " + config.TableSourceCalendarMappings + " ADD COLUMN " + semanticGroupColumn + " text NOT NULL DEFAULT 'calendar' CONSTRAINT source_calendar_group CHECK (" + semanticGroupColumn + " IN ('calendar','birthdays'))",
+			"DROP INDEX " + sourceProviderCalendarIndex,
+			"CREATE UNIQUE INDEX " + sourceProviderCalendarIndex + " ON " + config.TableSourceCalendarMappings + " (connection_id, provider_calendar_id, " + semanticGroupColumn + ")",
+			"UPDATE " + config.TableCalendarConnections + " SET " + calendarListSyncCursorColumn + " = NULL",
+			"UPDATE " + config.TableSourceCalendarMappings + " SET sync_cursor = NULL",
+		}
+		for _, statement := range statements {
+			if executionError := transaction.Exec(statement).Error; executionError != nil {
+				return executionError
+			}
+		}
+		return nil
+	})
+	if migrationError != nil {
+		return fmt.Errorf("migrate canonical calendar grouping contract: %w", migrationError)
+	}
+	return nil
+}
+
+func calendarGroupingPredecessorContract() (map[string][]string, map[string][][]string, map[string][]string) {
+	predecessorColumns := cloneColumns(canonicalColumns)
+	predecessorColumns[config.TableCalendarConnections] = columnsWithout(predecessorColumns[config.TableCalendarConnections], calendarImportCutoverAtColumn)
+	predecessorColumns[config.TableSourceCalendarMappings] = columnsWithout(predecessorColumns[config.TableSourceCalendarMappings], semanticGroupColumn)
+	predecessorUniqueIndexes := cloneUniqueIndexes(canonicalUniqueIndexes)
+	predecessorUniqueIndexes[config.TableSourceCalendarMappings] = [][]string{{"connection_id", "provider_calendar_id"}, {"calendar_id"}}
+	predecessorCheckConstraints := cloneCheckConstraints(canonicalCheckConstraints)
+	delete(predecessorCheckConstraints, config.TableSourceCalendarMappings)
+	return predecessorColumns, predecessorUniqueIndexes, predecessorCheckConstraints
+}
+
+func providerGroupingPredecessorContract() (map[string][]string, map[string][][]string, map[string][]string) {
+	predecessorColumns := cloneColumns(canonicalColumns)
+	predecessorColumns[config.TableSourceCalendarMappings] = columnsWithReplacement(predecessorColumns[config.TableSourceCalendarMappings], semanticGroupColumn, providerGroupPredecessorColumn)
+	predecessorUniqueIndexes := cloneUniqueIndexes(canonicalUniqueIndexes)
+	predecessorUniqueIndexes[config.TableSourceCalendarMappings] = [][]string{{"connection_id", "provider_calendar_id", providerGroupPredecessorColumn}, {"calendar_id"}}
+	return predecessorColumns, predecessorUniqueIndexes, cloneCheckConstraints(canonicalCheckConstraints)
+}
+
+func cloneColumns(source map[string][]string) map[string][]string {
+	cloned := make(map[string][]string, len(source))
+	for tableName, columns := range source {
+		cloned[tableName] = append([]string(nil), columns...)
+	}
+	return cloned
+}
+
+func cloneUniqueIndexes(source map[string][][]string) map[string][][]string {
+	cloned := make(map[string][][]string, len(source))
+	for tableName, indexes := range source {
+		cloned[tableName] = make([][]string, len(indexes))
+		for index := range indexes {
+			cloned[tableName][index] = append([]string(nil), indexes[index]...)
+		}
+	}
+	return cloned
+}
+
+func cloneCheckConstraints(source map[string][]string) map[string][]string {
+	cloned := make(map[string][]string, len(source))
+	for tableName, constraints := range source {
+		cloned[tableName] = append([]string(nil), constraints...)
+	}
+	return cloned
+}
+
+func columnsWithout(columns []string, excludedColumn string) []string {
+	filtered := make([]string, 0, len(columns)-1)
+	for _, column := range columns {
+		if column != excludedColumn {
+			filtered = append(filtered, column)
+		}
+	}
+	return filtered
+}
+
+func columnsWithReplacement(columns []string, oldColumn string, newColumn string) []string {
+	replaced := append([]string(nil), columns...)
+	for index, column := range replaced {
+		if column == oldColumn {
+			replaced[index] = newColumn
+		}
+	}
+	return replaced
 }
 
 type sqliteColumn struct {

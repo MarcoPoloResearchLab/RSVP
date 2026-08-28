@@ -301,7 +301,7 @@ func TestHorizonHTMLDefersCalendarSynchronizationStatus(testingContext *testing.
 	if createError := fixture.Database.Create(connection).Error; createError != nil {
 		testingContext.Fatalf("create calendar connection: %v", createError)
 	}
-	mapping, mappingError := models.NewSourceCalendarMapping(connection.ID, calendar.ID, "source")
+	mapping, mappingError := models.NewSourceCalendarMapping(connection.ID, calendar.ID, "source", models.SourceCalendarGroupCalendar)
 	if mappingError != nil {
 		testingContext.Fatalf("construct source mapping: %v", mappingError)
 	}

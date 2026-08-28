@@ -343,7 +343,7 @@ func TestEventUpdateRejectsProviderOwnedMarker(testingContext *testing.T) {
 	if createError := fixture.Database.Create(connection).Error; createError != nil {
 		testingContext.Fatalf("create connection: %v", createError)
 	}
-	mapping, mappingError := models.NewSourceCalendarMapping(connection.ID, lane.CalendarID, "source")
+	mapping, mappingError := models.NewSourceCalendarMapping(connection.ID, lane.CalendarID, "source", models.SourceCalendarGroupCalendar)
 	if mappingError != nil {
 		testingContext.Fatalf("construct source mapping: %v", mappingError)
 	}

@@ -34,10 +34,9 @@ type SettingsCalendarView struct {
 
 // SettingsConnectionView contains one Google Calendar connection's management links.
 type SettingsConnectionView struct {
-	ID                string
-	Status            models.CalendarConnectionStatus
-	ManagementURL     string
-	SourceCalendarURL string
+	ID            string
+	Status        models.CalendarConnectionStatus
+	ManagementURL string
 }
 
 func newSettingsViewData(database *gorm.DB, organizerID string) (SettingsViewData, error) {
@@ -69,8 +68,7 @@ func newSettingsViewData(database *gorm.DB, organizerID string) (SettingsViewDat
 	}
 	viewData.CalendarConnection = &SettingsConnectionView{
 		ID: connection.ID, Status: connection.Status,
-		ManagementURL:     config.WebCalendarConnections + url.PathEscape(connection.ID),
-		SourceCalendarURL: config.WebCalendarConnections + url.PathEscape(connection.ID) + "/source-calendars/",
+		ManagementURL: config.WebCalendarConnections + url.PathEscape(connection.ID),
 	}
 	return viewData, nil
 }

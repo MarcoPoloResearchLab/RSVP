@@ -151,7 +151,7 @@ func (resources *Resources) Callback() http.Handler {
 	})
 }
 
-// Connections returns the connection and selected source calendar handler.
+// Connections returns the connection and source calendar handlers.
 func (resources *Resources) Connections() http.Handler {
 	return http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
 		setPrivateHeaders(responseWriter)
@@ -175,15 +175,12 @@ func (resources *Resources) Connections() http.Handler {
 			return
 		}
 		if sourceCollection {
-			switch request.Method {
-			case http.MethodGet:
-				resources.listSources(currentUser.ID, connectionID, responseWriter, request)
-			case http.MethodPut:
-				resources.replaceSources(currentUser, connectionID, responseWriter, request)
-			default:
-				responseWriter.Header().Set("Allow", http.MethodGet+", "+http.MethodPut)
+			if request.Method != http.MethodGet {
+				responseWriter.Header().Set("Allow", http.MethodGet)
 				writeError(resources.applicationContext, responseWriter, http.StatusMethodNotAllowed, "method_not_allowed", http.StatusText(http.StatusMethodNotAllowed), nil)
+				return
 			}
+			resources.listSources(currentUser.ID, connectionID, responseWriter, request)
 			return
 		}
 		switch request.Method {
@@ -227,80 +224,53 @@ func (resources *Resources) createConnection(currentUser *models.User, responseW
 	if reused {
 		statusCode = http.StatusOK
 	}
-	responseWriter.Header().Set("Location", config.WebCalendarConnections+connection.ID)
-	writeConnection(resources.applicationContext, responseWriter, statusCode, connection, nil)
-}
-
-func (resources *Resources) listSources(organizerID string, connectionID string, responseWriter http.ResponseWriter, request *http.Request) {
-	available, listError := resources.service.ListSourceCalendars(request.Context(), organizerID, connectionID)
-	if listError != nil {
-		writeServiceError(resources.applicationContext, responseWriter, listError)
-		return
-	}
-	connection, readError := resources.service.ReadConnection(request.Context(), organizerID, connectionID)
-	if readError != nil {
-		writeServiceError(resources.applicationContext, responseWriter, readError)
-		return
-	}
-	selected := make(map[string]string, len(connection.Mappings))
-	for _, mapping := range connection.Mappings {
-		selected[mapping.ProviderCalendarID] = mapping.CalendarID
-	}
-	type sourceRepresentation struct {
-		services.ProviderCalendar
-		Selected   bool   `json:"selected"`
-		CalendarID string `json:"calendar_id,omitempty"`
-	}
-	response := make([]sourceRepresentation, 0, len(available))
-	for _, calendar := range available {
-		calendarID, isSelected := selected[calendar.ID]
-		response = append(response, sourceRepresentation{ProviderCalendar: calendar, Selected: isSelected, CalendarID: calendarID})
-	}
-	if encodeError := handlers.WriteJSON(responseWriter, http.StatusOK, map[string]any{"connection_id": connectionID, "sources": response}); encodeError != nil {
-		resources.applicationContext.Logger.Printf("ERROR: Write source calendar response: %v", encodeError)
-	}
-}
-
-func (resources *Resources) replaceSources(currentUser *models.User, connectionID string, responseWriter http.ResponseWriter, request *http.Request) {
-	var body struct {
-		ProviderCalendarIDs []string `json:"provider_calendar_ids"`
-		Timezone            string   `json:"timezone"`
-	}
-	if decodeError := handlers.DecodeJSON(responseWriter, request, requestBodyBytes, &body); decodeError != nil {
-		writeDecodeError(resources.applicationContext, responseWriter, decodeError)
-		return
-	}
-	timezone, timezoneError := models.NewTimezone(body.Timezone)
-	if timezoneError != nil {
-		writeError(resources.applicationContext, responseWriter, http.StatusUnprocessableEntity, "invalid_timezone", "Timezone is invalid.", timezoneError)
-		return
-	}
-	mappings, replaceError := resources.service.ReplaceSourceCalendars(request.Context(), currentUser, timezone, connectionID, body.ProviderCalendarIDs)
-	if replaceError != nil {
-		writeServiceError(resources.applicationContext, responseWriter, replaceError)
+	mappings, reconciliationError := resources.service.ReconcileSourceCalendars(request.Context(), currentUser.ID, connection.ID)
+	if reconciliationError != nil {
+		writeError(resources.applicationContext, responseWriter, http.StatusBadGateway, "calendar_synchronization_failed", "Google Calendar synchronization failed. RSVP will retry automatically.", reconciliationError)
 		return
 	}
 	if synchronizationError := resources.syncService.SynchronizeMappings(request.Context(), currentUser.ID, mappings); synchronizationError != nil {
 		writeError(resources.applicationContext, responseWriter, http.StatusBadGateway, "calendar_synchronization_failed", "Google Calendar synchronization failed. RSVP will retry automatically.", synchronizationError)
 		return
 	}
-	type mappingRepresentation struct {
-		ID                 string `json:"id"`
-		CalendarID         string `json:"calendar_id"`
-		ProviderCalendarID string `json:"provider_calendar_id"`
+	responseWriter.Header().Set("Location", config.WebCalendarConnections+connection.ID)
+	writeConnection(resources.applicationContext, responseWriter, statusCode, connection, nil)
+}
+
+func (resources *Resources) listSources(organizerID string, connectionID string, responseWriter http.ResponseWriter, request *http.Request) {
+	connection, readError := resources.service.ReadConnection(request.Context(), organizerID, connectionID)
+	if readError != nil {
+		writeServiceError(resources.applicationContext, responseWriter, readError)
+		return
 	}
-	response := make([]mappingRepresentation, 0, len(mappings))
-	for _, mapping := range mappings {
-		response = append(response, mappingRepresentation{ID: mapping.ID, CalendarID: mapping.CalendarID, ProviderCalendarID: mapping.ProviderCalendarID})
+	type sourceRepresentation struct {
+		ID                 string                     `json:"id"`
+		ProviderCalendarID string                     `json:"provider_calendar_id"`
+		SemanticGroup      models.SourceCalendarGroup `json:"semantic_group"`
+		CalendarID         string                     `json:"calendar_id"`
+		Name               string                     `json:"name"`
+		Visible            bool                       `json:"visible"`
 	}
-	if encodeError := handlers.WriteJSON(responseWriter, http.StatusOK, map[string]any{"mappings": response}); encodeError != nil {
-		resources.applicationContext.Logger.Printf("ERROR: Write source calendar selection response: %v", encodeError)
+	response := make([]sourceRepresentation, 0, len(connection.Mappings))
+	for _, mapping := range connection.Mappings {
+		response = append(response, sourceRepresentation{
+			ID: mapping.ID, ProviderCalendarID: mapping.ProviderCalendarID, SemanticGroup: mapping.SemanticGroup, CalendarID: mapping.CalendarID,
+			Name: mapping.Calendar.Name, Visible: mapping.Calendar.Visible,
+		})
+	}
+	if encodeError := handlers.WriteJSON(responseWriter, http.StatusOK, map[string]any{"connection_id": connectionID, "sources": response}); encodeError != nil {
+		resources.applicationContext.Logger.Printf("ERROR: Write source calendar response: %v", encodeError)
 	}
 }
 
-// SynchronizeAll reconciles every selected source calendar.
+// SynchronizeAll reconciles every source calendar list and its event data.
 func (resources *Resources) SynchronizeAll(ctx context.Context) error {
-	return resources.syncService.SynchronizeAll(ctx)
+	reconciledConnections, reconciliationError := resources.service.ReconcileAllSourceCalendars(ctx)
+	synchronizationErrors := []error{reconciliationError}
+	for _, connection := range reconciledConnections {
+		synchronizationErrors = append(synchronizationErrors, resources.syncService.SynchronizeMappings(ctx, connection.OrganizerID, connection.Mappings))
+	}
+	return errors.Join(synchronizationErrors...)
 }
 
 func writeConnection(applicationContext *config.ApplicationContext, responseWriter http.ResponseWriter, statusCode int, connection *models.CalendarConnection, synchronization *connectionSynchronization) {
@@ -367,8 +337,6 @@ func writeServiceError(applicationContext *config.ApplicationContext, responseWr
 		writeError(applicationContext, responseWriter, http.StatusConflict, "idempotency_conflict", "The Idempotency-Key identifies a different request.", serviceError)
 	case errors.Is(serviceError, services.ErrCalendarAuthorizationInvalid):
 		writeError(applicationContext, responseWriter, http.StatusUnprocessableEntity, "calendar_authorization_invalid", "Calendar authorization is invalid or expired.", serviceError)
-	case errors.Is(serviceError, services.ErrSourceCalendarSelectionInvalid), errors.Is(serviceError, models.ErrTimezoneInvalid), errors.Is(serviceError, models.ErrTimezoneRequired):
-		writeError(applicationContext, responseWriter, http.StatusUnprocessableEntity, "source_calendar_selection_invalid", "Source calendar selection is invalid.", serviceError)
 	case errors.Is(serviceError, services.ErrCalendarConnectionHasLocalUse), errors.Is(serviceError, services.ErrSourceOwnedMarker):
 		writeError(applicationContext, responseWriter, http.StatusConflict, "source_calendar_conflict", serviceError.Error(), serviceError)
 	default:

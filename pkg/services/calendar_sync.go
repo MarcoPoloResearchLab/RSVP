@@ -53,10 +53,11 @@ func (service *CalendarSyncService) Synchronize(ctx context.Context, organizerID
 	if mapping.SyncCursor != nil {
 		cursor = *mapping.SyncCursor
 	}
-	batch, providerError := service.adapter.SynchronizeEvents(ctx, credential, mapping.ProviderCalendarID, cursor)
+	providerGroup := ProviderCalendarGroupKey(mapping.SemanticGroup)
+	batch, providerError := service.adapter.SynchronizeEvents(ctx, credential, mapping.ProviderCalendarID, providerGroup, cursor)
 	completeReconciliation := cursor == ""
 	if errors.Is(providerError, ErrCalendarSyncCursorRejected) && cursor != "" {
-		batch, providerError = service.adapter.SynchronizeEvents(ctx, credential, mapping.ProviderCalendarID, "")
+		batch, providerError = service.adapter.SynchronizeEvents(ctx, credential, mapping.ProviderCalendarID, providerGroup, "")
 		completeReconciliation = true
 	}
 	if providerError != nil {
@@ -81,37 +82,12 @@ func (service *CalendarSyncService) Synchronize(ctx context.Context, organizerID
 	return synchronization, nil
 }
 
-// SynchronizeMappings reconciles each selected source mapping and continues after failures.
+// SynchronizeMappings reconciles each imported source mapping and continues after failures.
 func (service *CalendarSyncService) SynchronizeMappings(ctx context.Context, organizerID string, mappings []models.SourceCalendarMapping) error {
 	var synchronizationErrors []error
 	for mappingIndex := range mappings {
 		if _, synchronizationError := service.Synchronize(ctx, organizerID, mappings[mappingIndex].ID); synchronizationError != nil {
 			synchronizationErrors = append(synchronizationErrors, fmt.Errorf("synchronize mapping %s: %w", mappings[mappingIndex].ID, synchronizationError))
-		}
-	}
-	return errors.Join(synchronizationErrors...)
-}
-
-// SynchronizeAll reconciles every selected source calendar on a connected account.
-func (service *CalendarSyncService) SynchronizeAll(ctx context.Context) error {
-	type ownedMapping struct {
-		ID          string
-		OrganizerID string
-	}
-	var mappings []ownedMapping
-	findError := service.database.WithContext(ctx).Table("source_calendar_mappings AS mappings").
-		Select("mappings.id, connections.organizer_id").
-		Joins("JOIN calendar_connections AS connections ON connections.id = mappings.connection_id AND connections.deleted_at IS NULL").
-		Where("mappings.deleted_at IS NULL AND connections.status = ?", models.CalendarConnectionConnected).
-		Order("mappings.id ASC").
-		Scan(&mappings).Error
-	if findError != nil {
-		return fmt.Errorf("list calendar synchronization mappings: %w", findError)
-	}
-	var synchronizationErrors []error
-	for _, mapping := range mappings {
-		if _, synchronizationError := service.Synchronize(ctx, mapping.OrganizerID, mapping.ID); synchronizationError != nil {
-			synchronizationErrors = append(synchronizationErrors, fmt.Errorf("synchronize mapping %s: %w", mapping.ID, synchronizationError))
 		}
 	}
 	return errors.Join(synchronizationErrors...)

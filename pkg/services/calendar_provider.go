@@ -13,12 +13,26 @@ type CalendarProviderCredential struct {
 	ExpiresAt    time.Time `json:"expires_at"`
 }
 
-// ProviderCalendar contains one source calendar available for selection.
+// ProviderCalendarGroup contains one provider-normalized event grouping.
+type ProviderCalendarGroup struct {
+	Key        ProviderCalendarGroupKey `json:"key"`
+	Name       string                   `json:"name"`
+	ColorToken string                   `json:"color_token"`
+	Visible    bool                     `json:"visible"`
+}
+
+// ProviderCalendar contains one provider-owned source calendar change.
 type ProviderCalendar struct {
-	ID         string `json:"id"`
-	Name       string `json:"name"`
-	Timezone   string `json:"timezone"`
-	ColorToken string `json:"color_token"`
+	ID       string                  `json:"id"`
+	Deleted  bool                    `json:"deleted"`
+	Readable bool                    `json:"readable"`
+	Groups   []ProviderCalendarGroup `json:"groups"`
+}
+
+// ProviderCalendarBatch contains all CalendarList pages for one cursor transition.
+type ProviderCalendarBatch struct {
+	Calendars      []ProviderCalendar
+	NextSyncCursor string
 }
 
 // ProviderEvent contains one provider-owned event occurrence or deletion.
@@ -42,14 +56,28 @@ type ProviderEventBatch struct {
 	NextSyncCursor string
 }
 
-// ErrCalendarSyncCursorRejected indicates that the provider requires a complete reconciliation.
-var ErrCalendarSyncCursorRejected = errors.New("calendar sync cursor was rejected")
+// ProviderCalendarGroupKey identifies one semantic provider event grouping.
+type ProviderCalendarGroupKey string
+
+const (
+	// ProviderCalendarGroupCalendar identifies the provider calendar's general events.
+	ProviderCalendarGroupCalendar ProviderCalendarGroupKey = "calendar"
+	// ProviderCalendarGroupBirthdays identifies birthday events.
+	ProviderCalendarGroupBirthdays ProviderCalendarGroupKey = "birthdays"
+)
+
+var (
+	// ErrCalendarListSyncCursorRejected indicates that the provider requires a complete source calendar reconciliation.
+	ErrCalendarListSyncCursorRejected = errors.New("calendar list sync cursor was rejected")
+	// ErrCalendarSyncCursorRejected indicates that the provider requires a complete event reconciliation.
+	ErrCalendarSyncCursorRejected = errors.New("calendar sync cursor was rejected")
+)
 
 // CalendarProviderAdapter defines the external calendar provider boundary.
 type CalendarProviderAdapter interface {
 	AuthorizationURL(state string, redirectURI string) (string, error)
 	ExchangeCode(ctx context.Context, code string, redirectURI string) (CalendarProviderCredential, error)
 	RefreshCredential(ctx context.Context, credential CalendarProviderCredential) (CalendarProviderCredential, error)
-	ListCalendars(ctx context.Context, credential CalendarProviderCredential) ([]ProviderCalendar, error)
-	SynchronizeEvents(ctx context.Context, credential CalendarProviderCredential, providerCalendarID string, syncCursor string) (ProviderEventBatch, error)
+	ListCalendars(ctx context.Context, credential CalendarProviderCredential, syncCursor string) (ProviderCalendarBatch, error)
+	SynchronizeEvents(ctx context.Context, credential CalendarProviderCredential, providerCalendarID string, providerGroup ProviderCalendarGroupKey, syncCursor string) (ProviderEventBatch, error)
 }

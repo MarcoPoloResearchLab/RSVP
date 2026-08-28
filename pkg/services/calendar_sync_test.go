@@ -19,6 +19,7 @@ import (
 )
 
 type synchronizationAdapter struct {
+	calendarBatch           services.ProviderCalendarBatch
 	batches                 map[string]services.ProviderEventBatch
 	rejected                map[string]bool
 	providerErrors          map[string]error
@@ -39,14 +40,10 @@ func (adapter *synchronizationAdapter) RefreshCredential(_ context.Context, cred
 	adapter.refreshCount++
 	return services.CalendarProviderCredential{AccessToken: "renewed-access", RefreshToken: credential.RefreshToken, ExpiresAt: time.Date(2026, time.August, 26, 16, 0, 0, 0, time.UTC)}, nil
 }
-func (*synchronizationAdapter) ListCalendars(context.Context, services.CalendarProviderCredential) ([]services.ProviderCalendar, error) {
-	return []services.ProviderCalendar{
-		{ID: "source", Name: "Source", Timezone: testsupport.TimezoneName, ColorToken: "source"},
-		{ID: "source-a", Name: "Source A", Timezone: testsupport.TimezoneName, ColorToken: "source-a"},
-		{ID: "source-b", Name: "Source B", Timezone: testsupport.TimezoneName, ColorToken: "source-b"},
-	}, nil
+func (adapter *synchronizationAdapter) ListCalendars(context.Context, services.CalendarProviderCredential, string) (services.ProviderCalendarBatch, error) {
+	return adapter.calendarBatch, nil
 }
-func (adapter *synchronizationAdapter) SynchronizeEvents(_ context.Context, credential services.CalendarProviderCredential, providerCalendarID string, cursor string) (services.ProviderEventBatch, error) {
+func (adapter *synchronizationAdapter) SynchronizeEvents(_ context.Context, credential services.CalendarProviderCredential, providerCalendarID string, _ services.ProviderCalendarGroupKey, cursor string) (services.ProviderEventBatch, error) {
 	adapter.providerCalls = append(adapter.providerCalls, providerCalendarID)
 	adapter.cursors = append(adapter.cursors, cursor)
 	adapter.synchronizedCredentials = append(adapter.synchronizedCredentials, credential)
@@ -68,6 +65,10 @@ func TestCalendarSynchronizationContinuesAndRetriesFailedMappings(testingContext
 	owner := fixture.CreateUser(testsupport.OwnerUserID)
 	referenceTime := time.Date(2026, time.August, 26, 12, 0, 0, 0, time.UTC)
 	adapter := &synchronizationAdapter{
+		calendarBatch: services.ProviderCalendarBatch{NextSyncCursor: "calendar-cursor-1", Calendars: []services.ProviderCalendar{
+			providerCalendar("source-a", "Source A", "source-a", true),
+			providerCalendar("source-b", "Source B", "source-b", true),
+		}},
 		batches: map[string]services.ProviderEventBatch{
 			"":         {NextSyncCursor: "cursor-1"},
 			"cursor-1": {NextSyncCursor: "cursor-2"},
@@ -97,9 +98,12 @@ func TestCalendarSynchronizationContinuesAndRetriesFailedMappings(testingContext
 		testingContext.Fatalf("create connection: %v", createError)
 	}
 	timezone, _ := models.NewTimezone(testsupport.TimezoneName)
-	mappings, mappingError := connectionService.ReplaceSourceCalendars(context.Background(), &owner, timezone, connection.ID, []string{"source-a", "source-b"})
+	if confirmationError := owner.ConfirmTimezone(fixture.Database, timezone); confirmationError != nil {
+		testingContext.Fatalf("confirm organizer timezone: %v", confirmationError)
+	}
+	mappings, mappingError := connectionService.ReconcileSourceCalendars(context.Background(), owner.ID, connection.ID)
 	if mappingError != nil {
-		testingContext.Fatalf("select sources: %v", mappingError)
+		testingContext.Fatalf("reconcile sources: %v", mappingError)
 	}
 	slices.SortFunc(mappings, func(left models.SourceCalendarMapping, right models.SourceCalendarMapping) int {
 		return strings.Compare(left.ID, right.ID)
@@ -109,7 +113,7 @@ func TestCalendarSynchronizationContinuesAndRetriesFailedMappings(testingContext
 	if syncServiceError != nil {
 		testingContext.Fatalf("construct sync service: %v", syncServiceError)
 	}
-	if synchronizationError := syncService.SynchronizeAll(context.Background()); synchronizationError == nil {
+	if synchronizationError := syncService.SynchronizeMappings(context.Background(), owner.ID, mappings); synchronizationError == nil {
 		testingContext.Fatal("first synchronization error is absent")
 	}
 	if !reflect.DeepEqual(adapter.providerCalls, []string{mappings[0].ProviderCalendarID, mappings[1].ProviderCalendarID}) {
@@ -121,7 +125,7 @@ func TestCalendarSynchronizationContinuesAndRetriesFailedMappings(testingContext
 	}
 	delete(adapter.providerErrors, mappings[0].ProviderCalendarID)
 	adapter.providerCalls = nil
-	if synchronizationError := syncService.SynchronizeAll(context.Background()); synchronizationError != nil {
+	if synchronizationError := syncService.SynchronizeMappings(context.Background(), owner.ID, mappings); synchronizationError != nil {
 		testingContext.Fatalf("retry synchronization: %v", synchronizationError)
 	}
 	if !reflect.DeepEqual(adapter.providerCalls, []string{mappings[0].ProviderCalendarID, mappings[1].ProviderCalendarID}) {
@@ -141,7 +145,13 @@ func TestCalendarSynchronizationIsIncrementalAndReconcilesRejectedCursor(testing
 	seriesStartTwo := seriesStartOne.AddDate(0, 0, 7)
 	seriesEndTwo := seriesStartTwo.Add(time.Hour)
 	pointAt := time.Date(2026, time.September, 4, 16, 0, 0, 0, time.UTC)
-	adapter := &synchronizationAdapter{batches: map[string]services.ProviderEventBatch{}, rejected: map[string]bool{}}
+	adapter := &synchronizationAdapter{
+		calendarBatch: services.ProviderCalendarBatch{NextSyncCursor: "calendar-cursor-1", Calendars: []services.ProviderCalendar{
+			providerCalendar("source", "Source", "source", true),
+		}},
+		batches:  map[string]services.ProviderEventBatch{},
+		rejected: map[string]bool{},
+	}
 	adapter.batches[""] = services.ProviderEventBatch{NextSyncCursor: "cursor-1", Events: []services.ProviderEvent{
 		{ID: "birthday", Title: "Birthday", Status: "confirmed", Timezone: testsupport.TimezoneName, StartDate: "2026-09-01", EndDate: "2026-09-02"},
 		{ID: "holiday", Title: "Holiday", Status: "confirmed", Timezone: testsupport.TimezoneName, StartsAt: &timedStart, EndsAt: &timedEnd},
@@ -178,9 +188,12 @@ func TestCalendarSynchronizationIsIncrementalAndReconcilesRejectedCursor(testing
 		testingContext.Fatalf("create connection: %v", createError)
 	}
 	timezone, _ := models.NewTimezone(testsupport.TimezoneName)
-	mappings, mappingError := connectionService.ReplaceSourceCalendars(context.Background(), &owner, timezone, connection.ID, []string{"source"})
+	if confirmationError := owner.ConfirmTimezone(fixture.Database, timezone); confirmationError != nil {
+		testingContext.Fatalf("confirm organizer timezone: %v", confirmationError)
+	}
+	mappings, mappingError := connectionService.ReconcileSourceCalendars(context.Background(), owner.ID, connection.ID)
 	if mappingError != nil {
-		testingContext.Fatalf("select source: %v", mappingError)
+		testingContext.Fatalf("reconcile source: %v", mappingError)
 	}
 	currentTime = referenceTime.Add(119*time.Minute + 30*time.Second)
 	syncService, syncServiceError := services.NewCalendarSyncService(fixture.Database, adapter, cipher, func() time.Time { return currentTime })
