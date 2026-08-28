@@ -177,7 +177,9 @@ func (resources *Resources) AuthorizationRequests() http.Handler {
 func (resources *Resources) Callback() http.Handler {
 	return http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
 		responseWriter.Header().Set("Cache-Control", "no-store")
+		responseWriter.Header().Set("Content-Security-Policy", "default-src 'none'; connect-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
 		responseWriter.Header().Set("Referrer-Policy", "no-referrer")
+		responseWriter.Header().Set("X-Content-Type-Options", "nosniff")
 		currentUser, userFound := currentOrganizer(request)
 		if !userFound {
 			writeError(resources.applicationContext, responseWriter, http.StatusUnauthorized, "authentication_required", "Authentication is required.", nil)
@@ -204,8 +206,7 @@ func (resources *Resources) Callback() http.Handler {
 			return
 		}
 		responseWriter.Header().Set("Content-Type", "text/html; charset=utf-8")
-		callbackTemplate := template.Must(template.New("callback").Parse(calendarCallbackHTML))
-		if executeError := callbackTemplate.Execute(responseWriter, confirmation); executeError != nil {
+		if executeError := calendarCallbackTemplate.Execute(responseWriter, confirmation); executeError != nil {
 			resources.applicationContext.Logger.Printf("ERROR: Render calendar callback: %v", executeError)
 		}
 	})
@@ -428,15 +429,236 @@ func writeError(applicationContext *config.ApplicationContext, responseWriter ht
 	}
 }
 
+var calendarCallbackTemplate = template.Must(template.New("calendar callback").Parse(calendarCallbackHTML))
+
 const calendarCallbackHTML = `<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="referrer" content="no-referrer"><title>Confirm Google Calendar</title></head>
-<body><main><h1>Confirm Google Calendar</h1><p>RSVP validated the Google consent response.</p>
-<button id="confirm" type="button" data-request-id="{{.RequestID}}" data-state="{{.State}}" data-code="{{.Code}}">Create connection</button><p id="status" role="status"></p></main>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Confirm Google Calendar · RSVP</title>
+<style>
+:root {
+  color-scheme: light;
+  --ink: #18231f;
+  --muted: #65716c;
+  --paper: #f6f4ed;
+  --panel: #fffdf7;
+  --line: #d9ddd7;
+  --accent: #176b52;
+  --accent-soft: #e6f0eb;
+  --danger: #a33b2f;
+}
+* { box-sizing: border-box; }
+html { min-height: 100%; }
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  margin: 0;
+  min-height: 100vh;
+}
+.shell {
+  margin: 0 auto;
+  max-width: 60rem;
+  padding: 1.25rem clamp(1rem, 4vw, 2.5rem) 3rem;
+}
+.masthead {
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  justify-content: space-between;
+  min-height: 3.25rem;
+}
+.wordmark {
+  color: var(--ink);
+  font-size: 0.92rem;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-decoration: none;
+}
+.context {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+.confirmation {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  box-shadow: 0 1.25rem 3rem rgba(35, 47, 42, 0.08);
+  margin: clamp(2rem, 8vh, 5rem) auto 0;
+  max-width: 34rem;
+  overflow: hidden;
+}
+.confirmation-main { padding: clamp(1.4rem, 5vw, 2rem); }
+.status-chip {
+  align-items: center;
+  background: var(--accent-soft);
+  border: 1px solid #b8d4c7;
+  border-radius: 999px;
+  color: var(--accent);
+  display: inline-flex;
+  font-size: 0.7rem;
+  font-weight: 750;
+  gap: 0.42rem;
+  letter-spacing: 0.04em;
+  padding: 0.3rem 0.55rem;
+  text-transform: uppercase;
+}
+.status-chip::before {
+  background: var(--accent);
+  border-radius: 50%;
+  content: "";
+  height: 0.45rem;
+  width: 0.45rem;
+}
+h1 {
+  font-size: clamp(1.6rem, 5vw, 2.2rem);
+  letter-spacing: -0.045em;
+  line-height: 1.05;
+  margin: 1rem 0 0.7rem;
+}
+.summary {
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.55;
+  margin: 0;
+}
+.access {
+  border: 1px solid var(--line);
+  border-radius: 0.55rem;
+  margin: 1.3rem 0 0;
+  padding: 0.85rem 1rem;
+}
+.access h2 {
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  margin: 0 0 0.55rem;
+  text-transform: uppercase;
+}
+.access ul {
+  color: var(--muted);
+  display: grid;
+  font-size: 0.82rem;
+  gap: 0.4rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.access li::before {
+  color: var(--accent);
+  content: "✓";
+  font-weight: 800;
+  margin-right: 0.5rem;
+}
+.actions {
+  align-items: center;
+  background: #f1efe8;
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  justify-content: flex-end;
+  padding: 0.9rem clamp(1.4rem, 5vw, 2rem);
+}
+button {
+  border: 1px solid transparent;
+  border-radius: 0.4rem;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 700;
+  min-height: 2.5rem;
+  padding: 0.5rem 0.85rem;
+}
+button:focus-visible { outline: 3px solid rgba(23, 107, 82, 0.28); outline-offset: 2px; }
+.secondary { background: transparent; border-color: var(--line); color: var(--ink); }
+.primary { background: var(--ink); color: white; }
+.primary:hover { background: var(--accent); }
+button:disabled { cursor: wait; opacity: 0.65; }
+.result {
+  color: var(--muted);
+  flex-basis: 100%;
+  font-size: 0.76rem;
+  margin: 0;
+  min-height: 1.15rem;
+  text-align: right;
+}
+.result[data-state="error"] { color: var(--danger); }
+@media (max-width: 34rem) {
+  .shell { padding-inline: 0.75rem; }
+  .context { display: none; }
+  .confirmation { margin-top: 1.25rem; }
+  .actions { align-items: stretch; flex-direction: column-reverse; }
+  .actions button { width: 100%; }
+  .result { text-align: left; }
+}
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+</style>
+</head>
+<body>
+<div class="shell">
+  <header class="masthead">
+    <span class="wordmark" aria-label="RSVP">RSVP</span>
+    <span class="context">Calendar connection</span>
+  </header>
+  <main>
+    <section class="confirmation" data-calendar-confirmation aria-labelledby="confirmation-title">
+      <div class="confirmation-main">
+        <span class="status-chip">Consent verified</span>
+        <h1 id="confirmation-title">Confirm Google Calendar</h1>
+        <p class="summary">Google returned you to RSVP. Create the connection to finish adding your calendars.</p>
+        <section class="access" aria-labelledby="access-title">
+          <h2 id="access-title">Read-only access</h2>
+          <ul>
+            <li>View your calendar list</li>
+            <li>View calendar events</li>
+          </ul>
+        </section>
+      </div>
+      <div class="actions">
+        <button class="secondary" id="cancel" type="button">Back to Horizon</button>
+        <button class="primary" id="confirm" type="button" data-request-id="{{.RequestID}}">Create connection</button>
+        <p class="result" id="status" role="status" aria-live="polite"></p>
+      </div>
+    </section>
+  </main>
+</div>
 <script>
-document.getElementById('confirm').addEventListener('click', async () => {
+(() => {
   const button = document.getElementById('confirm');
-  const response = await fetch('/calendar-connections/', {method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/json','Idempotency-Key':crypto.randomUUID()}, body:JSON.stringify({request_id:button.dataset.requestId,state:button.dataset.state,code:button.dataset.code})});
-  if (!response.ok) { document.getElementById('status').textContent = 'Connection failed.'; return; }
-  window.location.assign('/horizon/');
-});
-</script></body></html>`
+  const cancel = document.getElementById('cancel');
+  const status = document.getElementById('status');
+  const query = new URLSearchParams(window.location.search);
+  const state = query.get('state');
+  const code = query.get('code');
+  const idempotencyKey = crypto.randomUUID();
+
+  cancel.addEventListener('click', () => window.location.replace('/horizon/'));
+  button.addEventListener('click', async () => {
+    button.disabled = true;
+    button.setAttribute('aria-busy', 'true');
+    status.dataset.state = 'working';
+    status.textContent = 'Creating connection…';
+    try {
+      const response = await fetch('/calendar-connections/', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey},
+        body: JSON.stringify({request_id: button.dataset.requestId, state, code})
+      });
+      if (!response.ok) throw new Error('connection request failed');
+      status.textContent = 'Connection created. Returning to Horizon…';
+      window.location.replace('/horizon/');
+    } catch (_) {
+      button.disabled = false;
+      button.removeAttribute('aria-busy');
+      status.dataset.state = 'error';
+      status.textContent = 'RSVP could not create the connection. Try again.';
+    }
+  });
+})();
+</script>
+</body>
+</html>`

@@ -164,6 +164,9 @@ test('shows and completes a durable attention probe', async ({page}) => {
 test('connects Google Calendar and selects two source calendars', async ({page}) => {
     await page.locator('[data-horizon-management] > summary').click();
     await page.getByRole('button', {name: 'Connect Google Calendar'}).click();
+    await expect(page.locator('[data-calendar-confirmation]')).toBeVisible();
+    await expect(page.getByText('Consent verified')).toBeVisible();
+    await expect(page.getByRole('heading', {name: 'Read-only access'})).toBeVisible();
     await expect(page.getByRole('heading', {name: 'Confirm Google Calendar'})).toBeVisible();
     await page.getByRole('button', {name: 'Create connection'}).click();
     await expect(page).toHaveURL(/\/horizon\/$/);

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -76,6 +77,9 @@ func TestCallbackHasNoStoreNoReferrerAndNoDatabaseChange(testingContext *testing
 	if response.Header().Get("Cache-Control") != "no-store" || response.Header().Get("Referrer-Policy") != "no-referrer" {
 		testingContext.Fatalf("callback headers = %v", response.Header())
 	}
+	if response.Header().Get("Content-Security-Policy") == "" || response.Header().Get("X-Content-Type-Options") != "nosniff" {
+		testingContext.Fatalf("callback security headers = %v", response.Header())
+	}
 	var after models.CalendarAuthorizationRequest
 	if findError := fixture.Database.First(&after, "id = ?", start.RequestID).Error; findError != nil {
 		testingContext.Fatalf("reload authorization request: %v", findError)
@@ -86,5 +90,25 @@ func TestCallbackHasNoStoreNoReferrerAndNoDatabaseChange(testingContext *testing
 	var connectionCount int64
 	if countError := fixture.Database.Model(&models.CalendarConnection{}).Count(&connectionCount).Error; countError != nil || connectionCount != 0 {
 		testingContext.Fatalf("connection count = %d, error = %v", connectionCount, countError)
+	}
+
+	htmlRequest := httptest.NewRequest(http.MethodGet, target, nil)
+	htmlRequest = htmlRequest.WithContext(context.WithValue(htmlRequest.Context(), middleware.ContextKeyUser, &owner))
+	htmlResponse := httptest.NewRecorder()
+	resources.Callback().ServeHTTP(htmlResponse, htmlRequest)
+	if htmlResponse.Code != http.StatusOK {
+		testingContext.Fatalf("HTML callback status = %d, want %d; body = %s", htmlResponse.Code, http.StatusOK, htmlResponse.Body.String())
+	}
+	if contentType := htmlResponse.Header().Get("Content-Type"); contentType != "text/html; charset=utf-8" {
+		testingContext.Fatalf("HTML callback Content-Type = %q", contentType)
+	}
+	body := htmlResponse.Body.String()
+	for _, requiredText := range []string{"data-calendar-confirmation", "Consent verified", "Read-only access", "View your calendar list", "View calendar events", "Create connection", "Back to Horizon"} {
+		if !strings.Contains(body, requiredText) {
+			testingContext.Fatalf("HTML callback does not contain %q", requiredText)
+		}
+	}
+	if strings.Contains(body, "private-code") || strings.Contains(body, providerURL.Query().Get("state")) {
+		testingContext.Fatal("HTML callback reflected OAuth credentials into the document")
 	}
 }
