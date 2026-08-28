@@ -102,10 +102,17 @@ if (horizonView instanceof HTMLElement) {
 
     /** @param {HTMLFormElement} form */
     const formPayload = (form) => {
-        /** @type {Record<string, string|number>} */
+        /** @type {Record<string, string|number|null>} */
         const payload = {};
         for (const [name, rawValue] of new FormData(form).entries()) {
-            if (typeof rawValue !== 'string' || rawValue === '') {
+            if (typeof rawValue !== 'string') {
+                continue;
+            }
+            if (rawValue === '') {
+                const control = form.elements.namedItem(name);
+                if (control instanceof HTMLElement && control.hasAttribute('data-nullable-empty')) {
+                    payload[name] = null;
+                }
                 continue;
             }
             const organizerLocalTime = form.hasAttribute('data-ingestion-draft-form') && (name === 'starts_at' || name === 'ends_at' || name === 'next_probe_at');

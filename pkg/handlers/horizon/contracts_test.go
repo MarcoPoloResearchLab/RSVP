@@ -1,6 +1,7 @@
 package horizon_test
 
 import (
+	"bytes"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -284,6 +285,63 @@ func TestHorizonHTMLAndJSONContainOneProjection(testingContext *testing.T) {
 	}
 	if !strings.HasPrefix(htmlResponse.Header().Get("Content-Type"), horizonHTMLMediaType) {
 		testingContext.Fatalf("HTML content type = %q, want %q", htmlResponse.Header().Get("Content-Type"), horizonHTMLMediaType)
+	}
+}
+
+func TestHorizonHTMLShowsCurrentCalendarSynchronizationFailure(testingContext *testing.T) {
+	fixture := testsupport.NewFixture(testingContext)
+	testsupport.LoadTemplates(testingContext)
+	owner := fixture.CreateUser(testsupport.OwnerUserID)
+	confirmTimezone(testingContext, fixture.Database, &owner)
+	calendar := createCalendar(testingContext, fixture.Database, owner.ID, "CAL00001", "Imported", 0, true)
+	connection, connectionError := models.NewCalendarConnection(owner.ID, bytes.Repeat([]byte{0x11}, 12), []byte{0x22})
+	if connectionError != nil {
+		testingContext.Fatalf("construct calendar connection: %v", connectionError)
+	}
+	if createError := fixture.Database.Create(connection).Error; createError != nil {
+		testingContext.Fatalf("create calendar connection: %v", createError)
+	}
+	mapping, mappingError := models.NewSourceCalendarMapping(connection.ID, calendar.ID, "source")
+	if mappingError != nil {
+		testingContext.Fatalf("construct source mapping: %v", mappingError)
+	}
+	if createError := fixture.Database.Create(mapping).Error; createError != nil {
+		testingContext.Fatalf("create source mapping: %v", createError)
+	}
+	referenceTime := time.Date(2030, time.January, 1, 12, 0, 0, 0, time.UTC)
+	succeeded, succeededError := models.NewCalendarSync(mapping.ID, referenceTime.Add(-2*time.Hour))
+	if succeededError != nil {
+		testingContext.Fatalf("construct successful synchronization: %v", succeededError)
+	}
+	succeededAt := referenceTime.Add(-time.Hour)
+	succeeded.State = models.CalendarSyncSucceeded
+	succeeded.FinishedAt = &succeededAt
+	if createError := fixture.Database.Create(succeeded).Error; createError != nil {
+		testingContext.Fatalf("create successful synchronization: %v", createError)
+	}
+	failed, failedError := models.NewCalendarSync(mapping.ID, referenceTime)
+	if failedError != nil {
+		testingContext.Fatalf("construct failed synchronization: %v", failedError)
+	}
+	failedAt := referenceTime.Add(time.Minute)
+	failureCode := "provider_failed"
+	failed.State = models.CalendarSyncFailed
+	failed.FinishedAt = &failedAt
+	failed.ErrorCode = &failureCode
+	if createError := fixture.Database.Create(failed).Error; createError != nil {
+		testingContext.Fatalf("create failed synchronization: %v", createError)
+	}
+
+	response := requestHorizon(testingContext, fixture, owner, config.WebHorizon, horizonHTMLMediaType, referenceTime)
+
+	if response.Code != http.StatusOK {
+		testingContext.Fatalf("horizon status = %d, body = %s", response.Code, response.Body.String())
+	}
+	body := response.Body.String()
+	for _, fragment := range []string{`data-calendar-sync-state`, `>failed</strong>`, `data-calendar-sync-error`, succeededAt.UTC().Format(time.RFC3339)} {
+		if !strings.Contains(body, fragment) {
+			testingContext.Fatalf("horizon synchronization state does not contain %q: %s", fragment, body)
+		}
 	}
 }
 

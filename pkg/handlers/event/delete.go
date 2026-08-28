@@ -108,7 +108,7 @@ func DeleteHandler(applicationContext *config.ApplicationContext) http.HandlerFu
 				baseHttpHandler.HandleError(httpResponseWriter, normalizeError, utils.DatabaseError, "Failed to normalize the event lane order.")
 				return
 			}
-		} else if laneBoundsError := models.RecalculateFiniteLaneEnd(tx, eventRecord.LaneID); laneBoundsError != nil {
+		} else if laneBoundsError := services.RecalculateTemporalLaneBounds(tx, eventRecord.LaneID); laneBoundsError != nil {
 			tx.Rollback()
 			baseHttpHandler.HandleError(httpResponseWriter, laneBoundsError, utils.DatabaseError, "Failed to update the event lane.")
 			return

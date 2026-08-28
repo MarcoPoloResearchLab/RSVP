@@ -69,10 +69,13 @@ type horizonDraftView struct {
 }
 
 type horizonConnectionView struct {
-	ID                string
-	Status            models.CalendarConnectionStatus
-	ManagementURL     string
-	SourceCalendarURL string
+	ID                 string
+	Status             models.CalendarConnectionStatus
+	SyncState          models.CalendarSyncState
+	SyncError          bool
+	LastSuccessfulSync string
+	ManagementURL      string
+	SourceCalendarURL  string
 }
 
 type horizonTimeScaleTick struct {

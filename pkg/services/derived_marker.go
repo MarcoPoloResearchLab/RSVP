@@ -298,6 +298,13 @@ func RecalculateTemporalLaneBounds(database *gorm.DB, laneID string) error {
 	if lane.Status != models.LaneStatusActive || lane.EndsAt == nil {
 		return nil
 	}
+	var eventSeriesCount int64
+	if countError := database.Model(&models.EventSeries{}).Where("lane_id = ?", laneID).Count(&eventSeriesCount).Error; countError != nil {
+		return fmt.Errorf("count event series for temporal lane %s: %w", laneID, countError)
+	}
+	if eventSeriesCount != 0 {
+		return nil
+	}
 	last := lane.StartsAt
 	var events []models.Event
 	if findError := database.Where("lane_id = ?", laneID).Find(&events).Error; findError != nil {

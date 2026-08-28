@@ -151,3 +151,62 @@ func TestDerivedMarkerRejectsAllDayAnchor(testingContext *testing.T) {
 		testingContext.Fatalf("all-day anchor error = %v", createError)
 	}
 }
+
+func TestDerivedMarkerPreservesSeriesRecurrenceBounds(testingContext *testing.T) {
+	fixture := testsupport.NewFixture(testingContext)
+	owner := fixture.CreateUser(testsupport.OwnerUserID)
+	timezone, timezoneError := models.NewTimezone(testsupport.TimezoneName)
+	if timezoneError != nil {
+		testingContext.Fatalf("construct timezone: %v", timezoneError)
+	}
+	if confirmationError := owner.ConfirmTimezone(fixture.Database, timezone); confirmationError != nil {
+		testingContext.Fatalf("confirm timezone: %v", confirmationError)
+	}
+	calendar, calendarError := models.EnsureDefaultCalendar(fixture.Database, owner.ID)
+	if calendarError != nil {
+		testingContext.Fatalf("create calendar: %v", calendarError)
+	}
+	recurrenceLimit := testsupport.FixedStartTime().Add(30 * 24 * time.Hour)
+	lane, laneError := models.NewFiniteLane(calendar.ID, "Series", testsupport.FixedStartTime().Add(-time.Hour), recurrenceLimit, 0)
+	if laneError != nil {
+		testingContext.Fatalf("construct series lane: %v", laneError)
+	}
+	if createError := fixture.Database.Create(lane).Error; createError != nil {
+		testingContext.Fatalf("create series lane: %v", createError)
+	}
+	series, seriesError := models.NewEventSeries(lane.ID, timezone, models.EventSourceLocal, nil)
+	if seriesError != nil {
+		testingContext.Fatalf("construct series: %v", seriesError)
+	}
+	if createError := fixture.Database.Create(series).Error; createError != nil {
+		testingContext.Fatalf("create series: %v", createError)
+	}
+	occurrence, occurrenceError := models.CreateSeriesOccurrenceIntervalEvent(
+		fixture.Database,
+		owner.ID,
+		series.ID,
+		"Occurrence",
+		"",
+		nil,
+		testsupport.FixedStartTime(),
+		testsupport.FixedStartTime().Add(time.Hour),
+		timezone,
+	)
+	if occurrenceError != nil {
+		testingContext.Fatalf("create occurrence: %v", occurrenceError)
+	}
+	service, serviceError := services.NewDerivedMarkerService(fixture.Database)
+	if serviceError != nil {
+		testingContext.Fatalf("construct derived marker service: %v", serviceError)
+	}
+	if _, _, createError := service.Create(context.Background(), owner.ID, models.DerivedAnchorEvent, occurrence.ID, models.DerivedAnchorEnd, int64(time.Hour.Seconds())); createError != nil {
+		testingContext.Fatalf("create series derived marker: %v", createError)
+	}
+	var storedLane models.Lane
+	if findError := fixture.Database.First(&storedLane, "id = ?", lane.ID).Error; findError != nil {
+		testingContext.Fatalf("reload series lane: %v", findError)
+	}
+	if storedLane.EndsAt == nil || !storedLane.EndsAt.Equal(recurrenceLimit) {
+		testingContext.Fatalf("series lane end = %v, want recurrence limit %v", storedLane.EndsAt, recurrenceLimit)
+	}
+}

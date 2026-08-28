@@ -61,15 +61,15 @@ func New(applicationContext *config.ApplicationContext, environmentConfig config
 	if syncServiceError != nil {
 		return nil, syncServiceError
 	}
-	return &Resources{applicationContext: applicationContext, service: service, syncService: syncService}, nil
+	return NewWithServices(applicationContext, service, syncService)
 }
 
-// NewWithService constructs connection resources with an existing service.
-func NewWithService(applicationContext *config.ApplicationContext, service *services.CalendarConnectionService) (*Resources, error) {
-	if applicationContext == nil || service == nil {
+// NewWithServices constructs connection resources with existing services.
+func NewWithServices(applicationContext *config.ApplicationContext, service *services.CalendarConnectionService, syncService *services.CalendarSyncService) (*Resources, error) {
+	if applicationContext == nil || service == nil || syncService == nil {
 		return nil, errors.New("calendar connection HTTP dependencies are required")
 	}
-	return &Resources{applicationContext: applicationContext, service: service}, nil
+	return &Resources{applicationContext: applicationContext, service: service, syncService: syncService}, nil
 }
 
 // AuthorizationRequests returns the consent request collection handler.
@@ -275,10 +275,9 @@ func (resources *Resources) replaceSources(currentUser *models.User, connectionI
 		writeServiceError(resources.applicationContext, responseWriter, replaceError)
 		return
 	}
-	if resources.syncService != nil {
-		if synchronizationError := resources.syncService.SynchronizeMappings(request.Context(), currentUser.ID, mappings); synchronizationError != nil {
-			resources.applicationContext.Logger.Printf("ERROR: Automatic calendar synchronization failed: %v", synchronizationError)
-		}
+	if synchronizationError := resources.syncService.SynchronizeMappings(request.Context(), currentUser.ID, mappings); synchronizationError != nil {
+		writeError(resources.applicationContext, responseWriter, http.StatusBadGateway, "calendar_synchronization_failed", "Google Calendar synchronization failed. RSVP will retry automatically.", synchronizationError)
+		return
 	}
 	type mappingRepresentation struct {
 		ID                 string `json:"id"`
@@ -296,9 +295,6 @@ func (resources *Resources) replaceSources(currentUser *models.User, connectionI
 
 // SynchronizeAll reconciles every selected source calendar.
 func (resources *Resources) SynchronizeAll(ctx context.Context) error {
-	if resources.syncService == nil {
-		return errors.New("calendar synchronization is unavailable")
-	}
 	return resources.syncService.SynchronizeAll(ctx)
 }
 

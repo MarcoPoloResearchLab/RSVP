@@ -15,6 +15,9 @@
                     <h2>Google Calendar</h2>
                     {{ if .CalendarConnection }}
                         <p>Connection state: <strong>{{ .CalendarConnection.Status }}</strong></p>
+                        {{ if .CalendarConnection.SyncState }}<p data-calendar-sync-state>Synchronization state: <strong>{{ .CalendarConnection.SyncState }}</strong></p>{{ end }}
+                        {{ if .CalendarConnection.SyncError }}<p data-calendar-sync-error>Google Calendar synchronization failed. RSVP will retry automatically.</p>{{ end }}
+                        {{ if .CalendarConnection.LastSuccessfulSync }}<p>Last synchronized: <time datetime="{{ .CalendarConnection.LastSuccessfulSync }}">{{ .CalendarConnection.LastSuccessfulSync }}</time></p>{{ end }}
                         <button type="button" data-load-source-calendars data-source-url="{{ .CalendarConnection.SourceCalendarURL }}">Select source calendars</button>
                         <div data-source-calendar-list></div>
                         <button type="button" data-save-source-calendars data-source-url="{{ .CalendarConnection.SourceCalendarURL }}" hidden>Save source calendars</button>
@@ -253,7 +256,7 @@
                                                 <form data-resource-form data-method="PATCH" data-resource-url="{{ .Attention.ManagementURL }}">
                                                     <label>Review interval seconds <input name="review_interval_seconds" type="number" min="1" value="{{ .Attention.ReviewIntervalSeconds }}" required></label>
                                                     <label>Next probe <input name="next_probe_at" type="datetime-local" value="{{ .Attention.NextProbeInput }}" required></label>
-                                                    <label>Escalation interval seconds <input name="escalation_interval_seconds" type="number" min="1" {{ if .Attention.EscalationSeconds }}value="{{ .Attention.EscalationSeconds }}"{{ end }}></label>
+                                                    <label>Escalation interval seconds <input name="escalation_interval_seconds" type="number" min="1" data-nullable-empty {{ if .Attention.EscalationSeconds }}value="{{ .Attention.EscalationSeconds }}"{{ end }}></label>
                                                     <button type="submit">Save attention</button>
                                                 </form>
                                                 <button type="button" data-resource-action="DELETE" data-resource-url="{{ .Attention.ManagementURL }}">Delete attention</button>

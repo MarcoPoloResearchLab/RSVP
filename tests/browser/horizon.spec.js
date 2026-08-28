@@ -181,6 +181,13 @@ test('shows and completes a durable attention probe', async ({page}) => {
     const waitingLane = page.locator('[data-lane-id="LANATTN0"]');
     await waitingLane.locator('.horizon-lane-controls > summary').click();
     await expect(waitingLane.getByText('Next attention:')).toBeVisible();
+    const escalationInput = waitingLane.getByLabel('Escalation interval seconds');
+    await expect(escalationInput).toHaveValue('86400');
+    await escalationInput.fill('');
+    await waitingLane.getByRole('button', {name: 'Save attention'}).click();
+    await page.waitForLoadState('networkidle');
+    await waitingLane.locator('.horizon-lane-controls > summary').click();
+    await expect(waitingLane.getByLabel('Escalation interval seconds')).toHaveValue('');
     const pendingProbe = waitingLane.locator('[data-probe-state="pending"]');
     await expect(pendingProbe).toBeVisible();
     await pendingProbe.focus();
