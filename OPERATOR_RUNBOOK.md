@@ -24,13 +24,16 @@ The production manifest gets each parser value from the `private` resource.
 ## Start The Application
 
 1. Supply all required private values.
-2. Set `DB_NAME` to an empty path or a canonical RSVP database.
+2. Set `DB_NAME` to an empty path or a database with a supported I006 predecessor schema.
 3. Run `go run ./cmd/web`.
 4. Confirm that the root health request returns `200`.
 
 RSVP initializes an empty SQLite database with the complete canonical schema.
 RSVP rejects an incomplete database during startup.
-The runtime contains no schema conversion or data repair path.
+The I006 startup migrations add the CalendarList cursor, import cutover, and semantic group fields.
+The grouping migration clears prior sync cursors for one complete grouped synchronization.
+The next migration renames `provider_group` to `semantic_group` and clears each event sync cursor.
+The runtime rejects a database that does not use the current or an accepted predecessor schema.
 
 ## Validate The Complete Capability
 
@@ -54,9 +57,24 @@ It validates all canonical tables, constraints, indexes, and required relationsh
 Examine the connection state in **Manage horizon**.
 Examine the last synchronization state for each source calendar.
 
-A successful initial synchronization stores a sync cursor.
-A successful later synchronization replaces that cursor.
-A rejected cursor starts one complete source reconciliation.
+A successful CalendarList reconciliation stores a cursor on the connection.
+A successful event synchronization stores a cursor on the source calendar mapping.
+A later scheduled run reconciles the CalendarList before it synchronizes events.
+
+Confirm that a complete CalendarList request includes hidden entries.
+Confirm that each readable entry has one general source mapping and one RSVP calendar.
+Confirm that the primary Google calendar has a separate `Birthdays` mapping.
+Confirm that the general and birthday mappings have separate event sync cursors.
+Confirm that an unknown Google event type stays in its general calendar group.
+Confirm that an explicit birthday title stays in the `Birthdays` calendar when Google returns `eventType=default`.
+Confirm that a changed event moves between semantic groups without a duplicate.
+Confirm that the first complete import removes prior unmapped calendars.
+Confirm that a CalendarList cursor advances only after all mapping changes commit.
+
+A rejected CalendarList cursor starts one complete CalendarList reconciliation.
+A rejected event cursor starts one complete event reconciliation.
+If local data stops source calendar deletion, RSVP records a failed synchronization.
+The connection keeps its prior CalendarList cursor and retries the same change.
 
 Use adapter tests to verify provider behavior without production credentials.
 Do not write authorization codes or refresh credentials to logs.
@@ -92,6 +110,6 @@ Treat each stage as a different result.
 The production service stores SQLite data in the retained `rsvp-data` volume.
 Preserve that volume during a service replacement.
 
-Do not start a runtime with an incomplete or obsolete database.
-Use an approved one-time migration before the new runtime starts.
-Remove the migration bridge after the migration completes.
+Use the I006 startup migrations only for accepted predecessor databases.
+For each other database schema, complete an approved one-time migration before the new runtime starts.
+Remove the I006 migrations after all database files use the canonical schema.
