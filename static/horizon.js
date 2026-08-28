@@ -255,20 +255,40 @@ if (horizonView instanceof HTMLElement) {
         });
     }
 
-    /** @param {string} token */
-    const colorForToken = (token) => {
+    /** @param {string} value */
+    const stableHash = (value) => {
         let hash = 0;
-        for (const character of token) {
+        for (const character of value) {
             hash = ((hash << 5) - hash + character.charCodeAt(0)) | 0;
         }
-        return `hsl(${Math.abs(hash) % 360} 52% 38%)`;
+        return hash >>> 0;
     };
 
+    const calendarControls = [...horizonView.querySelectorAll('[data-calendar-control]')];
+    const rankedCalendars = calendarControls.map((control) => {
+        if (!(control instanceof HTMLElement) || !control.dataset.calendarControl || !control.dataset.colorToken) {
+            throw new Error('A horizon calendar control has incomplete presentation data.');
+        }
+        return {
+            id: control.dataset.calendarControl,
+            rank: stableHash(`${control.dataset.colorToken}\u0000${control.dataset.calendarControl}`),
+        };
+    }).sort((left, right) => left.rank - right.rank || left.id.localeCompare(right.id));
+    const colorByCalendarID = new Map();
+    for (const [calendarIndex, calendar] of rankedCalendars.entries()) {
+        const hue = rankedCalendars.length === 1 ? calendar.rank % 360 : Math.round(calendarIndex * 360 / rankedCalendars.length);
+        colorByCalendarID.set(calendar.id, `hsl(${hue} 64% 34%)`);
+    }
     for (const colorElement of horizonView.querySelectorAll('[data-color-token]')) {
         if (!(colorElement instanceof HTMLElement) || !colorElement.dataset.colorToken) {
             throw new Error('A horizon calendar has no color token.');
         }
-        colorElement.style.setProperty('--calendar-color', colorForToken(colorElement.dataset.colorToken));
+        const calendarID = colorElement.dataset.calendarControl || colorElement.dataset.calendarId;
+        const color = calendarID ? colorByCalendarID.get(calendarID) : undefined;
+        if (!color) {
+            throw new Error('A horizon calendar has no distinct presentation color.');
+        }
+        colorElement.style.setProperty('--calendar-color', color);
     }
 
     /** @param {HTMLInputElement} toggle @param {boolean} visible */

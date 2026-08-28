@@ -334,65 +334,6 @@ if (authorizationButton instanceof HTMLButtonElement) {
     });
 }
 
-const loadSourcesButton = settingsDialog.querySelector('[data-settings-load-source-calendars]');
-const saveSourcesButton = settingsDialog.querySelector('[data-settings-save-source-calendars]');
-const sourceList = settingsDialog.querySelector('[data-settings-source-calendar-list]');
-if (loadSourcesButton instanceof HTMLButtonElement && saveSourcesButton instanceof HTMLButtonElement && sourceList instanceof HTMLElement) {
-    const sourceURL = loadSourcesButton.dataset.sourceUrl;
-    if (!sourceURL || sourceURL !== saveSourcesButton.dataset.sourceUrl) {
-        throw new Error('The source calendar URL is invalid.');
-    }
-    loadSourcesButton.addEventListener('click', async () => {
-        loadSourcesButton.disabled = true;
-        try {
-            const response = await fetch(sourceURL, {credentials: 'same-origin', headers: {'Accept': 'application/json'}});
-            await requireSettingsResponse(response);
-            const body = await response.json();
-            if (!body || !Array.isArray(body.sources)) {
-                throw new Error('The source calendar response is invalid.');
-            }
-            sourceList.replaceChildren();
-            for (const source of body.sources) {
-                if (!source || typeof source.id !== 'string' || typeof source.name !== 'string' || typeof source.selected !== 'boolean') {
-                    throw new Error('A source calendar is invalid.');
-                }
-                const label = document.createElement('label');
-                const input = document.createElement('input');
-                input.type = 'checkbox';
-                input.value = source.id;
-                input.checked = source.selected;
-                input.dataset.settingsSourceCalendar = '';
-                label.append(input, document.createTextNode(source.name));
-                sourceList.append(label);
-            }
-            saveSourcesButton.hidden = false;
-        } catch (error) {
-            showSettingsError(error instanceof Error ? error.message : 'Source calendar listing failed.');
-            loadSourcesButton.disabled = false;
-        }
-    });
-    saveSourcesButton.addEventListener('click', async () => {
-        saveSourcesButton.disabled = true;
-        const providerCalendarIDs = Array.from(sourceList.querySelectorAll('[data-settings-source-calendar]:checked')).map((input) => {
-            if (!(input instanceof HTMLInputElement)) {
-                throw new TypeError('A source calendar control is invalid.');
-            }
-            return input.value;
-        });
-        try {
-            const response = await fetch(sourceURL, {
-                method: 'PUT', credentials: 'same-origin', headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({provider_calendar_ids: providerCalendarIDs, timezone: browserTimezone}),
-            });
-            await requireSettingsResponse(response);
-            window.location.reload();
-        } catch (error) {
-            showSettingsError(error instanceof Error ? error.message : 'Source calendar selection failed.');
-            saveSourcesButton.disabled = false;
-        }
-    });
-}
-
 const initialRubric = rubricFromHash();
 if (initialRubric) {
     openSettings(initialRubric);

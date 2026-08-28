@@ -365,7 +365,7 @@ main:has(.horizon-view) {
 .horizon-lane-line {
     background: var(--calendar-color);
     border-radius: 999px;
-    height: 14px;
+    height: 10px;
     left: calc(var(--lane-start) * 1%);
     position: absolute;
     top: 50%;
@@ -374,16 +374,15 @@ main:has(.horizon-view) {
 }
 
 .horizon-lane-line.is-finite::after {
-    background: var(--horizon-panel);
-    border: 3px solid var(--calendar-color);
-    border-radius: 2px;
+    background: var(--calendar-color);
+    border-radius: 999px;
     content: "";
-    height: 22px;
+    height: 16px;
     position: absolute;
     right: 0;
     top: 50%;
     transform: translate(50%, -50%);
-    width: 7px;
+    width: 2px;
 }
 
 .horizon-lane-line.is-open::after,
@@ -428,12 +427,12 @@ main:has(.horizon-view) {
 
 .horizon-marker-dot {
     background: var(--horizon-panel);
-    border: 6px solid var(--calendar-color);
+    border: 4px solid var(--calendar-color);
     border-radius: 50%;
-    box-shadow: 0 0 0 2px var(--horizon-panel);
-    height: 22px;
+    box-shadow: 0 0 0 3px var(--horizon-panel);
+    height: 18px;
     transition: transform 120ms ease;
-    width: 22px;
+    width: 18px;
 }
 
 .horizon-marker-target:hover .horizon-marker-dot,
