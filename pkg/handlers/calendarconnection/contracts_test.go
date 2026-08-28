@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -174,5 +175,110 @@ func TestSourceSelectionReturnsSynchronizationFailure(testingContext *testing.T)
 	var failedSynchronization models.CalendarSync
 	if findError := fixture.Database.First(&failedSynchronization, "state = ?", models.CalendarSyncFailed).Error; findError != nil {
 		testingContext.Fatalf("read failed synchronization: %v", findError)
+	}
+}
+
+func TestReadConnectionReturnsCurrentSynchronizationSummary(testingContext *testing.T) {
+	fixture := testsupport.NewFixture(testingContext)
+	owner := fixture.CreateUser(testsupport.OwnerUserID)
+	timezone, timezoneError := models.NewTimezone(testsupport.TimezoneName)
+	if timezoneError != nil {
+		testingContext.Fatalf("construct timezone: %v", timezoneError)
+	}
+	if confirmationError := owner.ConfirmTimezone(fixture.Database, timezone); confirmationError != nil {
+		testingContext.Fatalf("confirm organizer timezone: %v", confirmationError)
+	}
+	calendar, calendarError := models.NewCalendar(owner.ID, "Imported", "I", "imported", 0)
+	if calendarError != nil {
+		testingContext.Fatalf("construct calendar: %v", calendarError)
+	}
+	if createError := fixture.Database.Create(calendar).Error; createError != nil {
+		testingContext.Fatalf("create calendar: %v", createError)
+	}
+	connection, connectionError := models.NewCalendarConnection(owner.ID, bytes.Repeat([]byte{0x11}, 12), []byte{0x22})
+	if connectionError != nil {
+		testingContext.Fatalf("construct connection: %v", connectionError)
+	}
+	if createError := fixture.Database.Create(connection).Error; createError != nil {
+		testingContext.Fatalf("create connection: %v", createError)
+	}
+	mapping, mappingError := models.NewSourceCalendarMapping(connection.ID, calendar.ID, "source")
+	if mappingError != nil {
+		testingContext.Fatalf("construct source mapping: %v", mappingError)
+	}
+	if createError := fixture.Database.Create(mapping).Error; createError != nil {
+		testingContext.Fatalf("create source mapping: %v", createError)
+	}
+
+	referenceTime := time.Date(2030, time.January, 1, 12, 0, 0, 0, time.UTC)
+	for synchronizationIndex := 0; synchronizationIndex < 24; synchronizationIndex++ {
+		startedAt := referenceTime.Add(time.Duration(synchronizationIndex-24) * time.Hour)
+		synchronization, synchronizationError := models.NewCalendarSync(mapping.ID, startedAt)
+		if synchronizationError != nil {
+			testingContext.Fatalf("construct synchronization %d: %v", synchronizationIndex, synchronizationError)
+		}
+		finishedAt := startedAt.Add(time.Minute)
+		synchronization.State = models.CalendarSyncSucceeded
+		synchronization.FinishedAt = &finishedAt
+		if createError := fixture.Database.Create(synchronization).Error; createError != nil {
+			testingContext.Fatalf("create synchronization %d: %v", synchronizationIndex, createError)
+		}
+	}
+	latestSuccessfulSync := referenceTime.Add(-time.Hour + time.Minute)
+	failed, failedError := models.NewCalendarSync(mapping.ID, referenceTime)
+	if failedError != nil {
+		testingContext.Fatalf("construct failed synchronization: %v", failedError)
+	}
+	failedAt := referenceTime.Add(time.Minute)
+	failureCode := "provider_failed"
+	failed.State = models.CalendarSyncFailed
+	failed.FinishedAt = &failedAt
+	failed.ErrorCode = &failureCode
+	if createError := fixture.Database.Create(failed).Error; createError != nil {
+		testingContext.Fatalf("create failed synchronization: %v", createError)
+	}
+
+	adapter := &callbackAdapter{}
+	cipher, cipherError := services.NewCredentialCipher(base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{0x42}, 32)), bytes.NewReader(bytes.Repeat([]byte{0x12}, 64)))
+	if cipherError != nil {
+		testingContext.Fatalf("construct cipher: %v", cipherError)
+	}
+	connectionService, serviceError := services.NewCalendarConnectionService(fixture.Database, adapter, cipher, func() time.Time { return referenceTime }, bytes.NewReader(bytes.Repeat([]byte{0x31}, 128)))
+	if serviceError != nil {
+		testingContext.Fatalf("construct connection service: %v", serviceError)
+	}
+	syncService, syncServiceError := services.NewCalendarSyncService(fixture.Database, adapter, cipher, func() time.Time { return referenceTime })
+	if syncServiceError != nil {
+		testingContext.Fatalf("construct synchronization service: %v", syncServiceError)
+	}
+	resources, resourceError := calendarconnection.NewWithServices(fixture.ApplicationContext, connectionService, syncService)
+	if resourceError != nil {
+		testingContext.Fatalf("construct HTTP resources: %v", resourceError)
+	}
+	request := httptest.NewRequest(http.MethodGet, config.WebCalendarConnections+connection.ID, nil)
+	request.Header.Set("Accept", handlers.JSONMediaType)
+	request = request.WithContext(context.WithValue(request.Context(), middleware.ContextKeyUser, &owner))
+	response := httptest.NewRecorder()
+
+	resources.Connections().ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		testingContext.Fatalf("connection status = %d, want %d; body = %s", response.Code, http.StatusOK, response.Body.String())
+	}
+	var body struct {
+		Synchronization struct {
+			State              models.CalendarSyncState `json:"state"`
+			Error              bool                     `json:"error"`
+			LastSuccessfulSync string                   `json:"last_successful_sync"`
+		} `json:"synchronization"`
+	}
+	if decodeError := json.Unmarshal(response.Body.Bytes(), &body); decodeError != nil {
+		testingContext.Fatalf("decode connection response: %v", decodeError)
+	}
+	if body.Synchronization.State != models.CalendarSyncFailed || !body.Synchronization.Error {
+		testingContext.Fatalf("synchronization state = %#v", body.Synchronization)
+	}
+	if body.Synchronization.LastSuccessfulSync != latestSuccessfulSync.Format(time.RFC3339) {
+		testingContext.Fatalf("last successful synchronization = %q, want %q", body.Synchronization.LastSuccessfulSync, latestSuccessfulSync.Format(time.RFC3339))
 	}
 }

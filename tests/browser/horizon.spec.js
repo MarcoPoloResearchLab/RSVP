@@ -265,6 +265,8 @@ test('connects Google Calendar and synchronizes selected calendars automatically
     await expect(page.locator('[data-lane-id]', {hasText: 'Maya provider birthday'})).toHaveCount(0);
 
     await openSettings(page, 'Integrations');
+    await expect(page.locator('[data-calendar-sync-state]')).not.toBeEmpty();
+    await expect(page.locator('[data-calendar-last-success]')).toHaveAttribute('datetime', /^\d{4}-\d{2}-\d{2}T/);
     await page.getByRole('button', {name: 'Disconnect Google Calendar'}).click();
     await page.waitForLoadState('networkidle');
     await openSettings(page, 'Integrations');

@@ -115,12 +115,12 @@
                         </div>
 
                         {{ if .CalendarConnection }}
-                        <dl class="settings-sync-status">
+                        <dl class="settings-sync-status" data-settings-sync-status data-status-url="{{ .CalendarConnection.ManagementURL }}">
                             <div><dt>Connection</dt><dd>{{ .CalendarConnection.Status }}</dd></div>
-                            {{ if .CalendarConnection.SyncState }}<div><dt>Automatic sync</dt><dd data-calendar-sync-state>{{ .CalendarConnection.SyncState }}</dd></div>{{ end }}
-                            {{ if .CalendarConnection.LastSuccessfulSync }}<div><dt>Last completed</dt><dd><time datetime="{{ .CalendarConnection.LastSuccessfulSync }}">{{ .CalendarConnection.LastSuccessfulSync }}</time></dd></div>{{ end }}
+                            <div data-calendar-sync-state-row hidden><dt>Automatic sync</dt><dd data-calendar-sync-state></dd></div>
+                            <div data-calendar-last-success-row hidden><dt>Last completed</dt><dd><time data-calendar-last-success></time></dd></div>
                         </dl>
-                        {{ if .CalendarConnection.SyncError }}<p class="settings-alert" data-calendar-sync-error>Google Calendar did not complete the latest request. RSVP will retry automatically.</p>{{ end }}
+                        <p class="settings-alert" data-calendar-sync-error hidden>Google Calendar did not complete the latest request. RSVP will retry automatically.</p>
                         <div class="settings-source-controls">
                             <button type="button" class="settings-primary-action" data-settings-load-source-calendars data-source-url="{{ .CalendarConnection.SourceCalendarURL }}">Select source calendars</button>
                             <div class="settings-source-list" data-settings-source-calendar-list></div>

@@ -15,6 +15,7 @@ const rubricTabs = Array.from(settingsDialog.querySelectorAll('[data-settings-ta
 const rubricPanels = Array.from(settingsDialog.querySelectorAll('[data-settings-panel]'));
 const settingsHashPrefix = '#settings/';
 const defaultRubric = 'calendars-lanes';
+const integrationsRubric = 'integrations';
 
 if (!(settingsCloseButton instanceof HTMLButtonElement) || !(settingsStatus instanceof HTMLElement) || rubricTabs.length === 0 || rubricPanels.length === 0) {
     throw new Error('The settings dialog contract is incomplete.');
@@ -56,6 +57,9 @@ const openSettings = (rubric) => {
     }
     if (!settingsDialog.open) {
         settingsDialog.showModal();
+    }
+    if (requestedRubric === integrationsRubric) {
+        void loadCalendarSynchronizationStatus();
     }
 };
 
@@ -130,11 +134,6 @@ window.addEventListener('hashchange', () => {
     }
 });
 
-const initialRubric = rubricFromHash();
-if (initialRubric) {
-    openSettings(initialRubric);
-}
-
 const browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 if (!browserTimezone) {
     throw new Error('The browser did not supply an IANA timezone.');
@@ -167,6 +166,45 @@ const requireSettingsResponse = async (response) => {
         // The HTTP status remains the canonical browser error.
     }
     throw new Error(message);
+};
+
+const synchronizationStatus = settingsDialog.querySelector('[data-settings-sync-status]');
+const synchronizationStateRow = settingsDialog.querySelector('[data-calendar-sync-state-row]');
+const synchronizationState = settingsDialog.querySelector('[data-calendar-sync-state]');
+const lastSuccessfulRow = settingsDialog.querySelector('[data-calendar-last-success-row]');
+const lastSuccessfulTime = settingsDialog.querySelector('[data-calendar-last-success]');
+const synchronizationError = settingsDialog.querySelector('[data-calendar-sync-error]');
+let synchronizationStatusLoaded = false;
+let synchronizationStatusLoading = false;
+
+const loadCalendarSynchronizationStatus = async () => {
+    if (synchronizationStatusLoaded || synchronizationStatusLoading || !(synchronizationStatus instanceof HTMLElement)) {
+        return;
+    }
+    const statusURL = synchronizationStatus.dataset.statusUrl;
+    if (!statusURL || !(synchronizationStateRow instanceof HTMLElement) || !(synchronizationState instanceof HTMLElement) || !(lastSuccessfulRow instanceof HTMLElement) || !(lastSuccessfulTime instanceof HTMLTimeElement) || !(synchronizationError instanceof HTMLElement)) {
+        throw new Error('The calendar synchronization status contract is incomplete.');
+    }
+    synchronizationStatusLoading = true;
+    try {
+        const response = await fetch(statusURL, {credentials: 'same-origin', headers: {'Accept': 'application/json'}});
+        await requireSettingsResponse(response);
+        const body = await response.json();
+        if (!body || !body.synchronization || typeof body.synchronization.state !== 'string' || typeof body.synchronization.error !== 'boolean' || typeof body.synchronization.last_successful_sync !== 'string') {
+            throw new Error('The calendar synchronization status response is invalid.');
+        }
+        synchronizationStateRow.hidden = body.synchronization.state === '';
+        synchronizationState.textContent = body.synchronization.state;
+        lastSuccessfulRow.hidden = body.synchronization.last_successful_sync === '';
+        lastSuccessfulTime.dateTime = body.synchronization.last_successful_sync;
+        lastSuccessfulTime.textContent = body.synchronization.last_successful_sync;
+        synchronizationError.hidden = !body.synchronization.error;
+        synchronizationStatusLoaded = true;
+    } catch (error) {
+        showSettingsError(error instanceof Error ? error.message : 'Calendar synchronization status failed.');
+    } finally {
+        synchronizationStatusLoading = false;
+    }
 };
 
 /** @param {HTMLFormElement} form */
@@ -353,4 +391,9 @@ if (loadSourcesButton instanceof HTMLButtonElement && saveSourcesButton instance
             saveSourcesButton.disabled = false;
         }
     });
+}
+
+const initialRubric = rubricFromHash();
+if (initialRubric) {
+    openSettings(initialRubric);
 }
