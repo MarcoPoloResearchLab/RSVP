@@ -1,6 +1,7 @@
 package event_test
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -14,6 +15,7 @@ import (
 	"github.com/tyemirov/RSVP/models"
 	"github.com/tyemirov/RSVP/pkg/config"
 	"github.com/tyemirov/RSVP/pkg/handlers/event"
+	"github.com/tyemirov/RSVP/pkg/services"
 	"gorm.io/gorm"
 )
 
@@ -326,6 +328,54 @@ func TestEventUpdateRecalculatesFiniteLaneEnd(testingContext *testing.T) {
 	}
 }
 
+func TestEventUpdateRejectsProviderOwnedMarker(testingContext *testing.T) {
+	fixture := testsupport.NewFixture(testingContext)
+	owner := fixture.CreateUser(testsupport.OwnerUserID)
+	eventRecord := fixture.CreateEvent(testsupport.EventID, owner.ID, nil)
+	var lane models.Lane
+	if findError := fixture.Database.First(&lane, "id = ?", eventRecord.LaneID).Error; findError != nil {
+		testingContext.Fatalf("find event lane: %v", findError)
+	}
+	connection, connectionError := models.NewCalendarConnection(owner.ID, make([]byte, 12), []byte{1})
+	if connectionError != nil {
+		testingContext.Fatalf("construct connection: %v", connectionError)
+	}
+	if createError := fixture.Database.Create(connection).Error; createError != nil {
+		testingContext.Fatalf("create connection: %v", createError)
+	}
+	mapping, mappingError := models.NewSourceCalendarMapping(connection.ID, lane.CalendarID, "source")
+	if mappingError != nil {
+		testingContext.Fatalf("construct source mapping: %v", mappingError)
+	}
+	if createError := fixture.Database.Create(mapping).Error; createError != nil {
+		testingContext.Fatalf("create source mapping: %v", createError)
+	}
+	link, linkError := models.NewExternalEventLink(mapping.ID, eventRecord.ID, "provider-event", nil)
+	if linkError != nil {
+		testingContext.Fatalf("construct external event link: %v", linkError)
+	}
+	if createError := fixture.Database.Create(link).Error; createError != nil {
+		testingContext.Fatalf("create external event link: %v", createError)
+	}
+	formValues := url.Values{
+		config.EventIDParam: {eventRecord.ID}, config.TitleParam: {"Local overwrite"}, config.DescriptionParam: {""},
+		config.StartTimeParam: {"2030-01-03T10:00"}, config.TimezoneParam: {testsupport.TimezoneName}, config.DurationParam: {"1"}, config.VenueIDParam: {""},
+	}
+	request := testsupport.Request(testingContext, http.MethodPut, config.WebEvents, formValues, &owner)
+	responseRecorder := httptest.NewRecorder()
+	event.UpdateEventHandler(fixture.ApplicationContext).ServeHTTP(responseRecorder, request)
+	if responseRecorder.Code != http.StatusConflict {
+		testingContext.Fatalf("status = %d, want %d; body = %s", responseRecorder.Code, http.StatusConflict, responseRecorder.Body.String())
+	}
+	var stored models.Event
+	if findError := fixture.Database.First(&stored, "id = ?", eventRecord.ID).Error; findError != nil {
+		testingContext.Fatalf("reload source-owned event: %v", findError)
+	}
+	if stored.Title != eventRecord.Title {
+		testingContext.Fatalf("source-owned title = %q, want %q", stored.Title, eventRecord.Title)
+	}
+}
+
 func TestEventDeletionTransactionDeletesEventAndRSVPs(testingContext *testing.T) {
 	fixture := testsupport.NewFixture(testingContext)
 	owner := fixture.CreateUser(testsupport.OwnerUserID)
@@ -430,6 +480,78 @@ func TestEventDeletionRejectsAnchorWithDependents(testingContext *testing.T) {
 		if findError := fixture.Database.First(modelValue, "id = ?", recordID).Error; findError != nil {
 			testingContext.Fatalf("find active %s after rejected delete: %v", recordName, findError)
 		}
+	}
+}
+
+func TestDependentEventDeletionPreservesSurvivingDerivedMarkerBounds(testingContext *testing.T) {
+	fixture := testsupport.NewFixture(testingContext)
+	owner := fixture.CreateUser(testsupport.OwnerUserID)
+	anchor := fixture.CreateEvent(testsupport.EventID, owner.ID, nil)
+	timezone, timezoneError := models.NewTimezone(testsupport.TimezoneName)
+	if timezoneError != nil {
+		testingContext.Fatalf("construct timezone: %v", timezoneError)
+	}
+	relation, relationError := models.DependentEventRelation(anchor.ID)
+	if relationError != nil {
+		testingContext.Fatalf("construct dependent relation: %v", relationError)
+	}
+	dependencyEnd := testsupport.FixedStartTime().Add(4 * time.Hour)
+	var dependencyLane models.Lane
+	if findError := fixture.Database.First(&dependencyLane, "id = ?", anchor.LaneID).Error; findError != nil {
+		testingContext.Fatalf("read dependency lane: %v", findError)
+	}
+	dependencyLane.EndsAt = &dependencyEnd
+	if updateError := fixture.Database.Save(&dependencyLane).Error; updateError != nil {
+		testingContext.Fatalf("expand dependency lane: %v", updateError)
+	}
+	eventTime, eventTimeError := models.NewIntervalEventTime(
+		testsupport.FixedStartTime().Add(2*time.Hour),
+		dependencyEnd,
+		timezone,
+	)
+	if eventTimeError != nil {
+		testingContext.Fatalf("construct dependent time: %v", eventTimeError)
+	}
+	dependent, dependentError := models.NewEvent(anchor.LaneID, "Dependent event", "", nil, relation, eventTime)
+	if dependentError != nil {
+		testingContext.Fatalf("construct dependent event: %v", dependentError)
+	}
+	dependent.BaseModel.ID = "EVT00002"
+	if createError := dependent.Create(fixture.Database); createError != nil {
+		testingContext.Fatalf("create dependent event: %v", createError)
+	}
+	derivedService, serviceError := services.NewDerivedMarkerService(fixture.Database)
+	if serviceError != nil {
+		testingContext.Fatalf("construct derived marker service: %v", serviceError)
+	}
+	_, marker, markerError := derivedService.Create(context.Background(), owner.ID, models.DerivedAnchorEvent, anchor.ID, models.DerivedAnchorEnd, int64((5 * time.Hour).Seconds()))
+	if markerError != nil {
+		testingContext.Fatalf("create surviving marker: %v", markerError)
+	}
+	request := testsupport.Request(
+		testingContext,
+		http.MethodDelete,
+		config.WebEvents+"?"+config.EventIDParam+"="+url.QueryEscape(dependent.ID),
+		nil,
+		&owner,
+	)
+	responseRecorder := httptest.NewRecorder()
+
+	event.DeleteHandler(fixture.ApplicationContext).ServeHTTP(responseRecorder, request)
+
+	if responseRecorder.Code != http.StatusSeeOther {
+		testingContext.Fatalf("status = %d, want %d; body = %s", responseRecorder.Code, http.StatusSeeOther, responseRecorder.Body.String())
+	}
+	var storedMarker models.DerivedMarker
+	if findError := fixture.Database.First(&storedMarker, "id = ?", marker.ID).Error; findError != nil {
+		testingContext.Fatalf("reload surviving marker: %v", findError)
+	}
+	var storedLane models.Lane
+	if findError := fixture.Database.First(&storedLane, "id = ?", anchor.LaneID).Error; findError != nil {
+		testingContext.Fatalf("reload dependency lane: %v", findError)
+	}
+	if storedLane.EndsAt == nil || !storedLane.EndsAt.Equal(marker.At) {
+		testingContext.Fatalf("dependency lane end = %v, want surviving marker %v", storedLane.EndsAt, marker.At)
 	}
 }
 

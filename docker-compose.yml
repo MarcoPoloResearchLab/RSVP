@@ -1,28 +1,35 @@
-volumes:
-  rsvp-data: # Define the named volume for persistent database storage
-
 services:
+  natural-language-parser:
+    image: rsvp-local-parser:dev
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: natural-language-parser
+    command: ["/app/natural-language-fixture"]
+
   rsvp-app:
-    image: ghcr.io/temirov/rsvp:latest # The Docker image to use
-    container_name: rsvp-app          # Name of the running container
-    pull_policy: always               # Always attempt to pull the latest image on startup
-    restart: unless-stopped           # Restart policy for the container
-
+    image: rsvp-local:dev
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    depends_on:
+      - natural-language-parser
     env_file:
-      - .env.docker                   # Load environment variables from this file
-
+      - "${RSVP_RUNTIME_ENV_FILE:?RSVP_RUNTIME_ENV_FILE is required}"
+    environment:
+      APP_BASE_URL: "${RSVP_PUBLIC_ORIGIN:?RSVP_PUBLIC_ORIGIN is required}/"
+      CALENDAR_CREDENTIAL_ENCRYPTION_KEY: "${RSVP_CALENDAR_CREDENTIAL_ENCRYPTION_KEY:?RSVP_CALENDAR_CREDENTIAL_ENCRYPTION_KEY is required}"
+      DB_NAME: /app/data/rsvps.db
+      GOOGLE_OAUTH2_BASE: "${RSVP_PUBLIC_ORIGIN}"
+      NATURAL_LANGUAGE_PARSER_API_KEY: rsvp-local-parser
+      NATURAL_LANGUAGE_PARSER_ENDPOINT: http://natural-language-parser:8082/parse
+      TLS_CERT_PATH: ""
+      TLS_KEY_PATH: ""
     ports:
-      # Map host port (dynamic via HOST_PORT env var) to container port 8080
-      # Docker Compose will look for HOST_PORT in the host environment first,
-      # then fall back to the value in the .env file (see below).
-      - "${HOST_PORT}:8080"
-
-
+      - "127.0.0.1:${RSVP_HOST_PORT:-8080}:8080"
     volumes:
-      # Mount the local 'certs' directory into '/app/certs' in the container (read-only)
-      - ./certs:/app/certs:ro
-
-      # Mount the named volume 'rsvp-data' to '/app/data' inside the container
-      # The application's database file should be configured (via DB_NAME env var)
-      # to reside within this '/app/data' directory for persistence.
       - rsvp-data:/app/data
+
+volumes:
+  rsvp-data:

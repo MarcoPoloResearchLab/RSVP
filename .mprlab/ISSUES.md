@@ -8,6 +8,32 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 ## BugFixes
 
+- [x] [B044] (P1) {I003} Use one REST interface for Horizon resources
+  Goal:
+  Horizon must use the repository REST contract for reads, writes, and errors.
+  Requirements:
+  - Support safe `HEAD` requests for the Horizon projection.
+  - Return one typed error shape for Horizon API failures.
+  - Use standard HTTP methods without method override on Horizon resources.
+  - Create quick and natural-language drafts through `/ingestion-drafts/`.
+  - Keep the legacy event, RSVP, and venue pages outside the Horizon API surface.
+  Validation:
+  - Do a test of methods, headers, representations, and typed errors through HTTP.
+  - Do a test of both ingestion-draft creation representations.
+  - Run `make ci` and `make browser-test`.
+
+- [x] [B043] (P1) {I003} Show Horizon setup after first authentication
+  Goal:
+  A new organizer must see an HTML setup state instead of an invalid time-window response.
+  Requirements:
+  - Use the browser IANA timezone for the first temporal write.
+  - Create the first calendar before RSVP calculates the default Horizon window.
+  - Return an explicit organizer-timezone error for a JSON Horizon request.
+  Validation:
+  - Do a test of the HTML setup state and the JSON error contract.
+  - Complete the setup in a browser and confirm that Horizon renders.
+  - Run `make ci`.
+
 ## Improvements
 
 - [x] [I001] (P0) Add RSVP contract tests
@@ -77,7 +103,7 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Make sure that an absent client timezone stops the temporal write.
   - Run `make ci`.
 
-- [ ] [I003] (P1) {F004,F006,F007,F009} Complete time horizon acceptance
+- [x] [I003] (P1) {F004,F006,F007,F009} Complete time horizon acceptance
   Goal:
   This issue supplies integrated acceptance evidence for the complete time horizon capability.
 
@@ -104,6 +130,152 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Run schema initialization with an empty database.
   - Run the documentation language checker on each changed technical document.
   - Make sure that the repository contains only the canonical temporal schema and runtime paths.
+
+- [ ] [I004] (P1) {B044,I005} Use one REST contract for all HTTP resources
+  Goal:
+  This change gives each RSVP API resource one current REST contract.
+  It defines separate contracts for HTML documents, static assets, and OAuth protocol endpoints.
+  Requirements:
+  - Classify each registered route as an API resource, HTML document, static asset, or external protocol endpoint.
+  - Use `GET` and `POST` on `/events/`.
+  - Use `GET`, `HEAD`, `PATCH`, and `DELETE` on `/events/{event_id}`.
+  - Use `GET` and `POST` on `/venues/`.
+  - Use `GET`, `HEAD`, `PATCH`, and `DELETE` on `/venues/{venue_id}`.
+  - Use `GET` and `POST` on `/events/{event_id}/rsvps/`.
+  - Use `GET`, `HEAD`, `PATCH`, and `DELETE` on `/rsvps/{rsvp_id}`.
+  - Use `GET`, `HEAD`, and `PUT` on `/rsvp-responses/{response_id}`.
+  - Use `GET` and `HEAD` on `/rsvps/{rsvp_id}/qr-code`.
+  - Keep each B044 Horizon path as the current resource path.
+  - Remove `/response/`, `/response/thankyou`, and `/rsvps/qr/`.
+  - Remove resource identity from query parameters and form payloads.
+  - Delete the HTTP method override middleware, constants, form fields, and tests.
+  - Use browser `fetch` requests for each JSON mutation.
+  - Use content negotiation when a resource has HTML and JSON representations.
+  - Return `Vary: Accept` for each negotiated representation.
+  - Return the `GET` metadata without a body for each `HEAD` request.
+  - Return the supported methods for each `OPTIONS` request.
+  - Return `405 Method Not Allowed` with `Allow` for each unsupported method.
+  - Return one typed error shape for all API errors.
+  - Reject each unsupported request media type.
+  - Honor `Accept` for each resource representation.
+  - Return `201 Created` with `Location` for each synchronous creation.
+  - Require `Idempotency-Key` for each retry-sensitive creation.
+  - Return the same result for each valid idempotent retry.
+  - Return an `ETag` for each mutable resource representation.
+  - Require `If-Match` for each concurrent `PATCH`, `PUT`, or `DELETE` operation.
+  - Return `428 Precondition Required` when a required precondition is absent.
+  - Return `412 Precondition Failed` when a resource version changed.
+  - Define `Cache-Control` for each API, document, asset, and protocol response.
+  - Use one bounded cursor contract for each collection that can increase without a fixed limit.
+  - Serialize each timestamp in UTC with the RFC 3339 format.
+  - Propagate request cancellation and deadlines to each database and provider operation.
+  - Remove obsolete routes without aliases, redirects, or dual handlers.
+  - Change the GAuss authentication routes in the GAuss repository.
+  - Use `GET` and `HEAD` for the `/login` HTML document.
+  - Use `POST /authentication-attempts/` to create OAuth authorization state.
+  - Use `GET /oauth-callbacks/google/` only as an OAuth protocol endpoint.
+  - Use `DELETE /sessions/current` to delete the current session.
+  - Apply `Cache-Control: no-store` to authentication and OAuth protocol responses.
+  - Remove `/auth/google`, `/auth/google/callback`, and `/logout` after the GAuss update.
+  - Consume one released GAuss version without an RSVP compatibility adapter.
+  - Document the exact local and production Google redirect URIs.
+  Deliverables:
+  - Add one complete OpenAPI schema for all RSVP API resources.
+  - Add one route classification table to the architecture document.
+  - Centralize route paths, operation identifiers, schemas, headers, and error codes.
+  - Update each API handler and each repository-owned browser client.
+  - Release the GAuss route contract from its owning repository.
+  - Update RSVP to use the released GAuss dependency.
+  - Delete all obsolete route code and interface assets.
+  - Add registered HTTP contract tests for the complete route table.
+  - Add browser tests for organizer and public RSVP operations.
+  Validation:
+  - Compare all registered API routes with the OpenAPI schema.
+  - Compare all other registered routes with the route classification table.
+  - Do a test of methods, identifiers, status codes, headers, bodies, and state changes through a real HTTP listener.
+  - Do a test of `HEAD` metadata and the empty response body for each readable resource.
+  - Do a test of `OPTIONS` and `Allow` for each API resource.
+  - Do a test of typed errors for each API error class.
+  - Do a test of valid retries with the same idempotency key.
+  - Do a test of stale writes with two resource versions.
+  - Do a test of each bounded cursor and its documented order.
+  - Confirm that each obsolete path returns `404 Not Found`.
+  - Do a test of the event, venue, RSVP, public response, and QR code flows in a browser.
+  - Verify local Google sign-in through the configured OAuth callback.
+  - Run `make ci` and `make browser-test`.
+  - Run the Governor check and the language checker for each changed technical document.
+
+- [!] [I005] (P1) Use `mpr-ui`, TAuth, LLM Proxy, and MPR styling
+  Goal:
+  This change makes RSVP use the shared MPR Lab browser, authentication, language, style, and deployment contracts.
+  It preserves temporal resources, Google Calendar behavior, and the Horizon task flow.
+  Requirements:
+  - Keep the Go backend, SQLite database, temporal resource contracts, and Horizon information architecture.
+  - Create one canonical backend `config.yml`.
+  - Move server, database, TAuth, Google Calendar, and LLM Proxy config into `config.yml`.
+  - Store only secret references in tracked config.
+  - Store secret values in the current private input channels.
+  - Serve `/config-ui.yaml` as the only browser authentication input.
+  - Use `mpr-ui@latest` through literal URLs for every MPR Lab browser library.
+  - Render `<mpr-header>`, `<mpr-user>`, and `<mpr-footer>` in the shared layout.
+  - Request protected RSVP data only after `mpr-ui:auth:authenticated`.
+  - Clear app-owned browser data after `mpr-ui:auth:unauthenticated`.
+  - Let TAuth own Google sign-in, session restoration, refresh, logout, and authentication cookies.
+  - Use the published TAuth validator to authorize protected RSVP resources.
+  - Use issuer `tauth` and exact environment-specific cookie names.
+  - Keep local TAuth traffic on `http://localhost:8080`.
+  - Keep production TAuth traffic on `https://rsvp.mprlab.com`.
+  - Define the tenant ID, cookie names, auth paths, callback URL, TLS, and cookie policy for each environment.
+  - Remove GAuss and all RSVP-owned login, session, cookie, refresh, and logout code.
+  - Keep Google Calendar consent separate from browser sign-in.
+  - Add a `tauth_tenant` resource through the active `tauth.tenants` capability.
+  - Use the current gateway capability contract for TAuth and LLM Proxy endpoints.
+  - Resolve `github.com/tyemirov/llm-proxy/pkg/llmproxyclient@latest`.
+  - Use one startup-owned client with `NewConfig`, `NewClient`, `NewMessagesRequest`, and `PostMessages`.
+  - Add one `llm_proxy` block with every required current field.
+  - Keep prompt construction, response interpretation, persistence, and product policy in RSVP.
+  - Map the request work budget to `MessagesRequestInput.RequestTimeoutSeconds`.
+  - Remove the custom natural-language parser HTTP adapter and its private values.
+  - Apply the MPR neutral and semantic tokens to all RSVP browser pages.
+  - Use centered 960-pixel surfaces and the expanded 1180-pixel Horizon surface.
+  - Use compact controls, thin borders, restrained spacing, semantic chips, and subtle motion.
+  - Remove Bootstrap, Montserrat, light dashboard surfaces, large soft cards, and decorative styles.
+  - Preserve form meaning, task order, calendar lanes, and settings placement.
+  - Keep local Compose and the current gateway lifecycle as separate contracts.
+  - Keep `.mprlab/deploy/resources.yml` versionless with `owner`, `release`, and `resources`.
+  - Remove obsolete code without compatibility paths or dual authentication.
+  - Migrate existing organizer ownership once if the TAuth identity shape requires it.
+  - Delete the identity migration after the data cutover.
+  - Update I004 before implementation to remove all GAuss migration requirements.
+  Deliverables:
+  - Add exact local and production RSVP configuration for TAuth and `mpr-ui`.
+  - Add the canonical backend config schema, loader, validation, and startup composition.
+  - Add the shared `mpr-ui` layout and the MPR-styled RSVP browser frontend.
+  - Add the official LLM Proxy client adapter for natural-language ingestion.
+  - Add current TAuth, LLM Proxy, private-value, route, runtime, and health resources to the selected manifest.
+  - Add deterministic TAuth, LLM Proxy, browser, and deployment contract tests.
+  - Update the architecture document, user guide, operator runbook, and I004 scope.
+  - Delete GAuss, Bootstrap, the custom parser transport, and obsolete configuration assets.
+  Validation:
+  - Confirm that `/config-ui.yaml` contains only documented browser-facing values.
+  - Confirm that the browser sends no protected request before `mpr-ui:auth:authenticated`.
+  - Confirm that each protected route returns `401` without a valid TAuth session.
+  - Complete Google sign-in through the shared `mpr-ui` and TAuth flow.
+  - Confirm that the browser contains no app-owned authentication state or private values.
+  - Confirm that each MPR Lab library reference uses the literal `@latest` tag.
+  - Capture the official LLM Proxy request through a local deterministic server.
+  - Verify authentication, provider, model, reasoning effort, work budget, response, and error propagation.
+  - Do a test of natural-language ingestion through the official client boundary.
+  - Do a test of Google Calendar consent after the authentication migration.
+  - Do a test of each RSVP page at the supported desktop and mobile widths.
+  - Confirm that the visual result uses the MPR tokens and preserves product meaning.
+  - Run `make ci` and `make browser-test`.
+  - Run the current gateway selected-manifest validation for RSVP.
+  - Record user-owned test-host acceptance through the canonical release, publish, and deploy targets.
+  - Repeat the same test-host deployment and confirm that it changes no resources.
+  - Verify the public frontend, authentication surface, authorization boundary, and protected workspace separately.
+  - Run the Governor check and the language checker for each changed technical document.
+  Blocked: Approve the production TAuth configuration and LLM Proxy routing values before implementation.
 
 ## Maintenance
 
@@ -406,7 +578,7 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Run `make ci`.
   - Run the browser test target.
 
-- [ ] [F004] (P1) {F003} Add attention policies and probes
+- [x] [F004] (P1) {F003} Add attention policies and probes
   Goal:
   This issue gives unresolved lanes a durable review and escalation workflow.
 
@@ -438,7 +610,7 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Run `make ci`.
   - Run the browser test target.
 
-- [ ] [F005] (P1) {I002,F003} Add a Google Calendar connection
+- [x] [F005] (P1) {I002,F003} Add a Google Calendar connection
   Goal:
   This issue lets an organizer authorize read-only access and select source calendars.
 
@@ -477,7 +649,7 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Run `make ci`.
   - Run the browser test target.
 
-- [ ] [F006] (P1) {F001,F005} Synchronize Google Calendar markers
+- [x] [F006] (P1) {F001,F005} Synchronize Google Calendar markers
   Goal:
   This issue imports selected Google Calendar events into the horizon view without duplicate markers.
 
@@ -528,7 +700,7 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Run `make ci`.
   - Run the adapter tests.
 
-- [ ] [F007] (P2) {F003} Add derived markers
+- [x] [F007] (P2) {F003} Add derived markers
   Goal:
   This issue creates markers at typed time offsets from anchor markers.
 
@@ -562,7 +734,7 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Run `make ci`.
   - Run the browser test target.
 
-- [ ] [F008] (P1) {F003,F004} Add quick ingestion drafts
+- [x] [F008] (P1) {F003,F004} Add quick ingestion drafts
   Goal:
   This issue supplies a short, confirmable workflow for new events and unresolved lanes.
 
@@ -600,7 +772,7 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Run `make ci`.
   - Run the browser test target.
 
-- [ ] [F009] (P2) {F007,F008} Add natural-language ingestion
+- [x] [F009] (P2) {F007,F008} Add natural-language ingestion
   Goal:
   This issue converts natural-language temporal requests into confirmable ingestion drafts.
 

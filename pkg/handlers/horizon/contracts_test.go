@@ -1,6 +1,7 @@
 package horizon_test
 
 import (
+	"bytes"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -53,6 +54,60 @@ func TestHorizonDefaultWindowUsesOrganizerCalendarDays(testingContext *testing.T
 	htmlResponse := requestHorizon(testingContext, fixture, owner, config.WebHorizon, horizonHTMLMediaType, referenceTime)
 	if htmlResponse.Code != http.StatusOK || !strings.Contains(htmlResponse.Body.String(), `data-window-days="90"`) {
 		testingContext.Fatalf("default horizon HTML does not contain the 90-day local scale: status = %d", htmlResponse.Code)
+	}
+}
+
+func TestHorizonHeadReturnsProjectionMetadataWithoutBody(testingContext *testing.T) {
+	fixture := testsupport.NewFixture(testingContext)
+	owner := fixture.CreateUser(testsupport.OwnerUserID)
+	confirmTimezone(testingContext, fixture.Database, &owner)
+	request := testsupport.Request(testingContext, http.MethodHead, config.WebHorizon, nil, &owner)
+	request.Header.Set("Accept", horizonJSONMediaType)
+	responseRecorder := httptest.NewRecorder()
+
+	horizon.Handler(fixture.ApplicationContext, time.Now).ServeHTTP(responseRecorder, request)
+
+	if responseRecorder.Code != http.StatusOK {
+		testingContext.Fatalf("status = %d, want %d", responseRecorder.Code, http.StatusOK)
+	}
+	if responseRecorder.Body.Len() != 0 {
+		testingContext.Fatalf("HEAD body = %q, want empty", responseRecorder.Body.String())
+	}
+	if responseRecorder.Header().Get("Content-Type") != horizonJSONMediaType || responseRecorder.Header().Get("Cache-Control") != "private, no-store" || responseRecorder.Header().Get("Vary") != "Accept" {
+		testingContext.Fatalf("HEAD headers = %#v", responseRecorder.Header())
+	}
+}
+
+func TestHorizonRequiresFirstTemporalWriteBeforeDefaultWindow(testingContext *testing.T) {
+	fixture := testsupport.NewFixture(testingContext)
+	testsupport.LoadTemplates(testingContext)
+	owner := fixture.CreateUser(testsupport.OwnerUserID)
+	referenceTime := time.Date(2030, time.March, 8, 18, 30, 0, 0, time.UTC)
+
+	htmlResponse := requestHorizon(testingContext, fixture, owner, config.WebHorizon, horizonHTMLMediaType, referenceTime)
+	if htmlResponse.Code != http.StatusOK {
+		testingContext.Fatalf("setup status = %d, want %d; body = %s", htmlResponse.Code, http.StatusOK, htmlResponse.Body.String())
+	}
+	htmlBody := htmlResponse.Body.String()
+	if !strings.Contains(htmlBody, `data-horizon-setup`) || !strings.Contains(htmlBody, `data-resource-url="`+config.WebCalendars+`"`) || strings.Contains(htmlBody, `invalid_time_window`) {
+		testingContext.Fatalf("Horizon setup HTML is invalid: %s", htmlBody)
+	}
+
+	jsonResponse := requestHorizon(testingContext, fixture, owner, config.WebHorizon, horizonJSONMediaType, referenceTime)
+	if jsonResponse.Code != http.StatusUnprocessableEntity {
+		testingContext.Fatalf("JSON status = %d, want %d; body = %s", jsonResponse.Code, http.StatusUnprocessableEntity, jsonResponse.Body.String())
+	}
+	var responseBody struct {
+		Error struct {
+			Code    string `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if decodeError := json.Unmarshal(jsonResponse.Body.Bytes(), &responseBody); decodeError != nil {
+		testingContext.Fatalf("decode timezone error: %v", decodeError)
+	}
+	if responseBody.Error.Code != "organizer_timezone_required" || responseBody.Error.Message != "The organizer timezone is required." {
+		testingContext.Fatalf("timezone error = %#v", responseBody.Error)
 	}
 }
 
@@ -230,6 +285,63 @@ func TestHorizonHTMLAndJSONContainOneProjection(testingContext *testing.T) {
 	}
 	if !strings.HasPrefix(htmlResponse.Header().Get("Content-Type"), horizonHTMLMediaType) {
 		testingContext.Fatalf("HTML content type = %q, want %q", htmlResponse.Header().Get("Content-Type"), horizonHTMLMediaType)
+	}
+}
+
+func TestHorizonHTMLShowsCurrentCalendarSynchronizationFailure(testingContext *testing.T) {
+	fixture := testsupport.NewFixture(testingContext)
+	testsupport.LoadTemplates(testingContext)
+	owner := fixture.CreateUser(testsupport.OwnerUserID)
+	confirmTimezone(testingContext, fixture.Database, &owner)
+	calendar := createCalendar(testingContext, fixture.Database, owner.ID, "CAL00001", "Imported", 0, true)
+	connection, connectionError := models.NewCalendarConnection(owner.ID, bytes.Repeat([]byte{0x11}, 12), []byte{0x22})
+	if connectionError != nil {
+		testingContext.Fatalf("construct calendar connection: %v", connectionError)
+	}
+	if createError := fixture.Database.Create(connection).Error; createError != nil {
+		testingContext.Fatalf("create calendar connection: %v", createError)
+	}
+	mapping, mappingError := models.NewSourceCalendarMapping(connection.ID, calendar.ID, "source")
+	if mappingError != nil {
+		testingContext.Fatalf("construct source mapping: %v", mappingError)
+	}
+	if createError := fixture.Database.Create(mapping).Error; createError != nil {
+		testingContext.Fatalf("create source mapping: %v", createError)
+	}
+	referenceTime := time.Date(2030, time.January, 1, 12, 0, 0, 0, time.UTC)
+	succeeded, succeededError := models.NewCalendarSync(mapping.ID, referenceTime.Add(-2*time.Hour))
+	if succeededError != nil {
+		testingContext.Fatalf("construct successful synchronization: %v", succeededError)
+	}
+	succeededAt := referenceTime.Add(-time.Hour)
+	succeeded.State = models.CalendarSyncSucceeded
+	succeeded.FinishedAt = &succeededAt
+	if createError := fixture.Database.Create(succeeded).Error; createError != nil {
+		testingContext.Fatalf("create successful synchronization: %v", createError)
+	}
+	failed, failedError := models.NewCalendarSync(mapping.ID, referenceTime)
+	if failedError != nil {
+		testingContext.Fatalf("construct failed synchronization: %v", failedError)
+	}
+	failedAt := referenceTime.Add(time.Minute)
+	failureCode := "provider_failed"
+	failed.State = models.CalendarSyncFailed
+	failed.FinishedAt = &failedAt
+	failed.ErrorCode = &failureCode
+	if createError := fixture.Database.Create(failed).Error; createError != nil {
+		testingContext.Fatalf("create failed synchronization: %v", createError)
+	}
+
+	response := requestHorizon(testingContext, fixture, owner, config.WebHorizon, horizonHTMLMediaType, referenceTime)
+
+	if response.Code != http.StatusOK {
+		testingContext.Fatalf("horizon status = %d, body = %s", response.Code, response.Body.String())
+	}
+	body := response.Body.String()
+	for _, fragment := range []string{`data-calendar-sync-state`, `>failed</strong>`, `data-calendar-sync-error`, succeededAt.UTC().Format(time.RFC3339)} {
+		if !strings.Contains(body, fragment) {
+			testingContext.Fatalf("horizon synchronization state does not contain %q: %s", fragment, body)
+		}
 	}
 }
 
@@ -482,7 +594,7 @@ func TestHorizonRejectsUnsupportedMethodRepresentationAndPath(testingContext *te
 		wantStatus int
 		wantAllow  string
 	}{
-		{name: "method", method: http.MethodPost, target: config.WebHorizon, accept: horizonJSONMediaType, wantStatus: http.StatusMethodNotAllowed, wantAllow: http.MethodGet},
+		{name: "method", method: http.MethodPost, target: config.WebHorizon, accept: horizonJSONMediaType, wantStatus: http.StatusMethodNotAllowed, wantAllow: http.MethodGet + ", " + http.MethodHead},
 		{name: "representation", method: http.MethodGet, target: config.WebHorizon, accept: "application/xml", wantStatus: http.StatusNotAcceptable},
 		{name: "path", method: http.MethodGet, target: config.WebHorizon + "other", accept: horizonJSONMediaType, wantStatus: http.StatusNotFound},
 	}
@@ -498,7 +610,62 @@ func TestHorizonRejectsUnsupportedMethodRepresentationAndPath(testingContext *te
 			if responseRecorder.Header().Get("Allow") != testCase.wantAllow {
 				testingContext.Fatalf("Allow = %q, want %q", responseRecorder.Header().Get("Allow"), testCase.wantAllow)
 			}
+			var responseBody struct {
+				Error struct {
+					Code      string            `json:"code"`
+					Details   map[string]string `json:"details"`
+					RequestID string            `json:"request_id"`
+				} `json:"error"`
+			}
+			if decodeError := json.Unmarshal(responseRecorder.Body.Bytes(), &responseBody); decodeError != nil {
+				testingContext.Fatalf("decode typed error: %v; body = %s", decodeError, responseRecorder.Body.String())
+			}
+			if responseBody.Error.Code == "" || responseBody.Error.Details == nil || responseBody.Error.RequestID == "" {
+				testingContext.Fatalf("typed error = %#v", responseBody.Error)
+			}
 		})
+	}
+}
+
+func TestHorizonResourcesDoNotAcceptMethodOverride(testingContext *testing.T) {
+	fixture := testsupport.NewFixture(testingContext)
+	owner := fixture.CreateUser(testsupport.OwnerUserID)
+	confirmTimezone(testingContext, fixture.Database, &owner)
+	calendarRecord := createCalendar(testingContext, fixture.Database, owner.ID, "CALREST0", "REST", 0, true)
+	mux := http.NewServeMux()
+	routes.New(fixture.ApplicationContext, config.EnvConfig{}).RegisterRoutes(mux)
+	testServer := httptest.NewServer(mux)
+	testingContext.Cleanup(testServer.Close)
+
+	sessionRequest := httptest.NewRequest(http.MethodGet, config.WebHorizon, nil)
+	sessionRecorder := httptest.NewRecorder()
+	webSession, sessionError := session.Store().Get(sessionRequest, gaussConstants.SessionName)
+	if sessionError != nil {
+		testingContext.Fatalf("get session: %v", sessionError)
+	}
+	webSession.Values[gaussConstants.SessionKeyUserEmail] = owner.Email
+	if saveError := webSession.Save(sessionRequest, sessionRecorder); saveError != nil {
+		testingContext.Fatalf("save session: %v", saveError)
+	}
+	request, requestError := http.NewRequest(http.MethodPost, testServer.URL+config.WebCalendars+calendarRecord.ID, strings.NewReader("_method=DELETE"))
+	if requestError != nil {
+		testingContext.Fatalf("construct request: %v", requestError)
+	}
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	for _, cookie := range sessionRecorder.Result().Cookies() {
+		request.AddCookie(cookie)
+	}
+	response, responseError := testServer.Client().Do(request)
+	if responseError != nil {
+		testingContext.Fatalf("request calendar item: %v", responseError)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusMethodNotAllowed || response.Header.Get("Allow") != http.MethodGet+", "+http.MethodPatch+", "+http.MethodDelete {
+		testingContext.Fatalf("response = %d Allow %q", response.StatusCode, response.Header.Get("Allow"))
+	}
+	var storedCalendar models.Calendar
+	if findError := fixture.Database.First(&storedCalendar, "id = ?", calendarRecord.ID).Error; findError != nil {
+		testingContext.Fatalf("method override deleted calendar: %v", findError)
 	}
 }
 

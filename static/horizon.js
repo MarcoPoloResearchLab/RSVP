@@ -1,8 +1,63 @@
 // @ts-check
 
+const horizonSetup = document.querySelector('[data-horizon-setup]');
+
+if (horizonSetup instanceof HTMLElement) {
+    const form = horizonSetup.querySelector('[data-horizon-setup-form]');
+    const status = horizonSetup.querySelector('[data-horizon-setup-status]');
+    const timezoneInput = horizonSetup.querySelector('[data-client-timezone]');
+    if (!(form instanceof HTMLFormElement) || !(status instanceof HTMLElement) || !(timezoneInput instanceof HTMLInputElement)) {
+        throw new Error('The Horizon setup contract is incomplete.');
+    }
+    const browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (!browserTimezone) {
+        throw new Error('The browser did not supply an IANA timezone.');
+    }
+    timezoneInput.value = browserTimezone;
+    form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const resourceURL = form.dataset.resourceUrl;
+        if (!resourceURL) {
+            throw new Error('The calendar resource URL is absent.');
+        }
+        const submitButton = form.querySelector('button[type="submit"]');
+        if (!(submitButton instanceof HTMLButtonElement)) {
+            throw new Error('The Horizon setup action is absent.');
+        }
+        submitButton.disabled = true;
+        const payload = Object.fromEntries(new FormData(form).entries());
+        try {
+            const response = await fetch(resourceURL, {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(payload),
+            });
+            if (!response.ok) {
+                let message = `Horizon setup failed with status ${response.status}.`;
+                try {
+                    const body = await response.json();
+                    if (body && body.error && typeof body.error.message === 'string') {
+                        message = body.error.message;
+                    }
+                } catch (_error) {
+                    // The status message remains the canonical browser error.
+                }
+                throw new Error(message);
+            }
+            window.location.assign('/horizon/');
+        } catch (error) {
+            status.classList.remove('visually-hidden');
+            status.textContent = error instanceof Error ? error.message : 'Horizon setup failed.';
+            submitButton.disabled = false;
+        }
+    });
+}
+
 const horizonView = document.querySelector('[data-horizon-view]');
 
 if (horizonView instanceof HTMLElement) {
+    const resourceRoot = document;
     const viewport = horizonView.querySelector('[data-horizon-viewport]');
     const board = horizonView.querySelector('[data-horizon-board]');
     const status = horizonView.querySelector('[data-horizon-status]');
@@ -21,7 +76,7 @@ if (horizonView instanceof HTMLElement) {
     if (!browserTimezone) {
         throw new Error('The browser did not supply an IANA timezone.');
     }
-    for (const timezoneInput of horizonView.querySelectorAll('[data-client-timezone]')) {
+    for (const timezoneInput of resourceRoot.querySelectorAll('[data-client-timezone]')) {
         if (!(timezoneInput instanceof HTMLInputElement)) {
             throw new TypeError('A timezone input is invalid.');
         }
@@ -47,14 +102,24 @@ if (horizonView instanceof HTMLElement) {
 
     /** @param {HTMLFormElement} form */
     const formPayload = (form) => {
-        /** @type {Record<string, string>} */
+        /** @type {Record<string, string|number|null>} */
         const payload = {};
         for (const [name, rawValue] of new FormData(form).entries()) {
-            if (typeof rawValue !== 'string' || rawValue === '') {
+            if (typeof rawValue !== 'string') {
                 continue;
             }
-            if (name === 'ends_at') {
+            if (rawValue === '') {
+                const control = form.elements.namedItem(name);
+                if (control instanceof HTMLElement && control.hasAttribute('data-nullable-empty')) {
+                    payload[name] = null;
+                }
+                continue;
+            }
+            const organizerLocalTime = form.hasAttribute('data-ingestion-draft-form') && (name === 'starts_at' || name === 'ends_at' || name === 'next_probe_at');
+            if (!organizerLocalTime && (name === 'starts_at' || name === 'ends_at' || name === 'next_probe_at' || name === 'reference_time')) {
                 payload[name] = new Date(rawValue).toISOString();
+            } else if (name.endsWith('_seconds')) {
+                payload[name] = Number(rawValue);
             } else {
                 payload[name] = rawValue;
             }
@@ -62,7 +127,7 @@ if (horizonView instanceof HTMLElement) {
         return payload;
     };
 
-    for (const kindSelect of horizonView.querySelectorAll('[data-lane-kind]')) {
+    for (const kindSelect of resourceRoot.querySelectorAll('[data-lane-kind]')) {
         if (!(kindSelect instanceof HTMLSelectElement)) {
             throw new TypeError('A lane kind control is invalid.');
         }
@@ -83,7 +148,40 @@ if (horizonView instanceof HTMLElement) {
         applyLaneKind();
     }
 
-    for (const resourceForm of horizonView.querySelectorAll('[data-resource-form]')) {
+    for (const referenceInput of horizonView.querySelectorAll('[data-reference-time]')) {
+        if (!(referenceInput instanceof HTMLInputElement)) { throw new TypeError('A reference time input is invalid.'); }
+        referenceInput.value = new Date().toISOString();
+    }
+    const quickMode = horizonView.querySelector('[data-quick-mode]');
+    if (quickMode instanceof HTMLSelectElement) {
+        const applyQuickMode = () => {
+            const eventMode = quickMode.value === 'dated_event';
+            for (const field of horizonView.querySelectorAll('[data-event-field] input, [data-event-field] select')) { if (field instanceof HTMLInputElement || field instanceof HTMLSelectElement) { field.disabled = !eventMode; } }
+            for (const field of horizonView.querySelectorAll('[data-open-field] input')) { if (field instanceof HTMLInputElement) { field.disabled = eventMode; } }
+        };
+        quickMode.addEventListener('change', applyQuickMode);
+        applyQuickMode();
+    }
+
+    for (const confirmButton of horizonView.querySelectorAll('[data-draft-confirm]')) {
+        if (!(confirmButton instanceof HTMLButtonElement)) { throw new TypeError('A draft confirmation control is invalid.'); }
+        confirmButton.addEventListener('click', async () => {
+            const resourceURL = confirmButton.dataset.resourceUrl;
+            if (!resourceURL) { throw new Error('The draft confirmation URL is absent.'); }
+            confirmButton.disabled = true;
+            try {
+                const response = await fetch(resourceURL, {method: 'POST', credentials: 'same-origin', headers: {'Content-Type': 'application/json', 'Idempotency-Key': crypto.randomUUID()}, body: '{}'});
+                await requireResourceResponse(response);
+                window.location.reload();
+            } catch (error) {
+                status.classList.remove('visually-hidden');
+                status.textContent = error instanceof Error ? error.message : 'Draft confirmation failed.';
+                confirmButton.disabled = false;
+            }
+        });
+    }
+
+    for (const resourceForm of resourceRoot.querySelectorAll('[data-resource-form]')) {
         if (!(resourceForm instanceof HTMLFormElement)) {
             throw new TypeError('A resource form is invalid.');
         }
@@ -117,7 +215,7 @@ if (horizonView instanceof HTMLElement) {
         });
     }
 
-    for (const actionButton of horizonView.querySelectorAll('[data-resource-action]')) {
+    for (const actionButton of resourceRoot.querySelectorAll('[data-resource-action]')) {
         if (!(actionButton instanceof HTMLButtonElement)) {
             throw new TypeError('A resource action is invalid.');
         }
@@ -135,6 +233,9 @@ if (horizonView instanceof HTMLElement) {
             if (actionButton.hasAttribute('data-resolve-lane')) {
                 payload.resolved_at = new Date().toISOString();
             }
+            if (actionButton.hasAttribute('data-complete-probe')) {
+                payload.state = 'completed';
+            }
             actionButton.disabled = true;
             try {
                 /** @type {RequestInit} */
@@ -150,6 +251,94 @@ if (horizonView instanceof HTMLElement) {
                 status.classList.remove('visually-hidden');
                 status.textContent = error instanceof Error ? error.message : 'Resource operation failed.';
                 actionButton.disabled = false;
+            }
+        });
+    }
+
+    const authorizationButton = resourceRoot.querySelector('[data-calendar-authorize]');
+    if (authorizationButton instanceof HTMLButtonElement) {
+        authorizationButton.addEventListener('click', async () => {
+            const resourceURL = authorizationButton.dataset.resourceUrl;
+            if (!resourceURL) {
+                throw new Error('The calendar authorization URL is absent.');
+            }
+            authorizationButton.disabled = true;
+            try {
+                const response = await fetch(resourceURL, {
+                    method: 'POST', credentials: 'same-origin',
+                    headers: {'Content-Type': 'application/json'}, body: '{}',
+                });
+                await requireResourceResponse(response);
+                const body = await response.json();
+                if (!body || typeof body.authorization_url !== 'string') {
+                    throw new Error('The calendar authorization response is invalid.');
+                }
+                window.location.assign(body.authorization_url);
+            } catch (error) {
+                status.classList.remove('visually-hidden');
+                status.textContent = error instanceof Error ? error.message : 'Calendar authorization failed.';
+                authorizationButton.disabled = false;
+            }
+        });
+    }
+
+    const loadSourcesButton = resourceRoot.querySelector('[data-load-source-calendars]');
+    const saveSourcesButton = resourceRoot.querySelector('[data-save-source-calendars]');
+    const sourceList = resourceRoot.querySelector('[data-source-calendar-list]');
+    if (loadSourcesButton instanceof HTMLButtonElement && saveSourcesButton instanceof HTMLButtonElement && sourceList instanceof HTMLElement) {
+        const sourceURL = loadSourcesButton.dataset.sourceUrl;
+        if (!sourceURL || sourceURL !== saveSourcesButton.dataset.sourceUrl) {
+            throw new Error('The source calendar URL is invalid.');
+        }
+        loadSourcesButton.addEventListener('click', async () => {
+            loadSourcesButton.disabled = true;
+            try {
+                const response = await fetch(sourceURL, {credentials: 'same-origin', headers: {'Accept': 'application/json'}});
+                await requireResourceResponse(response);
+                const body = await response.json();
+                if (!body || !Array.isArray(body.sources)) {
+                    throw new Error('The source calendar response is invalid.');
+                }
+                sourceList.replaceChildren();
+                for (const source of body.sources) {
+                    if (!source || typeof source.id !== 'string' || typeof source.name !== 'string' || typeof source.selected !== 'boolean') {
+                        throw new Error('A source calendar is invalid.');
+                    }
+                    const label = document.createElement('label');
+                    const input = document.createElement('input');
+                    input.type = 'checkbox';
+                    input.value = source.id;
+                    input.checked = source.selected;
+                    input.dataset.sourceCalendar = '';
+                    label.append(input, document.createTextNode(` ${source.name}`));
+                    sourceList.append(label);
+                }
+                saveSourcesButton.hidden = false;
+            } catch (error) {
+                status.classList.remove('visually-hidden');
+                status.textContent = error instanceof Error ? error.message : 'Source calendar listing failed.';
+                loadSourcesButton.disabled = false;
+            }
+        });
+        saveSourcesButton.addEventListener('click', async () => {
+            saveSourcesButton.disabled = true;
+            const providerCalendarIDs = Array.from(sourceList.querySelectorAll('[data-source-calendar]:checked')).map((input) => {
+                if (!(input instanceof HTMLInputElement)) {
+                    throw new TypeError('A source calendar control is invalid.');
+                }
+                return input.value;
+            });
+            try {
+                const response = await fetch(sourceURL, {
+                    method: 'PUT', credentials: 'same-origin', headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({provider_calendar_ids: providerCalendarIDs, timezone: browserTimezone}),
+                });
+                await requireResourceResponse(response);
+                window.location.reload();
+            } catch (error) {
+                status.classList.remove('visually-hidden');
+                status.textContent = error instanceof Error ? error.message : 'Source calendar selection failed.';
+                saveSourcesButton.disabled = false;
             }
         });
     }
@@ -301,7 +490,7 @@ if (horizonView instanceof HTMLElement) {
     };
 
     horizonView.addEventListener('keydown', (event) => {
-        if (event.target instanceof HTMLInputElement || event.target instanceof HTMLAnchorElement) {
+        if (event.target instanceof HTMLElement && (event.target.isContentEditable || event.target.matches('input, textarea, select, button, a'))) {
             return;
         }
         const key = event.key.toLowerCase();

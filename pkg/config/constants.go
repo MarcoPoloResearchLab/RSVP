@@ -1,17 +1,37 @@
 package config
 
+import "time"
+
 const (
-	WebRoot             = "/"
-	WebCalendars        = "/calendars/"
-	WebEvents           = "/events/"
-	WebHorizon          = "/horizon/"
-	WebLanes            = "/lanes/"
-	WebStatic           = "/static/"
-	WebRSVPs            = "/rsvps/"
-	WebRSVPQR           = "/rsvps/qr/"
-	WebResponse         = "/response/"
-	WebResponseThankYou = "/response/thankyou"
-	WebVenues           = "/venues/"
+	GoogleCalendarAuthorizationEndpoint = "https://accounts.google.com/o/oauth2/v2/auth"
+	GoogleCalendarListEndpoint          = "https://www.googleapis.com/calendar/v3/users/me/calendarList"
+	GoogleCalendarEventsEndpoint        = "https://www.googleapis.com/calendar/v3/calendars"
+	GoogleCalendarTokenEndpoint         = "https://oauth2.googleapis.com/token"
+	GoogleCalendarListReadonlyScope     = "https://www.googleapis.com/auth/calendar.calendarlist.readonly"
+	GoogleCalendarEventsReadonlyScope   = "https://www.googleapis.com/auth/calendar.events.readonly"
+	CalendarConnectionCallbackPath      = WebCalendarConnectionCallbacksGoogle
+	IdempotencyKeyHeader                = "Idempotency-Key"
+)
+
+const (
+	WebRoot                              = "/"
+	WebCalendars                         = "/calendars/"
+	WebAttentionPolicies                 = "/attention-policies/"
+	WebCalendarAuthorizationRequests     = "/calendar-authorization-requests/"
+	WebCalendarConnectionCallbacksGoogle = "/calendar-connection-callbacks/google/"
+	WebCalendarConnections               = "/calendar-connections/"
+	WebEvents                            = "/events/"
+	WebDerivedMarkerRules                = "/derived-marker-rules/"
+	WebHorizon                           = "/horizon/"
+	WebIngestionDrafts                   = "/ingestion-drafts/"
+	WebLanes                             = "/lanes/"
+	WebProbes                            = "/probes/"
+	WebStatic                            = "/static/"
+	WebRSVPs                             = "/rsvps/"
+	WebRSVPQR                            = "/rsvps/qr/"
+	WebResponse                          = "/response/"
+	WebResponseThankYou                  = "/response/thankyou"
+	WebVenues                            = "/venues/"
 )
 
 const (
@@ -68,16 +88,28 @@ const (
 )
 
 const (
-	DefaultDBName          = "rsvps.db"
-	TableAttentionPolicies = "attention_policies"
-	TableCalendars         = "calendars"
-	TableEvents            = "events"
-	TableEventSeries       = "event_series"
-	TableLanes             = "lanes"
-	TableProbes            = "probes"
-	TableRSVPs             = "rsvps"
-	TableUsers             = "users"
-	TableVenues            = "venues"
+	DefaultDBName                      = "rsvps.db"
+	TableAttentionPolicies             = "attention_policies"
+	TableCalendarAuthorizationRequests = "calendar_authorization_requests"
+	TableCalendarConnections           = "calendar_connections"
+	TableCalendars                     = "calendars"
+	TableEvents                        = "events"
+	TableDerivedMarkerRules            = "derived_marker_rules"
+	TableDerivedMarkers                = "derived_markers"
+	TableEventSeries                   = "event_series"
+	TableExternalEventLinks            = "external_event_links"
+	TableExternalEventSeriesLinks      = "external_event_series_links"
+	TableCalendarSyncs                 = "calendar_syncs"
+	TableLanes                         = "lanes"
+	TableIdempotencyRecords            = "idempotency_records"
+	TableIngestionDrafts               = "ingestion_drafts"
+	TableDraftConfirmations            = "draft_confirmations"
+	TableDraftDerivedMarkerRules       = "draft_derived_marker_rules"
+	TableProbes                        = "probes"
+	TableRSVPs                         = "rsvps"
+	TableSourceCalendarMappings        = "source_calendar_mappings"
+	TableUsers                         = "users"
+	TableVenues                        = "venues"
 )
 
 const (
@@ -168,9 +200,11 @@ const (
 )
 
 const (
+	AttentionClockInterval        = time.Minute
+	CalendarSyncInterval          = 5 * time.Minute
 	ServerHTTPPort                = 8080
 	ServerHTTPAddress             = "0.0.0.0"
-	ServerGracefulShutdownTimeout = 10 * 1e9
+	ServerGracefulShutdownTimeout = 10 * time.Second
 )
 
 const (

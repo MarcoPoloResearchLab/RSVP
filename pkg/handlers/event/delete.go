@@ -50,6 +50,17 @@ func DeleteHandler(applicationContext *config.ApplicationContext) http.HandlerFu
 			tx.Rollback()
 			return
 		}
+		var sourceLinkCount int64
+		if countError := tx.Model(&models.ExternalEventLink{}).Where("event_id = ?", eventRecord.ID).Count(&sourceLinkCount).Error; countError != nil {
+			tx.Rollback()
+			baseHttpHandler.HandleError(httpResponseWriter, countError, utils.DatabaseError, "Failed to inspect event ownership.")
+			return
+		}
+		if sourceLinkCount != 0 {
+			tx.Rollback()
+			baseHttpHandler.HandleError(httpResponseWriter, services.ErrSourceOwnedMarker, utils.ConflictError, services.ErrSourceOwnedMarker.Error())
+			return
+		}
 		var independentLane *models.Lane
 		if eventRecord.RelationType == models.EventRelationIndependent {
 			hasDependents, dependentsError := eventRecord.HasDependentEvents(tx)
@@ -76,6 +87,11 @@ func DeleteHandler(applicationContext *config.ApplicationContext) http.HandlerFu
 			baseHttpHandler.HandleError(httpResponseWriter, deleteRSVPsErr, utils.DatabaseError, "Failed to delete associated RSVPs.")
 			return
 		}
+		if derivedDeleteError := services.DeleteDerivedMarkersForAnchor(tx, models.DerivedAnchorEvent, targetEventID); derivedDeleteError != nil {
+			tx.Rollback()
+			baseHttpHandler.HandleError(httpResponseWriter, derivedDeleteError, utils.DatabaseError, "Failed to delete derived markers.")
+			return
+		}
 		if deleteEventErr := tx.Unscoped().Delete(&eventRecord).Error; deleteEventErr != nil {
 			tx.Rollback()
 			baseHttpHandler.HandleError(httpResponseWriter, deleteEventErr, utils.DatabaseError, "Failed to delete the event.")
@@ -92,7 +108,7 @@ func DeleteHandler(applicationContext *config.ApplicationContext) http.HandlerFu
 				baseHttpHandler.HandleError(httpResponseWriter, normalizeError, utils.DatabaseError, "Failed to normalize the event lane order.")
 				return
 			}
-		} else if laneBoundsError := models.RecalculateFiniteLaneEnd(tx, eventRecord.LaneID); laneBoundsError != nil {
+		} else if laneBoundsError := services.RecalculateTemporalLaneBounds(tx, eventRecord.LaneID); laneBoundsError != nil {
 			tx.Rollback()
 			baseHttpHandler.HandleError(httpResponseWriter, laneBoundsError, utils.DatabaseError, "Failed to update the event lane.")
 			return

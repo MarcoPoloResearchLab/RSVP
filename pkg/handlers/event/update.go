@@ -8,6 +8,7 @@ import (
 	"github.com/tyemirov/RSVP/pkg/config"
 	"github.com/tyemirov/RSVP/pkg/handlers"
 	"github.com/tyemirov/RSVP/pkg/middleware"
+	"github.com/tyemirov/RSVP/pkg/services"
 	"github.com/tyemirov/RSVP/pkg/utils"
 )
 
@@ -43,6 +44,18 @@ func UpdateEventHandler(applicationContext *config.ApplicationContext) http.Hand
 		if findEventError != nil {
 			activeTransaction.Rollback()
 			baseHttpHandler.HandleError(httpResponseWriter, findEventError, utils.NotFoundError, config.ErrMsgEventNotFound)
+			return
+		}
+
+		var sourceLinkCount int64
+		if countError := activeTransaction.Model(&models.ExternalEventLink{}).Where("event_id = ?", existingEventRecord.ID).Count(&sourceLinkCount).Error; countError != nil {
+			activeTransaction.Rollback()
+			baseHttpHandler.HandleError(httpResponseWriter, countError, utils.DatabaseError, config.ErrMsgEventUpdate)
+			return
+		}
+		if sourceLinkCount != 0 {
+			activeTransaction.Rollback()
+			baseHttpHandler.HandleError(httpResponseWriter, services.ErrSourceOwnedMarker, utils.ConflictError, services.ErrSourceOwnedMarker.Error())
 			return
 		}
 
@@ -127,6 +140,16 @@ func UpdateEventHandler(applicationContext *config.ApplicationContext) http.Hand
 			return
 		}
 		if laneBoundsError := models.RecalculateFiniteLaneEnd(activeTransaction, existingEventRecord.LaneID); laneBoundsError != nil {
+			activeTransaction.Rollback()
+			baseHttpHandler.HandleError(httpResponseWriter, laneBoundsError, utils.DatabaseError, config.ErrMsgEventUpdate)
+			return
+		}
+		if derivedError := services.RecalculateDerivedMarkersForAnchor(activeTransaction, currentUser.ID, models.DerivedAnchorEvent, existingEventRecord.ID); derivedError != nil {
+			activeTransaction.Rollback()
+			baseHttpHandler.HandleError(httpResponseWriter, derivedError, utils.DatabaseError, config.ErrMsgEventUpdate)
+			return
+		}
+		if laneBoundsError := services.RecalculateTemporalLaneBounds(activeTransaction, existingEventRecord.LaneID); laneBoundsError != nil {
 			activeTransaction.Rollback()
 			baseHttpHandler.HandleError(httpResponseWriter, laneBoundsError, utils.DatabaseError, config.ErrMsgEventUpdate)
 			return

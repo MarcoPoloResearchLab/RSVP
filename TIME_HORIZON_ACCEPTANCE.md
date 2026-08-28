@@ -120,9 +120,27 @@ The issue identifiers refer to [.mprlab/ISSUES.md](.mprlab/ISSUES.md).
 | TH-095 | Venue relationships stay stable in canonical operations. | Canonical fixture comparison. | I002, I003 |
 | TH-096 | No obsolete temporal contract exists. | Source, schema, route, and asset scan. | I003 |
 | TH-097 | Desktop and mobile browsers render the complete horizon. | Deterministic end-to-end suite. | I003 |
+| TH-098 | A new organizer gets Horizon setup before the default window. | HTML setup, typed JSON error, and browser tests. | B043 |
+| TH-099 | Horizon uses one REST interface for methods, errors, and draft creation. | Registered HTTP and browser contract tests. | B044 |
 
 ## Completion Rule
 
 An implementation issue closes only after its assigned evidence is valid.
 I003 closes only after each row has valid evidence or an approved exclusion.
 Each exclusion requires a new planning issue and an architecture update.
+
+## I003 Evidence
+
+The deterministic browser suite is `tests/browser/horizon.spec.js`.
+It uses the production-like fixture in `internal/browserfixture/main.go`.
+
+The suite verifies desktop and mobile presentation.
+It also verifies keyboard access, labels, focus order, and color-independent meaning.
+
+The suite verifies initial and incremental Google Calendar synchronization.
+It verifies attention, derived markers, quick drafts, and natural-language drafts.
+It verifies the QR page and the public RSVP response flow.
+
+The schema record is [TIME_HORIZON_SCHEMA_RECORD.md](TIME_HORIZON_SCHEMA_RECORD.md).
+The user procedure is [USER_GUIDE.md](USER_GUIDE.md).
+The operator procedure is [OPERATOR_RUNBOOK.md](OPERATOR_RUNBOOK.md).

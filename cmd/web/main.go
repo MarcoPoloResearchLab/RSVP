@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/tyemirov/GAuss/pkg/session"
 	"github.com/tyemirov/RSVP/pkg/config"
@@ -41,6 +42,13 @@ func main() {
 		Logger:     applicationLogger,
 		AppBaseURL: environmentConfiguration.AppBaseURL, // Pass base URL to context
 	}
+	attentionService, attentionServiceError := services.NewAttentionService(databaseConnection, time.Now)
+	if attentionServiceError != nil {
+		applicationLogger.Fatalf("Initialize attention clock: %v", attentionServiceError)
+	}
+	applicationRuntimeContext, cancelApplicationRuntime := context.WithCancel(context.Background())
+	defer cancelApplicationRuntime()
+	go runAttentionClock(applicationRuntimeContext, attentionService, applicationLogger)
 
 	// Set up the HTTP request multiplexer (router).
 	httpServeMuxRouter := http.NewServeMux()
@@ -49,6 +57,11 @@ func main() {
 	routesInstance := routes.New(applicationContext, *environmentConfiguration)
 	routesInstance.RegisterMiddleware(httpServeMuxRouter) // Order matters: GAuss/Auth middleware first
 	routesInstance.RegisterRoutes(httpServeMuxRouter)     // Then application routes
+	go func() {
+		if synchronizationError := routesInstance.RunCalendarSyncClock(applicationRuntimeContext, config.CalendarSyncInterval); synchronizationError != nil {
+			applicationLogger.Printf("Calendar synchronization clock stopped: %v", synchronizationError)
+		}
+	}()
 
 	// Configure the HTTP server details.
 	serverAddress := fmt.Sprintf("%s:%d", config.ServerHTTPAddress, config.ServerHTTPPort)
@@ -87,6 +100,7 @@ func main() {
 
 	// Block until a shutdown signal is received.
 	<-shutdownSignalChannel
+	cancelApplicationRuntime()
 	applicationLogger.Println("Shutdown signal received; commencing graceful shutdown...")
 
 	// Create a context with a timeout for the shutdown process.
@@ -99,5 +113,23 @@ func main() {
 		applicationLogger.Printf("Error during server shutdown: %v", shutdownError)
 	} else {
 		applicationLogger.Println("Server shutdown completed successfully.")
+	}
+}
+
+func runAttentionClock(ctx context.Context, service *services.AttentionService, applicationLogger interface{ Printf(string, ...any) }) {
+	if _, transitionError := service.MarkAllMissedProbes(ctx); transitionError != nil && !errors.Is(transitionError, context.Canceled) {
+		applicationLogger.Printf("Attention clock failed: %v", transitionError)
+	}
+	ticker := time.NewTicker(config.AttentionClockInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if _, transitionError := service.MarkAllMissedProbes(ctx); transitionError != nil && !errors.Is(transitionError, context.Canceled) {
+				applicationLogger.Printf("Attention clock failed: %v", transitionError)
+			}
+		}
 	}
 }

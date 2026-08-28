@@ -4,7 +4,97 @@
     <link rel="stylesheet" href="{{ .StylesURL }}">
 {{ end }}
 
+{{ define "header-settings" }}
+    {{ if not .NeedsTimezoneSetup }}
+    <section class="horizon-settings" aria-labelledby="horizon-settings-title" data-horizon-settings>
+        <h2 id="horizon-settings-title">Settings</h2>
+        <details class="horizon-management" data-horizon-management>
+            <summary>Manage calendars and lanes</summary>
+            <div class="horizon-management-grid">
+                <section class="horizon-resource-form" data-calendar-connection>
+                    <h2>Google Calendar</h2>
+                    {{ if .CalendarConnection }}
+                        <p>Connection state: <strong>{{ .CalendarConnection.Status }}</strong></p>
+                        {{ if .CalendarConnection.SyncState }}<p data-calendar-sync-state>Synchronization state: <strong>{{ .CalendarConnection.SyncState }}</strong></p>{{ end }}
+                        {{ if .CalendarConnection.SyncError }}<p data-calendar-sync-error>Google Calendar synchronization failed. RSVP will retry automatically.</p>{{ end }}
+                        {{ if .CalendarConnection.LastSuccessfulSync }}<p>Last synchronized: <time datetime="{{ .CalendarConnection.LastSuccessfulSync }}">{{ .CalendarConnection.LastSuccessfulSync }}</time></p>{{ end }}
+                        <button type="button" data-load-source-calendars data-source-url="{{ .CalendarConnection.SourceCalendarURL }}">Select source calendars</button>
+                        <div data-source-calendar-list></div>
+                        <button type="button" data-save-source-calendars data-source-url="{{ .CalendarConnection.SourceCalendarURL }}" hidden>Save source calendars</button>
+                        <button type="button" data-resource-action="DELETE" data-resource-url="{{ .CalendarConnection.ManagementURL }}">Delete connection</button>
+                    {{ else }}
+                        <button type="button" data-calendar-authorize data-resource-url="{{ .CalendarAuthorizationURL }}">Connect Google Calendar</button>
+                    {{ end }}
+                </section>
+                <form class="horizon-resource-form" data-resource-form data-method="POST" data-resource-url="{{ .CalendarCreateURL }}">
+                    <h2>Create calendar</h2>
+                    <label>Name <input name="name" required></label>
+                    <label>Symbol <input name="symbol" required maxlength="8"></label>
+                    <label>Color token <input name="color_token" required></label>
+                    <input type="hidden" name="timezone" data-client-timezone>
+                    <button type="submit">Create calendar</button>
+                </form>
+                <form class="horizon-resource-form" data-resource-form data-method="POST" data-resource-url="{{ .LaneCreateURL }}">
+                    <h2>Create lane</h2>
+                    <label>Calendar
+                        <select name="calendar_id" required>
+                            {{ range .Calendars }}<option value="{{ .ID }}">{{ .Symbol }} {{ .Name }}</option>{{ end }}
+                        </select>
+                    </label>
+                    <label>Title <input name="title" required></label>
+                    <label>Kind
+                        <select name="kind" data-lane-kind>
+                            <option value="open">Open</option>
+                            <option value="finite">Finite</option>
+                        </select>
+                    </label>
+                    <label>End <input type="datetime-local" name="ends_at" data-lane-end></label>
+                    <input type="hidden" name="timezone" data-client-timezone>
+                    <button type="submit">Create lane</button>
+                </form>
+            </div>
+            <div class="horizon-resource-list">
+                {{ range .Calendars }}
+                    <section class="horizon-resource-card" data-calendar-management="{{ .ID }}">
+                        <form data-resource-form data-method="PATCH" data-resource-url="{{ .ManagementURL }}">
+                            <label>Calendar name <input name="name" value="{{ .Name }}" required></label>
+                            <label>Symbol <input name="symbol" value="{{ .Symbol }}" required maxlength="8"></label>
+                            <label>Color token <input name="color_token" value="{{ .ColorToken }}" required></label>
+                            <button type="submit">Save calendar</button>
+                        </form>
+                        <div class="horizon-resource-actions">
+                            {{ if .CanMoveUp }}<button type="button" data-resource-action="PATCH" data-resource-url="{{ .ManagementURL }}" data-display-order="{{ .PreviousOrder }}">Move calendar up</button>{{ end }}
+                            {{ if .CanMoveDown }}<button type="button" data-resource-action="PATCH" data-resource-url="{{ .ManagementURL }}" data-display-order="{{ .NextOrder }}">Move calendar down</button>{{ end }}
+                            <button type="button" data-resource-action="DELETE" data-resource-url="{{ .ManagementURL }}">Delete calendar</button>
+                        </div>
+                    </section>
+                {{ end }}
+            </div>
+        </details>
+    </section>
+    {{ end }}
+{{ end }}
+
 {{ define "content" }}
+    {{ if .NeedsTimezoneSetup }}
+    <section class="horizon-view horizon-setup" aria-labelledby="horizon-title" data-horizon-setup tabindex="-1">
+        <header class="horizon-heading">
+            <div>
+                <p class="horizon-eyebrow">Your time, in motion</p>
+                <h1 id="horizon-title">Set up Horizon</h1>
+                <p class="horizon-window">Create your first calendar to use your local timezone and open the 90-day Horizon.</p>
+            </div>
+        </header>
+        <form class="horizon-resource-form horizon-setup-form" data-horizon-setup-form data-resource-url="{{ .CalendarCreateURL }}">
+            <label>Calendar name <input name="name" value="RSVP Events" required></label>
+            <label>Symbol <input name="symbol" value="R" required></label>
+            <input name="color_token" type="hidden" value="rsvp-events">
+            <input name="timezone" type="hidden" data-client-timezone>
+            <button type="submit">Start Horizon</button>
+        </form>
+        <p class="visually-hidden" aria-live="polite" data-horizon-setup-status></p>
+    </section>
+    {{ else }}
     <section
         class="horizon-view"
         aria-labelledby="horizon-title"
@@ -54,53 +144,66 @@
             {{ end }}
         </div>
 
-        <details class="horizon-management" data-horizon-management>
-            <summary>Manage calendars and lanes</summary>
-            <div class="horizon-management-grid">
-                <form class="horizon-resource-form" data-resource-form data-method="POST" data-resource-url="{{ .CalendarCreateURL }}">
-                    <h2>Create calendar</h2>
-                    <label>Name <input name="name" required></label>
-                    <label>Symbol <input name="symbol" required maxlength="8"></label>
-                    <label>Color token <input name="color_token" required></label>
-                    <input type="hidden" name="timezone" data-client-timezone>
-                    <button type="submit">Create calendar</button>
-                </form>
-                <form class="horizon-resource-form" data-resource-form data-method="POST" data-resource-url="{{ .LaneCreateURL }}">
-                    <h2>Create lane</h2>
-                    <label>Calendar
-                        <select name="calendar_id" required>
-                            {{ range .Calendars }}<option value="{{ .ID }}">{{ .Symbol }} {{ .Name }}</option>{{ end }}
-                        </select>
-                    </label>
-                    <label>Title <input name="title" required></label>
-                    <label>Kind
-                        <select name="kind" data-lane-kind>
-                            <option value="open">Open</option>
-                            <option value="finite">Finite</option>
-                        </select>
-                    </label>
-                    <label>End <input type="datetime-local" name="ends_at" data-lane-end></label>
-                    <input type="hidden" name="timezone" data-client-timezone>
-                    <button type="submit">Create lane</button>
-                </form>
-            </div>
-            <div class="horizon-resource-list">
-                {{ range .Calendars }}
-                    <section class="horizon-resource-card" data-calendar-management="{{ .ID }}">
-                        <form data-resource-form data-method="PATCH" data-resource-url="{{ .ManagementURL }}">
-                            <label>Calendar name <input name="name" value="{{ .Name }}" required></label>
-                            <label>Symbol <input name="symbol" value="{{ .Symbol }}" required maxlength="8"></label>
-                            <label>Color token <input name="color_token" value="{{ .ColorToken }}" required></label>
-                            <button type="submit">Save calendar</button>
-                        </form>
-                        <div class="horizon-resource-actions">
-                            {{ if .CanMoveUp }}<button type="button" data-resource-action="PATCH" data-resource-url="{{ .ManagementURL }}" data-display-order="{{ .PreviousOrder }}">Move calendar up</button>{{ end }}
-                            {{ if .CanMoveDown }}<button type="button" data-resource-action="PATCH" data-resource-url="{{ .ManagementURL }}" data-display-order="{{ .NextOrder }}">Move calendar down</button>{{ end }}
-                            <button type="button" data-resource-action="DELETE" data-resource-url="{{ .ManagementURL }}">Delete calendar</button>
-                        </div>
-                    </section>
+        <details class="horizon-management" data-quick-add>
+            <summary>Quick add</summary>
+            <form class="horizon-resource-form" data-resource-form data-method="POST" data-resource-url="{{ .IngestionDraftCreateURL }}">
+                <h2>Natural-language draft</h2>
+                <input name="source" type="hidden" value="natural_language">
+                <label>Request <textarea name="input_text" required></textarea></label>
+                <label>Calendar <select name="calendar_id" required>{{ range .Calendars }}<option value="{{ .ID }}">{{ .Symbol }} {{ .Name }}</option>{{ end }}</select></label>
+                <input name="reference_time" type="hidden" data-reference-time>
+                <input name="timezone" type="hidden" data-client-timezone>
+                <button type="submit">Parse into draft</button>
+            </form>
+            <form class="horizon-resource-form" data-resource-form data-ingestion-draft-form data-quick-add-form data-method="POST" data-resource-url="{{ .IngestionDraftCreateURL }}">
+                <input name="source" type="hidden" value="quick">
+                <label>Mode <select name="mode" data-quick-mode><option value="dated_event">Dated event</option><option value="open_lane">Open lane</option></select></label>
+                <label>Calendar <select name="calendar_id" required>{{ range .Calendars }}<option value="{{ .ID }}">{{ .Symbol }} {{ .Name }}</option>{{ end }}</select></label>
+                <label>Title <input name="title" required></label>
+                <label data-event-field>Anchor event <select name="anchor_event_id"><option value="">Independent event</option>{{ range .AnchorEvents }}<option value="{{ .ID }}">{{ .Title }}</option>{{ end }}</select></label>
+                <label data-event-field>Start <input name="starts_at" type="datetime-local" required></label>
+                <label data-event-field>End <input name="ends_at" type="datetime-local" required></label>
+                <label data-open-field>Review interval seconds <input name="review_interval_seconds" type="number" min="1"></label>
+                <label data-open-field>Next probe <input name="next_probe_at" type="datetime-local"></label>
+                <label data-open-field>Escalation interval seconds <input name="escalation_interval_seconds" type="number" min="1"></label>
+                <input name="reference_time" type="hidden" data-reference-time>
+                <input name="timezone" type="hidden" data-client-timezone>
+                <button type="submit">Create ingestion draft</button>
+            </form>
+            {{ range .IngestionDraftViews }}
+            {{ $draft := . }}
+            <section class="horizon-resource-card" data-ingestion-draft="{{ .ID }}">
+                <h2>Confirm proposal: {{ .Title }}</h2>
+                {{ if eq .Source "natural_language" }}<p>Parser-inferred proposal.</p>{{ end }}
+                {{ if .MissingFields }}<p>Missing required values: {{ range $index, $field := .MissingFields }}{{ if $index }}, {{ end }}{{ $field }}{{ end }}.</p>{{ end }}
+                <p>Calendar: {{ .CalendarName }}. Lane: {{ .ProposedLane }}. Mode: {{ .Mode }}.</p>
+                {{ if eq .Mode "dated_event" }}
+                <p>Marker: {{ .StartsAt }} to {{ .EndsAt }}. Attention: none.</p>
+                {{ else }}
+                <p>Marker: none. Attention: {{ if .ReviewIntervalSeconds }}review every {{ .ReviewIntervalSeconds }} seconds, next probe {{ .NextProbeAt }}{{ else }}none{{ end }}.</p>
                 {{ end }}
-            </div>
+                {{ if .DerivedRuleSummaries }}<p>Relative marker rules: {{ range $index, $rule := .DerivedRuleSummaries }}{{ if $index }}; {{ end }}{{ $rule }}{{ end }}.</p>{{ end }}
+                <form data-resource-form data-ingestion-draft-form data-method="PATCH" data-resource-url="{{ .ManagementURL }}">
+                    <input name="mode" type="hidden" value="{{ .Mode }}">
+                    <label>Calendar <select name="calendar_id">{{ range $.Calendars }}<option value="{{ .ID }}" {{ if eq .ID $draft.CalendarID }}selected{{ end }}>{{ .Name }}</option>{{ end }}</select></label>
+                    <label>Title <input name="title" value="{{ .Title }}" required></label>
+                    {{ if eq .Mode "dated_event" }}
+                    <label>Anchor event <select name="anchor_event_id"><option value="">Independent event</option>{{ range $.AnchorEvents }}<option value="{{ .ID }}" {{ if eq .ID $draft.AnchorEventID }}selected{{ end }}>{{ .Title }}</option>{{ end }}</select></label>
+                    <label>Start <input name="starts_at" type="datetime-local" value="{{ .StartsAt }}" required></label>
+                    <label>End <input name="ends_at" type="datetime-local" value="{{ .EndsAt }}" required></label>
+                    {{ else }}
+                    <label>Review interval seconds <input name="review_interval_seconds" type="number" min="1" value="{{ .ReviewIntervalSeconds }}"></label>
+                    <label>Next probe <input name="next_probe_at" type="datetime-local" value="{{ .NextProbeAt }}"></label>
+                    <label>Escalation interval seconds <input name="escalation_interval_seconds" type="number" min="1" value="{{ .EscalationIntervalSeconds }}"></label>
+                    {{ end }}
+                    <input name="reference_time" type="hidden" value="{{ .ReferenceTime }}">
+                    <label>Timezone <input name="timezone" value="{{ .Timezone }}" required></label>
+                    <button type="submit">Save proposal</button>
+                </form>
+                {{ if eq .Status "ready" }}<button type="button" data-draft-confirm data-resource-url="{{ .ConfirmationURL }}">Confirm draft</button>{{ end }}
+                <button type="button" data-resource-action="DELETE" data-resource-url="{{ .ManagementURL }}">Cancel draft</button>
+            </section>
+            {{ end }}
         </details>
 
         <p class="horizon-shortcuts">
@@ -147,6 +250,26 @@
                                             {{ if .CanResolve }}<button type="button" data-resource-action="PATCH" data-resource-url="{{ .ManagementURL }}" data-resolve-lane>Resolve lane</button>{{ end }}
                                             <button type="button" data-resource-action="DELETE" data-resource-url="{{ .ManagementURL }}">Delete lane</button>
                                         </div>
+                                        {{ if .CanResolve }}
+                                            {{ if .Attention }}
+                                                <p>Next attention: <time datetime="{{ .Attention.NextProbeAt }}">{{ .Attention.NextProbeInput }}</time></p>
+                                                <form data-resource-form data-method="PATCH" data-resource-url="{{ .Attention.ManagementURL }}">
+                                                    <label>Review interval seconds <input name="review_interval_seconds" type="number" min="1" value="{{ .Attention.ReviewIntervalSeconds }}" required></label>
+                                                    <label>Next probe <input name="next_probe_at" type="datetime-local" value="{{ .Attention.NextProbeInput }}" required></label>
+                                                    <label>Escalation interval seconds <input name="escalation_interval_seconds" type="number" min="1" data-nullable-empty {{ if .Attention.EscalationSeconds }}value="{{ .Attention.EscalationSeconds }}"{{ end }}></label>
+                                                    <button type="submit">Save attention</button>
+                                                </form>
+                                                <button type="button" data-resource-action="DELETE" data-resource-url="{{ .Attention.ManagementURL }}">Delete attention</button>
+                                            {{ else }}
+                                                <form data-resource-form data-method="POST" data-resource-url="{{ $.AttentionCreateURL }}">
+                                                    <input name="lane_id" type="hidden" value="{{ .ID }}">
+                                                    <label>Review interval seconds <input name="review_interval_seconds" type="number" min="1" value="604800" required></label>
+                                                    <label>Next probe <input name="next_probe_at" type="datetime-local" required></label>
+                                                    <label>Escalation interval seconds <input name="escalation_interval_seconds" type="number" min="1"></label>
+                                                    <button type="submit">Add attention</button>
+                                                </form>
+                                            {{ end }}
+                                        {{ end }}
                                     </details>
                                 </div>
                                 <div class="horizon-lane-track">
@@ -165,6 +288,7 @@
                                             style="--marker-position: {{ .Position }}"
                                             data-marker-id="{{ .ID }}"
                                             data-marker-type="{{ .Type }}"
+                                            {{ if .ProbeState }}data-probe-state="{{ .ProbeState }}"{{ end }}
                                             aria-label="{{ .Title }}. {{ .Type }} marker."
                                             aria-describedby="marker-details-{{ .ID }}"
                                         >
@@ -173,9 +297,24 @@
                                         <aside class="horizon-marker-details" id="marker-details-{{ .ID }}" data-marker-details="{{ .ID }}" hidden>
                                             <strong>{{ .Title }}</strong>
                                             <span>{{ .Type }}</span>
+                                            {{ if .ProbeState }}<span>{{ .ProbeState }}</span>{{ end }}
                                             {{ if .IsEvent }}
                                                 <a href="{{ .EventURL }}">Event controls</a>
                                                 <a href="{{ .RSVPURL }}">RSVP controls</a>
+                                                <form data-resource-form data-method="POST" data-resource-url="{{ $.DerivedCreateURL }}">
+                                                    <input name="anchor_type" type="hidden" value="event">
+                                                    <input name="anchor_id" type="hidden" value="{{ .ID }}">
+                                                    <label>Offset base <select name="anchor_edge"><option value="start">Anchor start</option><option value="end">Anchor end</option></select></label>
+                                                    <label>Offset seconds <input name="offset_seconds" type="number" value="-3600" required></label>
+                                                    <button type="submit">Add derived marker</button>
+                                                </form>
+                                            {{ end }}
+                                            {{ if .IsDerived }}
+                                                <span>Anchor marker: {{ .AnchorMarkerID }}</span>
+                                                <button type="button" data-resource-action="DELETE" data-resource-url="{{ .RuleURL }}">Delete derived marker</button>
+                                            {{ end }}
+                                            {{ if .CanComplete }}
+                                                <button type="button" data-resource-action="PATCH" data-resource-url="{{ .ProbeURL }}" data-complete-probe>Complete probe</button>
                                             {{ end }}
                                         </aside>
                                     {{ end }}
@@ -189,6 +328,7 @@
             </div>
         </div>
     </section>
+    {{ end }}
 {{ end }}
 
 {{ define "scripts" }}

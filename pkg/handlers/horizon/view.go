@@ -13,15 +13,69 @@ import (
 const horizonScaleIntervalDays = 7
 
 type horizonViewData struct {
-	Window            services.HorizonWindowProjection
-	StylesURL         string
-	ScriptURL         string
-	WindowDays        int
-	TodayPosition     *string
-	TimeScaleTicks    []horizonTimeScaleTick
-	Calendars         []horizonCalendarView
-	CalendarCreateURL string
-	LaneCreateURL     string
+	NeedsTimezoneSetup       bool
+	Window                   services.HorizonWindowProjection
+	StylesURL                string
+	ScriptURL                string
+	WindowDays               int
+	TodayPosition            *string
+	TimeScaleTicks           []horizonTimeScaleTick
+	Calendars                []horizonCalendarView
+	CalendarCreateURL        string
+	LaneCreateURL            string
+	AttentionCreateURL       string
+	CalendarAuthorizationURL string
+	CalendarConnection       *horizonConnectionView
+	DerivedCreateURL         string
+	IngestionDraftCreateURL  string
+	IngestionDraftViews      []horizonDraftView
+	AnchorEvents             []horizonAnchorView
+}
+
+func newHorizonSetupViewData() horizonViewData {
+	return horizonViewData{
+		NeedsTimezoneSetup: true,
+		StylesURL:          config.HorizonStylesPath,
+		ScriptURL:          config.HorizonScriptPath,
+		CalendarCreateURL:  config.WebCalendars,
+	}
+}
+
+type horizonAnchorView struct {
+	ID    string
+	Title string
+}
+type horizonDraftView struct {
+	ID                        string
+	Status                    models.IngestionDraftStatus
+	Mode                      models.IngestionDraftMode
+	Source                    models.IngestionDraftSource
+	CalendarID                string
+	CalendarName              string
+	Title                     string
+	AnchorEventID             string
+	StartsAt                  string
+	EndsAt                    string
+	ReviewIntervalSeconds     string
+	NextProbeAt               string
+	EscalationIntervalSeconds string
+	ReferenceTime             string
+	Timezone                  string
+	ManagementURL             string
+	ConfirmationURL           string
+	ProposedLane              string
+	MissingFields             []string
+	DerivedRuleSummaries      []string
+}
+
+type horizonConnectionView struct {
+	ID                 string
+	Status             models.CalendarConnectionStatus
+	SyncState          models.CalendarSyncState
+	SyncError          bool
+	LastSuccessfulSync string
+	ManagementURL      string
+	SourceCalendarURL  string
 }
 
 type horizonTimeScaleTick struct {
@@ -61,16 +115,33 @@ type horizonLaneView struct {
 	CanMoveUp     bool
 	CanMoveDown   bool
 	CanResolve    bool
+	Attention     *horizonAttentionView
+}
+
+type horizonAttentionView struct {
+	ID                    string
+	ReviewIntervalSeconds int64
+	NextProbeAt           string
+	NextProbeInput        string
+	EscalationSeconds     *int64
+	ManagementURL         string
 }
 
 type horizonMarkerView struct {
-	ID       string
-	Type     services.HorizonMarkerType
-	Title    string
-	Position string
-	IsEvent  bool
-	EventURL string
-	RSVPURL  string
+	ID             string
+	Type           services.HorizonMarkerType
+	Title          string
+	Position       string
+	IsEvent        bool
+	EventURL       string
+	RSVPURL        string
+	ProbeState     models.ProbeState
+	ProbeURL       string
+	CanComplete    bool
+	IsDerived      bool
+	RuleID         string
+	AnchorMarkerID string
+	RuleURL        string
 }
 
 func newHorizonViewData(projection services.HorizonProjection, referenceTime time.Time) (horizonViewData, error) {
@@ -91,7 +162,13 @@ func newHorizonViewData(projection services.HorizonProjection, referenceTime tim
 		Window:    projection.Window,
 		StylesURL: config.HorizonStylesPath, ScriptURL: config.HorizonScriptPath,
 		CalendarCreateURL: config.WebCalendars, LaneCreateURL: config.WebLanes,
-		TimeScaleTicks: make([]horizonTimeScaleTick, 0), Calendars: make([]horizonCalendarView, 0, len(projection.Calendars)),
+		AttentionCreateURL:       config.WebAttentionPolicies,
+		DerivedCreateURL:         config.WebDerivedMarkerRules,
+		IngestionDraftCreateURL:  config.WebIngestionDrafts,
+		IngestionDraftViews:      make([]horizonDraftView, 0),
+		AnchorEvents:             make([]horizonAnchorView, 0),
+		CalendarAuthorizationURL: config.WebCalendarAuthorizationRequests,
+		TimeScaleTicks:           make([]horizonTimeScaleTick, 0), Calendars: make([]horizonCalendarView, 0, len(projection.Calendars)),
 	}
 	localStart := windowStart.In(location)
 	localEnd := windowEnd.In(location)
@@ -151,6 +228,19 @@ func newHorizonViewData(projection services.HorizonProjection, referenceTime tim
 				NextOrder: lane.DisplayOrder + 1, CanMoveUp: lane.DisplayOrder > 0, CanMoveDown: lane.DisplayOrder < calendar.TotalLaneCount-1,
 				CanResolve: lane.Status == models.LaneStatusActive && lane.EndsAt == nil,
 			}
+			if lane.Attention != nil {
+				nextProbeTime, parseError := time.Parse(time.RFC3339Nano, lane.Attention.NextProbeAt)
+				if parseError != nil {
+					return horizonViewData{}, fmt.Errorf("parse attention policy %s next probe time: %w", lane.Attention.ID, parseError)
+				}
+				attentionView := &horizonAttentionView{
+					ID: lane.Attention.ID, ReviewIntervalSeconds: lane.Attention.ReviewIntervalSeconds,
+					NextProbeAt: lane.Attention.NextProbeAt, NextProbeInput: nextProbeTime.In(location).Format("2006-01-02T15:04"),
+					EscalationSeconds: lane.Attention.EscalationIntervalSeconds,
+					ManagementURL:     config.WebAttentionPolicies + url.PathEscape(lane.Attention.ID),
+				}
+				laneView.Attention = attentionView
+			}
 			for _, marker := range lane.Markers {
 				markerTime, markerTimeError := horizonMarkerPositionTime(marker.Time)
 				if markerTimeError != nil {
@@ -158,13 +248,24 @@ func newHorizonViewData(projection services.HorizonProjection, referenceTime tim
 				}
 				markerView := horizonMarkerView{
 					ID: marker.ID, Type: marker.Type, Title: marker.Title,
-					Position: horizonPosition(markerTime, windowStart, windowEnd),
-					IsEvent:  marker.Type == services.HorizonMarkerEvent,
+					Position:  horizonPosition(markerTime, windowStart, windowEnd),
+					IsEvent:   marker.Type == services.HorizonMarkerEvent,
+					IsDerived: marker.Type == services.HorizonMarkerDerived,
+				}
+				if markerView.IsDerived {
+					markerView.RuleID, markerView.AnchorMarkerID = marker.RuleID, marker.AnchorMarkerID
+					markerView.RuleURL = config.WebDerivedMarkerRules + url.PathEscape(marker.RuleID)
+				}
+				if marker.Type == services.HorizonMarkerProbe {
+					markerView.ProbeState = marker.ProbeState
+					markerView.ProbeURL = config.WebProbes + url.PathEscape(marker.ProbeID)
+					markerView.CanComplete = marker.ProbeState == models.ProbeStatePending
 				}
 				if markerView.IsEvent {
 					encodedEventID := url.QueryEscape(marker.EventID)
 					markerView.EventURL = config.WebEvents + "?" + config.EventIDParam + "=" + encodedEventID
 					markerView.RSVPURL = config.WebRSVPs + "?" + config.EventIDParam + "=" + encodedEventID
+					viewData.AnchorEvents = append(viewData.AnchorEvents, horizonAnchorView{ID: marker.EventID, Title: marker.Title})
 				}
 				laneView.Markers = append(laneView.Markers, markerView)
 			}
