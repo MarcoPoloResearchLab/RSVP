@@ -477,6 +477,18 @@
     {{/* The context here is PageData.Data */}}
     {{ block "scripts" .Data }}{{ end }}
     {{ if not .IsPublicPage }}<script src="{{ .SettingsScriptURL }}"></script>{{ end }}
+    <script>
+        window.addEventListener("load", function () {
+            [
+                "https://loopaware.mprlab.com/widget.js?site_id=50bc3012-27c7-4fbd-8307-81dee1da50f7",
+                "https://loopaware.mprlab.com/pixel.js?site_id=50bc3012-27c7-4fbd-8307-81dee1da50f7"
+            ].forEach(function (source) {
+                const scriptElement = document.createElement("script");
+                scriptElement.src = source;
+                document.head.appendChild(scriptElement);
+            });
+        });
+    </script>
 
     </body>
     </html>
