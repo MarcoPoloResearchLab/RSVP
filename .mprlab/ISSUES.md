@@ -458,6 +458,29 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 ## Features
 
+- [x] [F012] (P1) Add LoopAware data collection
+  Goal:
+  RSVP sends page traffic and customer comments to its LoopAware site.
+  Requirements:
+  - Use LoopAware site identifier `50bc3012-27c7-4fbd-8307-81dee1da50f7`.
+  - Load the feedback widget on the public landing page.
+  - Load the traffic pixel on the public landing page.
+  - Load the feedback widget on each page that uses the shared application layout.
+  - Load the traffic pixel on each page that uses the shared application layout.
+  - Start the LoopAware scripts after the page load event.
+  - Keep one canonical site identifier in each rendered page.
+  Deliverables:
+  - Add the LoopAware scripts to `templates/landing.tmpl`.
+  - Add the LoopAware scripts to `templates/layout.tmpl`.
+  - Add a rendered HTML contract test for both page surfaces.
+  Validation:
+  - Render the public landing page and confirm both current LoopAware URLs.
+  - Render an application page and confirm both current LoopAware URLs.
+  - Confirm that each page contains no other LoopAware site identifier.
+  - Run `make ci`.
+  Resolved:
+  RSVP loads the current LoopAware widget and pixel after page load on both rendered page surfaces.
+
 - [x] [F001] (P0) {I002} Add the horizon projection
   Goal:
   This issue adds the authenticated read interface for calendars, lanes, events, and probes in one time window.
