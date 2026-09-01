@@ -1,5 +1,9 @@
 # Commercial Licensing
 
+This notice applies to the software and associated documentation distributed in
+the `MarcoPoloResearchLab/RSVP` repository at
+<https://github.com/MarcoPoloResearchLab/RSVP>.
+
 The proprietary license in `LICENSE` grants no public right to use the
 Software. Access or use is available only through a separate written agreement
 with Marco Polo Research Lab LLC.
