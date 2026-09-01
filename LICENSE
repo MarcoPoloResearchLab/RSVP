@@ -1,32 +1,51 @@
-# Marco Polo Research Lab Proprietary License
+# Marco Polo Research Lab Proprietary Rights Notice
 
 SPDX-License-Identifier: LicenseRef-MPRL-Proprietary
 
-Copyright (c) 2026 Marco Polo Research Lab LLC
+Copyright (c) 2025-2026 Marco Polo Research Lab LLC
 All rights reserved.
 
-## Licensed Software
+## Covered Materials and Version
 
-These terms apply to the software and associated documentation distributed in
-the `MarcoPoloResearchLab/RSVP` repository at
-<https://github.com/MarcoPoloResearchLab/RSVP> (the "Software").
+This notice applies to the source code, object code, documentation, data,
+media, and other original materials included in the version of the
+`MarcoPoloResearchLab/RSVP` repository at <https://github.com/MarcoPoloResearchLab/RSVP> distributed with this file, only to the extent
+that Marco Polo Research Lab LLC owns or can license the applicable intellectual property rights
+(the "Covered Materials").
 
-The Software is proprietary information of Marco Polo Research Lab LLC.
+Third-party material and material identified as governed by a separate license
+or copyright notice are excluded from the Covered Materials. Those separate
+terms control.
 
-## Rights
+This notice applies only to the version distributed with this file. It does
+not alter rights granted for earlier versions.
 
-GitHub's applicable terms can grant limited rights to the Software through
-GitHub's service. No additional license is granted to the public.
+## Reserved Rights
+
+Except for rights expressly provided by applicable law, GitHub's applicable
+terms, or a separate written agreement signed by Marco Polo Research Lab LLC, no license is
+granted to the public and Marco Polo Research Lab LLC reserves all rights in the Covered
+Materials.
 
 Copying, distribution, modification, publication, performance, display, or use
-of the Software beyond those rights requires prior written permission from
-Marco Polo Research Lab LLC or a separate written agreement signed by Marco Polo Research Lab LLC.
+of the Covered Materials beyond those rights requires prior written permission
+from Marco Polo Research Lab LLC or a separate written agreement signed by Marco Polo Research Lab LLC.
+
+No patent, trademark, service mark, trade name, trade dress, or other right is
+granted by implication, estoppel, or otherwise.
+
+## Contributions
+
+Contributions intentionally submitted for inclusion are governed by
+`CONTRIBUTOR_LICENSE.md`. That agreement does not transfer ownership of a
+Contribution.
 
 ## Disclaimer
 
-The Software is provided "AS IS", without warranty of any kind, express or
-implied, including but not limited to the warranties of merchantability,
-fitness for a particular purpose, and noninfringement. In no event shall
-Marco Polo Research Lab LLC be liable for any claim, damages, or other liability, whether in an
-action of contract, tort, or otherwise, arising from, out of, or in connection
-with the Software or the use or other dealings in the Software.
+To the maximum extent permitted by applicable law, the Covered Materials are
+provided "AS IS", without warranty of any kind, express or implied, including
+but not limited to the warranties of merchantability, fitness for a particular
+purpose, and noninfringement. In no event shall Marco Polo Research Lab LLC be liable for any
+claim, damages, or other liability, whether in an action of contract, tort, or
+otherwise, arising from, out of, or in connection with the Covered Materials
+or their use or other dealings.
