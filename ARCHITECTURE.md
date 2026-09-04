@@ -53,9 +53,11 @@ RSVP does not store a duplicate organizer identifier on these temporal resources
 | Derived marker | One derived marker rule and one lane | Lane and calendar |
 | Calendar authorization request | One organizer | Organizer identifier |
 | Calendar connection | One organizer | Organizer identifier |
-| Source calendar mapping | One connection and one calendar | Connection organizer |
-| External event series link | One mapping and one event series | Event series relationship |
-| External event link | One mapping and one RSVP event | RSVP event relationship |
+| Task | One organizer and one resource | Organizer identifier |
+| Provider calendar sync state | One connection | Connection organizer |
+| Source calendar mapping | One provider calendar sync state and one calendar | Connection organizer |
+| External event series link | One provider calendar sync state and one event series | Event series relationship |
+| External event link | One provider calendar sync state and one RSVP event | RSVP event relationship |
 | Ingestion draft | One organizer and one calendar | Organizer identifier |
 | Draft derived marker rule | One ingestion draft | Ingestion draft organizer |
 | Draft confirmation | One ingestion draft and created resources | Ingestion draft organizer |
@@ -74,7 +76,7 @@ RSVP stores that value as the organizer timezone.
 | Resource | Canonical fields |
 |---|---|
 | Organizer | `id`, `email`, `name`, `picture`, `timezone` |
-| Calendar | `id`, `organizer_id`, `name`, `symbol`, `color_token`, `display_order`, `visible` |
+| Calendar | `id`, `organizer_id`, `name`, `color_token`, `display_order`, `visible` |
 | Lane | `id`, `calendar_id`, `title`, `status`, `starts_at`, `ends_at`, `resolved_at`, `display_order` |
 | Event series | `id`, `lane_id`, `timezone`, `source_kind`, optional `recurrence_rule` |
 | Event | `id`, `lane_id`, optional `event_series_id`, optional `anchor_event_id`, `relation_type`, `time_shape`, typed time fields, `timezone`, `title`, `description`, optional `venue_id` |
@@ -85,10 +87,12 @@ RSVP stores that value as the organizer timezone.
 | Derived marker | `id`, `rule_id`, `lane_id`, `at`, `timezone` |
 | Calendar authorization request | `id`, `organizer_id`, `provider`, `state_hash`, `redirect_uri`, `expires_at`, optional `used_at` |
 | Calendar connection | `id`, `organizer_id`, `provider`, encrypted credential fields, `status`, optional `calendar_list_sync_cursor`, optional `calendar_import_cutover_at` |
-| Source calendar mapping | `id`, `connection_id`, `calendar_id`, `provider_calendar_id`, `semantic_group`, optional `sync_cursor` |
-| External event series link | `id`, `mapping_id`, `event_series_id`, `provider_series_id` |
-| External event link | `id`, `mapping_id`, `event_id`, `provider_event_id`, optional `provider_series_id` |
-| Calendar sync | `id`, `mapping_id`, `state`, `started_at`, optional `finished_at`, optional `error_code` |
+| Task | `id`, `organizer_id`, `kind`, `resource_type`, `resource_id`, `state`, `scheduled_for`, `retry_count`, attempt result fields |
+| Provider calendar sync state | `id`, `connection_id`, `provider_calendar_id`, `default_calendar`, optional `sync_cursor` |
+| Source calendar mapping | `id`, `sync_state_id`, `calendar_id`, `semantic_group` |
+| External event series link | `id`, `sync_state_id`, `event_series_id`, `provider_series_id` |
+| External event link | `id`, `sync_state_id`, `event_id`, `provider_event_id`, optional `provider_series_id`, `semantic_group`, optional `diagnostic_code` |
+| Calendar sync | `id`, `sync_state_id`, `state`, `started_at`, optional `finished_at`, optional `error_code` |
 | Ingestion draft | `id`, `organizer_id`, `status`, `mode`, `source`, `calendar_id`, typed proposals, `reference_time`, `timezone`, `missing_fields_json` |
 | Draft derived marker rule | `id`, `draft_id`, `anchor_edge`, `offset_seconds` |
 | Draft confirmation | `id`, `draft_id`, created resource identifiers |
@@ -105,10 +109,10 @@ The service constructs one valid domain type before persistence.
 
 One organizer cannot have two calendars with the same display order.
 One calendar cannot have two lanes with the same display order.
-One provider calendar and semantic calendar group cannot have two source mappings in one connection.
-One RSVP calendar cannot have two source calendar mappings.
-One provider series cannot have two external event series links in one mapping.
-One provider event cannot have two external event links in one mapping.
+One connection cannot have two sync states for one provider calendar.
+One sync state cannot have two source mappings for one semantic calendar group.
+One provider series cannot have two external event series links in one sync state.
+One provider event cannot have two external event links in one sync state.
 One ingestion draft cannot have two draft confirmations.
 One organizer, operation, and key hash cannot have two idempotency records.
 
@@ -131,7 +135,7 @@ Derived marker rule `anchor_edge` accepts `start` or `end`.
 ## Calendar Contract
 
 A calendar is a visibility family for lanes.
-Each calendar has a name, symbol, color token, display order, and calendar visibility.
+Each calendar has a name, color token, display order, and calendar visibility.
 Calendar visibility does not change lane membership or persisted marker data.
 
 Each lane belongs to exactly one calendar.
@@ -250,7 +254,7 @@ A derived marker adds `rule_id` and `anchor_marker_id`.
 Each organizer has one required organizer timezone.
 RSVP stores the organizer timezone as an IANA timezone name.
 RSVP does not use a fixed UTC offset as a timezone.
-RSVP applies no server-side timezone default.
+RSVP applies no server-side timezone default for local temporal writes.
 
 The organizer timezone controls default windows and local quick-add input.
 A marker timezone controls that marker's local display and all-day dates.
@@ -260,9 +264,15 @@ The client must supply a timezone for each temporal write.
 The browser client can supply its IANA timezone.
 RSVP stores that value as the organizer timezone with the first temporal write.
 RSVP rejects a temporal write when the supplied timezone is absent or invalid.
-Before the first temporal write, the HTML Horizon shows setup for the first calendar.
+While the organizer timezone is absent, the HTML Horizon shows setup for the first calendar.
 The setup sends the browser IANA timezone with calendar creation.
 The JSON Horizon returns `organizer_timezone_required` until that write completes.
+
+Account settings show the current organizer timezone.
+The organizer can replace that value with one valid IANA timezone.
+The change controls each later default Horizon window and organizer-local input.
+The change does not replace the timezone of any stored event or marker.
+RSVP rejects an invalid account timezone and keeps the current organizer timezone.
 
 ## Horizon Window
 
@@ -291,7 +301,6 @@ Each calendar projection has these fields:
 
 - `id`
 - `name`
-- `symbol`
 - `color_token`
 - `display_order`
 - `visible`
@@ -348,13 +357,20 @@ The browser renders the lane when the visible section has no marker.
 
 A finite lane has a visible end cap.
 An active open lane has a visible continuation arrow.
-The presentation uses text and symbols with calendar colors.
+The presentation uses calendar names, lane shapes, and calendar colors.
 
 The view has sticky lane labels, a time scale, and a today line.
-The organizer can pan and change the time scale.
+The time window row is directly above the timeline.
+The row contains the range, timezone, pan controls, and scale controls.
+The scale controls select the day, week, month, or year scale.
+Each scale selects one matching local calendar window.
+The month scale is the initial choice when the browser has no stored scale.
+RSVP stores each later scale choice as a browser preference.
+Each pan control moves the window by one selected scale.
 Calendar controls show or hide all lanes for one calendar.
 
 Keyboard operations control pan, scale, calendar visibility, and marker selection.
+The Help rubric contains the keyboard instructions.
 The same operations stay available at the supported mobile width.
 
 ## Resource Routes
@@ -375,13 +391,15 @@ The machine-readable contract is `api/horizon.openapi.json`.
 | `GET` | `/lanes/{lane_id}` | Read one lane and its relationships. |
 | `PATCH` | `/lanes/{lane_id}` | Change, move, reorder, or resolve one lane. |
 | `DELETE` | `/lanes/{lane_id}` | Delete an eligible lane. |
+| `GET` | `/organizers/{organizer_id}` | Read the organizer timezone. |
+| `PATCH` | `/organizers/{organizer_id}` | Change the organizer timezone. |
 | `POST` | `/attention-policies/` | Create an attention policy. |
 | `PATCH` | `/attention-policies/{policy_id}` | Change one attention policy. |
 | `DELETE` | `/attention-policies/{policy_id}` | Delete one attention policy. |
 | `PATCH` | `/probes/{probe_id}` | Record one probe state transition. |
 | `POST` | `/calendar-authorization-requests/` | Create a Google Calendar authorization request. |
 | `GET` | `/calendar-connection-callbacks/google/` | Validate the Google consent result without a database change. |
-| `POST` | `/calendar-connections/` | Exchange the approved code and create a connection. |
+| `POST` | `/calendar-connections/` | Exchange the approved code, create a connection, and accept its import task. |
 | `DELETE` | `/calendar-connections/{connection_id}` | Delete one connection and its credentials. |
 | `GET` | `/calendar-connections/{connection_id}/source-calendars/` | Read the imported source calendars. |
 | `POST` | `/derived-marker-rules/` | Create one derived marker rule. |
@@ -402,12 +420,20 @@ An authenticated request to `/` redirects to `/horizon/`.
 An unauthenticated request to `/` keeps the public landing page.
 The current event, RSVP, venue, QR, and public response routes stay current contracts.
 
-Create operations return `201 Created` with a `Location` header.
+Create operations usually return `201 Created` with a `Location` header.
+Calendar connection creation returns `202 Accepted` with the connection and task state.
+An idempotent calendar connection repeat returns `200 OK` with the same resources.
 Successful delete operations return `204 No Content`.
 
-The server imports each readable Google source calendar when it creates the connection.
-It synchronizes the imported events immediately.
+The connection request stores the encrypted credential and one provider-neutral import task.
+It returns before source reconciliation or event synchronization starts.
+The task worker uses the `tyemirov/utils` scheduler for claims, retries, and attempt results.
+The task payload contains organizer and resource identifiers without provider credentials.
+The calendar services use the connection adapter to complete source reconciliation and event synchronization.
+This boundary lets another calendar provider use the same mapping and task mechanism.
+The provider must supply its adapter and extend the closed provider contract.
 The server repeats the reconciliation every five minutes.
+Scheduled synchronization excludes each connection with an incomplete initial task.
 The browser does not provide synchronization controls.
 
 A malformed request returns `400 Bad Request`.
@@ -483,51 +509,76 @@ The callback validates the state and returns a connection confirmation form.
 The callback does not change the database.
 The callback response uses `Cache-Control: no-store` and `Referrer-Policy: no-referrer`.
 The confirmation request exchanges the code and stores the encrypted credential.
+The same transaction stores the pending calendar connection import task.
+The browser client supplies its IANA timezone in the confirmation request.
+If the browser timezone is absent or invalid, the connection service uses `UTC`.
+The connection transaction confirms the organizer timezone before it stores the connection.
 RSVP does not store the authorization code.
 
+The callback shows the accepted task state and then opens the Integrations rubric.
+The Integrations rubric polls the connection while the task is active.
+It shows `Queued`, `Running`, `Retry scheduled`, `Complete`, or `Needs attention`.
+The callback control does not use an operating-system wait cursor.
+
 A calendar connection belongs to one organizer.
-A source calendar mapping connects one provider calendar and semantic calendar group to one RSVP calendar.
+A provider calendar sync state identifies one provider calendar and owns its event sync cursor.
+A source calendar mapping connects one sync state semantic group to one RSVP calendar.
 RSVP includes hidden entries when it reads the complete Google CalendarList.
 It stores one CalendarList sync cursor for each connection.
-It stores one event sync cursor for each source calendar mapping.
+It stores one event sync cursor for each provider calendar sync state.
+RSVP excludes a `freeBusyReader` entry because the entry does not supply event details.
+The `selected` field sets only the initial RSVP visibility.
 
 The Google adapter owns the translation from Google API values to semantic calendar groups.
 The current semantic groups are `calendar` and `birthdays`.
 Google birthday metadata maps an event to the `Birthdays` calendar.
-The complete title words `birthday`, `birthdays`, and `bday` also map an event to `Birthdays`.
+The adapter applies one ordered classification table.
+It applies cancellation, a special-date subtype, `eventType`, a title fallback, and the provider default in that order.
+The complete title words `birthday`, `birthdays`, and `bday` apply only to an untyped `default` event.
 The title rule does not use partial word matches.
-The adapter does not use raw Google event types as RSVP calendar names.
-An unknown or non-semantic Google event type stays in the general `calendar` group.
-The historical Google Contacts birthday calendar does not create a second birthday group.
+The `self`, `birthday`, and absent birthday subtypes map to `Birthdays`.
+The `anniversary`, `custom`, and `other` subtypes stay in the source calendar.
+Known general event types stay in the source calendar.
+An unknown type stays in the source calendar and supplies a provider-safe diagnostic code.
+The external event link stores the latest occurrence classification and diagnostic code.
+The historical Google Contacts birthday calendar is a semantic source and does not create an RSVP calendar.
 
 The first complete CalendarList synchronization performs the calendar import cutover.
 It removes all prior calendars that do not have a source calendar mapping.
 It preserves source-mapped calendars during the I006 schema migration.
 It records the cutover time only after the complete reconciliation commits.
 
-RSVP creates one general mapping and one RSVP calendar for each readable entry.
-The normalized primary calendar also supplies a `Birthdays` mapping.
-The two primary-calendar groups use separate sync cursors.
-Each mapping reads the same Google event feed without an event-type filter.
-Each mapping applies its semantic group rule to that feed.
-An event change supplies a removal to the prior semantic group.
+RSVP creates one RSVP calendar for each readable general CalendarList entry.
+Each provider calendar has a `calendar` mapping and a shared `birthdays` mapping.
+The Contacts semantic source maps general special dates to the default RSVP calendar.
+It maps birthdays to the shared `Birthdays` calendar.
+RSVP requests one unfiltered event feed for each provider calendar.
+The adapter returns one normalized event change with its target semantic group.
+The synchronization service does not read Google fields.
 The source `summaryOverride` value supplies the RSVP calendar name when it is present.
 Otherwise, the source `summary` value supplies the name.
 The source `selected` value supplies the initial visibility.
-RSVP uses the calendar meaning for the initial name and symbol.
+RSVP uses the provider calendar meaning for the initial name.
 Later CalendarList updates can change the RSVP calendar name.
-They do not change the RSVP symbol, color token, visibility, or display order.
+They do not change the RSVP color token, visibility, or display order.
 RSVP stores the CalendarList cursor only after all mapping changes commit.
 
-The Horizon projection assigns evenly spaced hues to the displayed calendars.
-The assignment uses the complete calendar set and a stable calendar identity.
-Each displayed calendar has a distinct presentation color.
+RSVP allows at most eight visible calendars for one organizer.
+The Horizon projection derives each presentation color from the calendar identifier and color token.
+Visibility changes and calendar additions do not change an assigned presentation color.
 
 The first event synchronization imports the source event data.
 RSVP stores the first sync cursor only after the last response page commits.
 Each later synchronization uses the stored sync cursor and the same query parameters.
 RSVP stores a replacement sync cursor only after the last response page commits.
-The external event links make each imported occurrence idempotent.
+An external event link uses the provider calendar ID and provider event ID as its source identity.
+The synchronization transaction can move one event between semantic groups.
+The move keeps one RSVP event and one external event link.
+A sparse canceled record deletes the linked event without title or birthday data.
+Each recurring occurrence keeps its normalized semantic classification.
+The series uses the `birthdays` group when any remaining occurrence has birthday meaning.
+Otherwise, the series uses the `calendar` group.
+This rule keeps all occurrences of one provider series on one lane.
 
 Before each scheduled event synchronization, RSVP reconciles the CalendarList.
 New readable entries create new RSVP calendars and mappings.
@@ -538,10 +589,11 @@ RSVP records the failed source synchronization and keeps the CalendarList cursor
 When Google rejects a CalendarList sync cursor, RSVP starts a complete CalendarList synchronization.
 When Google rejects an event sync cursor, RSVP starts a complete event synchronization.
 The complete event synchronization uses external links to reconcile source-owned resources.
+It removes source-owned events that are absent from the complete provider response.
 The source reconciliation keeps each RSVP identifier and each permitted local relationship.
 
 The calendar provider owns imported event titles, descriptions, times, recurrence data, and deletion state.
-RSVP owns calendar visibility, symbols, color tokens, and display order after initial calendar creation.
+RSVP owns calendar visibility, color tokens, and display order after initial calendar creation.
 RSVP rejects a local change to a source-owned marker field.
 
 Each independent provider event gets one lane.
@@ -550,7 +602,7 @@ The external event series link identifies the stable lane for a provider series.
 Provider deletions remove the related imported markers and external event links.
 
 RSVP does not write authorization codes, refresh credentials, or input text to logs.
-When the organizer deletes a calendar connection, RSVP deletes its stored credentials and sync cursors.
+When the organizer deletes a calendar connection, RSVP deletes its task, stored credentials, and sync cursors.
 
 ### External Contract References
 
@@ -618,16 +670,17 @@ RSVP opens an existing database when the database uses the canonical schema.
 The event table must use lane ownership and the closed event constraints.
 An event-only database is outside the current runtime contract.
 
-The I006 startup migrations accept exact predecessor schemas only.
-The first predecessor does not contain `calendar_connections.calendar_list_sync_cursor`.
-The first migration adds the optional cursor column.
-The grouping predecessor does not contain the import cutover or `semantic_group` fields.
-The grouping migration adds both fields and replaces the source mapping unique index.
-It clears CalendarList and event sync cursors for one complete grouped synchronization.
-The previous I006 schema contains `provider_group` instead of `semantic_group`.
-Its migration renames the column and clears each event sync cursor.
+The B048 startup migration accepts the exact schema without the task table and with the predecessor calendar symbol.
+It removes the symbol and creates one completed task for each existing calendar connection.
+The B047 startup migration accepts its exact predecessor schema only.
+The predecessor stores provider identity and the event cursor on each source calendar mapping.
+The migration creates one provider calendar sync state for each provider calendar.
+It also creates the task table and pending connection tasks.
+It moves external event links, series links, and synchronization records to the new source identity.
+It clears CalendarList and event cursors for one complete reconciliation.
+It removes the predecessor calendar symbol.
 Startup rejects any database that does not use an accepted schema.
-Remove the I006 migrations after all database files use the canonical schema.
+Remove both startup migrations after all database files use the canonical schema.
 
 ## Cutover Sequence
 
