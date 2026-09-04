@@ -6,15 +6,15 @@
   },
   "paths": {
     "/horizon/": {
-      "get": {"operationId": "readHorizon", "responses": {"200": {"description": "Horizon projection"}, "400": {"$ref": "#/components/responses/TypedError"}, "401": {"$ref": "#/components/responses/TypedError"}, "406": {"$ref": "#/components/responses/TypedError"}, "422": {"$ref": "#/components/responses/TypedError"}}},
+      "get": {"operationId": "readHorizon", "responses": {"200": {"description": "Horizon projection", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/HorizonProjection"}}}}, "400": {"$ref": "#/components/responses/TypedError"}, "401": {"$ref": "#/components/responses/TypedError"}, "406": {"$ref": "#/components/responses/TypedError"}, "422": {"$ref": "#/components/responses/TypedError"}}},
       "head": {"operationId": "readHorizonMetadata", "responses": {"200": {"description": "Horizon projection metadata"}}}
     },
     "/calendars/": {
-      "post": {"operationId": "createCalendar", "responses": {"201": {"description": "Calendar created"}}}
+      "post": {"operationId": "createCalendar", "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CalendarCreate"}}}}, "responses": {"201": {"description": "Calendar created", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Calendar"}}}}}}
     },
     "/calendars/{calendar_id}": {
-      "get": {"operationId": "readCalendar", "responses": {"200": {"description": "Calendar"}}},
-      "patch": {"operationId": "updateCalendar", "responses": {"200": {"description": "Calendar updated"}}},
+      "get": {"operationId": "readCalendar", "responses": {"200": {"description": "Calendar", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Calendar"}}}}}},
+      "patch": {"operationId": "updateCalendar", "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CalendarPatch"}}}}, "responses": {"200": {"description": "Calendar updated", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Calendar"}}}}}},
       "delete": {"operationId": "deleteCalendar", "responses": {"204": {"description": "Calendar deleted"}}}
     },
     "/lanes/": {
@@ -24,6 +24,19 @@
       "get": {"operationId": "readLane", "responses": {"200": {"description": "Lane"}}},
       "patch": {"operationId": "updateLane", "responses": {"200": {"description": "Lane updated"}}},
       "delete": {"operationId": "deleteLane", "responses": {"204": {"description": "Lane deleted"}}}
+    },
+    "/organizers/{organizer_id}": {
+      "get": {
+        "operationId": "readOrganizer",
+        "parameters": [{"$ref": "#/components/parameters/OrganizerID"}],
+        "responses": {"200": {"description": "Organizer", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Organizer"}}}}, "401": {"$ref": "#/components/responses/TypedError"}, "403": {"$ref": "#/components/responses/TypedError"}}
+      },
+      "patch": {
+        "operationId": "updateOrganizer",
+        "parameters": [{"$ref": "#/components/parameters/OrganizerID"}],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/OrganizerPatch"}}}},
+        "responses": {"200": {"description": "Organizer updated", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Organizer"}}}}, "400": {"$ref": "#/components/responses/TypedError"}, "401": {"$ref": "#/components/responses/TypedError"}, "403": {"$ref": "#/components/responses/TypedError"}, "415": {"$ref": "#/components/responses/TypedError"}, "422": {"$ref": "#/components/responses/TypedError"}}
+      }
     },
     "/attention-policies/": {
       "post": {"operationId": "createAttentionPolicy", "responses": {"201": {"description": "Attention policy created"}}}
@@ -42,10 +55,10 @@
       "get": {"operationId": "readGoogleCalendarCallback", "responses": {"200": {"description": "Validated callback"}}}
     },
     "/calendar-connections/": {
-      "post": {"operationId": "createCalendarConnection", "responses": {"201": {"description": "Calendar connection created"}}}
+      "post": {"operationId": "createCalendarConnection", "responses": {"202": {"description": "Calendar connection created and import task accepted", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CalendarConnection"}}}}, "200": {"description": "Existing idempotent connection and task returned", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CalendarConnection"}}}}}}
     },
     "/calendar-connections/{connection_id}": {
-      "get": {"operationId": "readCalendarConnection", "responses": {"200": {"description": "Calendar connection"}}},
+      "get": {"operationId": "readCalendarConnection", "responses": {"200": {"description": "Calendar connection", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CalendarConnection"}}}}}},
       "delete": {"operationId": "deleteCalendarConnection", "responses": {"204": {"description": "Calendar connection deleted"}}}
     },
     "/calendar-connections/{connection_id}/source-calendars/": {
@@ -76,6 +89,9 @@
     }
   },
   "components": {
+    "parameters": {
+      "OrganizerID": {"name": "organizer_id", "in": "path", "required": true, "schema": {"type": "string"}}
+    },
     "responses": {
       "TypedError": {
         "description": "Typed API error",
@@ -87,6 +103,75 @@
         "type": "object",
         "required": ["error"],
         "properties": {"error": {"type": "object", "required": ["code", "message", "details", "request_id"], "properties": {"code": {"type": "string"}, "message": {"type": "string"}, "details": {"type": "object"}, "request_id": {"type": "string"}}}}
+      },
+      "Calendar": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "name", "color_token", "display_order", "visible"],
+        "properties": {"id": {"type": "string"}, "name": {"type": "string"}, "color_token": {"type": "string"}, "display_order": {"type": "integer", "minimum": 0}, "visible": {"type": "boolean"}}
+      },
+      "CalendarCreate": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "color_token", "timezone"],
+        "properties": {"name": {"type": "string"}, "color_token": {"type": "string"}, "timezone": {"type": "string"}}
+      },
+      "CalendarPatch": {
+        "type": "object",
+        "additionalProperties": false,
+        "minProperties": 1,
+        "properties": {"name": {"type": "string"}, "color_token": {"type": "string"}, "display_order": {"type": "integer", "minimum": 0}, "visible": {"type": "boolean"}}
+      },
+      "HorizonProjection": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["window", "calendars"],
+        "properties": {
+          "window": {"type": "object", "additionalProperties": false, "required": ["start", "end", "timezone"], "properties": {"start": {"type": "string", "format": "date-time"}, "end": {"type": "string", "format": "date-time"}, "timezone": {"type": "string"}}},
+          "calendars": {"type": "array", "items": {"$ref": "#/components/schemas/HorizonCalendar"}}
+        }
+      },
+      "HorizonCalendar": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "name", "color_token", "display_order", "visible", "lanes"],
+        "properties": {"id": {"type": "string"}, "name": {"type": "string"}, "color_token": {"type": "string"}, "display_order": {"type": "integer", "minimum": 0}, "visible": {"type": "boolean"}, "lanes": {"type": "array", "items": {"type": "object"}}}
+      },
+      "Organizer": {
+        "type": "object",
+        "required": ["id", "timezone"],
+        "properties": {"id": {"type": "string"}, "timezone": {"type": ["string", "null"]}}
+      },
+      "OrganizerPatch": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["timezone"],
+        "properties": {"timezone": {"type": "string", "description": "Valid IANA timezone name"}}
+      },
+      "CalendarConnection": {
+        "type": "object",
+        "required": ["id", "provider", "status"],
+        "properties": {
+          "id": {"type": "string"},
+          "provider": {"const": "google"},
+          "status": {"const": "connected"},
+          "task": {"$ref": "#/components/schemas/Task"},
+          "synchronization": {"type": "object"}
+        }
+      },
+      "Task": {
+        "type": "object",
+        "required": ["id", "kind", "state", "retry_count", "active", "error", "last_attempted_at", "finished_at"],
+        "properties": {
+          "id": {"type": "string"},
+          "kind": {"const": "calendar_connection_import"},
+          "state": {"enum": ["pending", "running", "succeeded", "failed"]},
+          "retry_count": {"type": "integer", "minimum": 0},
+          "active": {"type": "boolean"},
+          "error": {"type": "boolean"},
+          "last_attempted_at": {"type": "string"},
+          "finished_at": {"type": "string"}
+        }
       },
       "QuickDraftCreate": {
         "type": "object",
