@@ -344,6 +344,11 @@ func migrateProviderCalendarSyncContract(databaseConnection *gorm.DB, userTableC
 		return fmt.Errorf("disable foreign keys for provider calendar migration: %w", pragmaError)
 	}
 	migrationError := databaseConnection.Transaction(func(transaction *gorm.DB) error {
+		for _, column := range []string{calendarListSyncCursorColumn, calendarImportCutoverAtColumn} {
+			if createError := transaction.Migrator().AddColumn(&models.CalendarConnection{}, column); createError != nil {
+				return createError
+			}
+		}
 		if createError := transaction.Migrator().CreateTable(&models.ProviderCalendarSyncState{}); createError != nil {
 			return createError
 		}
@@ -370,13 +375,12 @@ func migrateProviderCalendarSyncContract(databaseConnection *gorm.DB, userTableC
 		}
 
 		statements := []string{
-			"UPDATE calendar_connections SET calendar_list_sync_cursor = NULL",
 			"CREATE TABLE source_calendar_mappings_b047 (id text PRIMARY KEY, created_at datetime, updated_at datetime, deleted_at datetime, sync_state_id text NOT NULL, calendar_id text NOT NULL, semantic_group text NOT NULL CONSTRAINT source_calendar_group CHECK (semantic_group IN ('calendar','birthdays')), CONSTRAINT fk_source_calendar_mappings_sync_state FOREIGN KEY (sync_state_id) REFERENCES provider_calendar_sync_states(id) ON UPDATE CASCADE ON DELETE CASCADE, CONSTRAINT fk_source_calendar_mappings_calendar FOREIGN KEY (calendar_id) REFERENCES calendars(id) ON UPDATE CASCADE ON DELETE RESTRICT)",
-			"INSERT INTO source_calendar_mappings_b047 SELECT mappings.id, mappings.created_at, mappings.updated_at, mappings.deleted_at, lookup.sync_state_id, mappings.calendar_id, mappings.semantic_group FROM source_calendar_mappings AS mappings JOIN b047_sync_state_lookup AS lookup ON lookup.connection_id = mappings.connection_id AND lookup.provider_calendar_id = mappings.provider_calendar_id WHERE mappings.deleted_at IS NULL",
+			"INSERT INTO source_calendar_mappings_b047 SELECT mappings.id, mappings.created_at, mappings.updated_at, mappings.deleted_at, lookup.sync_state_id, mappings.calendar_id, 'calendar' FROM source_calendar_mappings AS mappings JOIN b047_sync_state_lookup AS lookup ON lookup.connection_id = mappings.connection_id AND lookup.provider_calendar_id = mappings.provider_calendar_id WHERE mappings.deleted_at IS NULL",
 			"CREATE TABLE external_event_series_links_b047 (id text PRIMARY KEY, created_at datetime, updated_at datetime, deleted_at datetime, sync_state_id text NOT NULL, event_series_id text NOT NULL, provider_series_id text NOT NULL, CONSTRAINT fk_external_event_series_links_sync_state FOREIGN KEY (sync_state_id) REFERENCES provider_calendar_sync_states(id) ON UPDATE CASCADE ON DELETE CASCADE, CONSTRAINT fk_external_event_series_links_series FOREIGN KEY (event_series_id) REFERENCES event_series(id) ON UPDATE CASCADE ON DELETE CASCADE)",
 			"INSERT INTO external_event_series_links_b047 SELECT links.id, links.created_at, links.updated_at, links.deleted_at, lookup.sync_state_id, links.event_series_id, links.provider_series_id FROM external_event_series_links AS links JOIN source_calendar_mappings AS mappings ON mappings.id = links.mapping_id JOIN b047_sync_state_lookup AS lookup ON lookup.connection_id = mappings.connection_id AND lookup.provider_calendar_id = mappings.provider_calendar_id WHERE links.deleted_at IS NULL AND mappings.deleted_at IS NULL",
 			"CREATE TABLE external_event_links_b047 (id text PRIMARY KEY, created_at datetime, updated_at datetime, deleted_at datetime, sync_state_id text NOT NULL, event_id text NOT NULL, provider_event_id text NOT NULL, provider_series_id text, semantic_group text NOT NULL CONSTRAINT external_event_semantic_group CHECK (semantic_group IN ('calendar','birthdays')), diagnostic_code text, CONSTRAINT fk_external_event_links_sync_state FOREIGN KEY (sync_state_id) REFERENCES provider_calendar_sync_states(id) ON UPDATE CASCADE ON DELETE CASCADE, CONSTRAINT fk_external_event_links_event FOREIGN KEY (event_id) REFERENCES events(id) ON UPDATE CASCADE ON DELETE CASCADE)",
-			"INSERT INTO external_event_links_b047 SELECT links.id, links.created_at, links.updated_at, links.deleted_at, lookup.sync_state_id, links.event_id, links.provider_event_id, links.provider_series_id, mappings.semantic_group, NULL FROM external_event_links AS links JOIN source_calendar_mappings AS mappings ON mappings.id = links.mapping_id JOIN b047_sync_state_lookup AS lookup ON lookup.connection_id = mappings.connection_id AND lookup.provider_calendar_id = mappings.provider_calendar_id WHERE links.deleted_at IS NULL AND mappings.deleted_at IS NULL",
+			"INSERT INTO external_event_links_b047 SELECT links.id, links.created_at, links.updated_at, links.deleted_at, lookup.sync_state_id, links.event_id, links.provider_event_id, links.provider_series_id, 'calendar', NULL FROM external_event_links AS links JOIN source_calendar_mappings AS mappings ON mappings.id = links.mapping_id JOIN b047_sync_state_lookup AS lookup ON lookup.connection_id = mappings.connection_id AND lookup.provider_calendar_id = mappings.provider_calendar_id WHERE links.deleted_at IS NULL AND mappings.deleted_at IS NULL",
 			"CREATE TABLE calendar_syncs_b047 (id text PRIMARY KEY, created_at datetime, updated_at datetime, deleted_at datetime, sync_state_id text NOT NULL, state text NOT NULL CONSTRAINT calendar_sync_state CHECK (state IN ('pending','running','succeeded','failed')), started_at datetime NOT NULL, finished_at datetime, error_code text, CONSTRAINT fk_calendar_syncs_sync_state FOREIGN KEY (sync_state_id) REFERENCES provider_calendar_sync_states(id) ON UPDATE CASCADE ON DELETE CASCADE)",
 			"INSERT INTO calendar_syncs_b047 SELECT synchronizations.id, synchronizations.created_at, synchronizations.updated_at, synchronizations.deleted_at, lookup.sync_state_id, synchronizations.state, synchronizations.started_at, synchronizations.finished_at, synchronizations.error_code FROM calendar_syncs AS synchronizations JOIN source_calendar_mappings AS mappings ON mappings.id = synchronizations.mapping_id JOIN b047_sync_state_lookup AS lookup ON lookup.connection_id = mappings.connection_id AND lookup.provider_calendar_id = mappings.provider_calendar_id WHERE mappings.deleted_at IS NULL",
 			"DROP TABLE calendar_syncs",
@@ -456,7 +460,8 @@ func providerCalendarSyncPredecessorContract() ([]string, map[string][]string, m
 	columns[config.TableCalendars] = append(columns[config.TableCalendars], "symbol")
 	delete(columns, config.TableProviderCalendarSyncStates)
 	delete(columns, config.TableTasks)
-	columns[config.TableSourceCalendarMappings] = []string{"id", "created_at", "updated_at", "deleted_at", "connection_id", "calendar_id", "provider_calendar_id", semanticGroupColumn, "sync_cursor"}
+	columns[config.TableCalendarConnections] = []string{"id", "created_at", "updated_at", "deleted_at", "organizer_id", "provider", "credential_nonce", "credential_ciphertext", "status"}
+	columns[config.TableSourceCalendarMappings] = []string{"id", "created_at", "updated_at", "deleted_at", "connection_id", "calendar_id", "provider_calendar_id", "sync_cursor"}
 	columns[config.TableExternalEventSeriesLinks] = []string{"id", "created_at", "updated_at", "deleted_at", "mapping_id", "event_series_id", "provider_series_id"}
 	columns[config.TableExternalEventLinks] = []string{"id", "created_at", "updated_at", "deleted_at", "mapping_id", "event_id", "provider_event_id", "provider_series_id"}
 	columns[config.TableCalendarSyncs] = []string{"id", "created_at", "updated_at", "deleted_at", "mapping_id", "state", "started_at", "finished_at", "error_code"}
@@ -470,13 +475,14 @@ func providerCalendarSyncPredecessorContract() ([]string, map[string][]string, m
 	uniqueIndexes := cloneUniqueIndexes(canonicalUniqueIndexes)
 	delete(uniqueIndexes, config.TableProviderCalendarSyncStates)
 	delete(uniqueIndexes, config.TableTasks)
-	uniqueIndexes[config.TableSourceCalendarMappings] = [][]string{{"connection_id", "provider_calendar_id", semanticGroupColumn}, {"calendar_id"}}
+	uniqueIndexes[config.TableSourceCalendarMappings] = [][]string{{"connection_id", "provider_calendar_id"}, {"calendar_id"}}
 	uniqueIndexes[config.TableExternalEventSeriesLinks] = [][]string{{"mapping_id", "provider_series_id"}, {"event_series_id"}}
 	uniqueIndexes[config.TableExternalEventLinks] = [][]string{{"mapping_id", "provider_event_id"}, {"event_id"}}
 	checkConstraints := cloneCheckConstraints(canonicalCheckConstraints)
 	delete(checkConstraints, config.TableProviderCalendarSyncStates)
 	delete(checkConstraints, config.TableTasks)
 	delete(checkConstraints, config.TableExternalEventLinks)
+	delete(checkConstraints, config.TableSourceCalendarMappings)
 	return tableNames, columns, foreignKeys, uniqueIndexes, checkConstraints
 }
 

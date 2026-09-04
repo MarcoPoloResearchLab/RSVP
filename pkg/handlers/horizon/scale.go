@@ -66,19 +66,7 @@ func setHorizonScaleCookie(responseWriter http.ResponseWriter, scale horizonScal
 }
 
 func horizonScaleEnd(start time.Time, location *time.Location, scale horizonScale) time.Time {
-	localStart := start.In(location)
-	switch scale {
-	case horizonScaleDay:
-		return localStart.AddDate(0, 0, 1)
-	case horizonScaleWeek:
-		return localStart.AddDate(0, 0, 7)
-	case horizonScaleMonth:
-		return localStart.AddDate(0, 1, 0)
-	case horizonScaleYear:
-		return localStart.AddDate(1, 0, 0)
-	default:
-		panic("invalid Horizon scale")
-	}
+	return shiftHorizonScaleStart(start, location, scale, 1)
 }
 
 func shiftHorizonScaleStart(start time.Time, location *time.Location, scale horizonScale, direction int) time.Time {
@@ -89,12 +77,18 @@ func shiftHorizonScaleStart(start time.Time, location *time.Location, scale hori
 	case horizonScaleWeek:
 		return localStart.AddDate(0, 0, 7*direction)
 	case horizonScaleMonth:
-		return localStart.AddDate(0, direction, 0)
+		return shiftCalendarMonths(localStart, direction)
 	case horizonScaleYear:
-		return localStart.AddDate(direction, 0, 0)
+		return shiftCalendarMonths(localStart, 12*direction)
 	default:
 		panic("invalid Horizon scale")
 	}
+}
+
+func shiftCalendarMonths(start time.Time, months int) time.Time {
+	lastTargetDay := time.Date(start.Year(), start.Month()+time.Month(months)+1, 0, 12, 0, 0, 0, start.Location())
+	day := min(start.Day(), lastTargetDay.Day())
+	return time.Date(lastTargetDay.Year(), lastTargetDay.Month(), day, start.Hour(), start.Minute(), start.Second(), start.Nanosecond(), start.Location())
 }
 
 func horizonScaleURL(scale horizonScale, start time.Time) string {
