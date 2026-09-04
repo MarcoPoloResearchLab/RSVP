@@ -15,7 +15,7 @@ import (
 // ErrSourceOwnedMarker indicates that provider synchronization owns one event.
 var ErrSourceOwnedMarker = errors.New("source-owned marker fields cannot change locally")
 
-// CalendarSyncService owns provider synchronization and source reconciliation.
+// CalendarSyncService owns provider-calendar synchronization and source reconciliation.
 type CalendarSyncService struct {
 	database *gorm.DB
 	adapter  CalendarProviderAdapter
@@ -31,17 +31,17 @@ func NewCalendarSyncService(database *gorm.DB, adapter CalendarProviderAdapter, 
 	return &CalendarSyncService{database: database, adapter: adapter, cipher: credentialCipher, now: now}, nil
 }
 
-// Synchronize reconciles one organizer-owned source mapping and records its result.
-func (service *CalendarSyncService) Synchronize(ctx context.Context, organizerID string, mappingID string) (*models.CalendarSync, error) {
+// Synchronize reconciles one organizer-owned provider calendar and records its result.
+func (service *CalendarSyncService) Synchronize(ctx context.Context, organizerID string, syncStateID string) (*models.CalendarSync, error) {
 	service.mutex.Lock()
 	defer service.mutex.Unlock()
 
-	mapping, credential, mappingError := service.mappingCredential(ctx, organizerID, mappingID)
-	if mappingError != nil {
-		return nil, mappingError
+	syncState, credential, stateError := service.syncStateCredential(ctx, organizerID, syncStateID)
+	if stateError != nil {
+		return nil, stateError
 	}
 	startedAt := service.now().UTC()
-	synchronization, syncError := models.NewCalendarSync(mapping.ID, startedAt)
+	synchronization, syncError := models.NewCalendarSync(syncState.ID, startedAt)
 	if syncError != nil {
 		return nil, syncError
 	}
@@ -50,25 +50,27 @@ func (service *CalendarSyncService) Synchronize(ctx context.Context, organizerID
 		return nil, fmt.Errorf("create calendar synchronization: %w", createError)
 	}
 	cursor := ""
-	if mapping.SyncCursor != nil {
-		cursor = *mapping.SyncCursor
+	if syncState.SyncCursor != nil {
+		cursor = *syncState.SyncCursor
 	}
-	providerGroup := ProviderCalendarGroupKey(mapping.SemanticGroup)
-	batch, providerError := service.adapter.SynchronizeEvents(ctx, credential, mapping.ProviderCalendarID, providerGroup, cursor)
+	batch, providerError := service.adapter.SynchronizeEvents(ctx, credential, syncState.ProviderCalendarID, cursor)
 	completeReconciliation := cursor == ""
 	if errors.Is(providerError, ErrCalendarSyncCursorRejected) && cursor != "" {
-		batch, providerError = service.adapter.SynchronizeEvents(ctx, credential, mapping.ProviderCalendarID, providerGroup, "")
+		batch, providerError = service.adapter.SynchronizeEvents(ctx, credential, syncState.ProviderCalendarID, "")
 		completeReconciliation = true
 	}
 	if providerError != nil {
 		return nil, errors.Join(providerError, service.failSync(ctx, synchronization, "provider_failed"))
 	}
+	if batch.NextSyncCursor == "" {
+		return nil, errors.Join(errors.New("provider event batch has no sync cursor"), service.failSync(ctx, synchronization, "provider_failed"))
+	}
 	transactionError := service.database.WithContext(ctx).Transaction(func(transaction *gorm.DB) error {
-		var lockedMapping models.SourceCalendarMapping
-		if findError := transaction.Clauses(clause.Locking{Strength: "UPDATE"}).First(&lockedMapping, "id = ?", mapping.ID).Error; findError != nil {
+		var lockedState models.ProviderCalendarSyncState
+		if findError := transaction.Clauses(clause.Locking{Strength: "UPDATE"}).Preload("Mappings.Calendar").First(&lockedState, "id = ?", syncState.ID).Error; findError != nil {
 			return findError
 		}
-		if applyError := service.applyBatch(transaction, &lockedMapping, synchronization.StartedAt, batch, completeReconciliation); applyError != nil {
+		if applyError := service.applyBatch(transaction, &lockedState, synchronization.StartedAt, batch, completeReconciliation); applyError != nil {
 			return applyError
 		}
 		finishedAt := service.now().UTC()
@@ -82,72 +84,207 @@ func (service *CalendarSyncService) Synchronize(ctx context.Context, organizerID
 	return synchronization, nil
 }
 
-// SynchronizeMappings reconciles each imported source mapping and continues after failures.
-func (service *CalendarSyncService) SynchronizeMappings(ctx context.Context, organizerID string, mappings []models.SourceCalendarMapping) error {
+// SynchronizeSyncStates reconciles each provider calendar and continues after failures.
+func (service *CalendarSyncService) SynchronizeSyncStates(ctx context.Context, organizerID string, syncStates []models.ProviderCalendarSyncState) error {
 	var synchronizationErrors []error
-	for mappingIndex := range mappings {
-		if _, synchronizationError := service.Synchronize(ctx, organizerID, mappings[mappingIndex].ID); synchronizationError != nil {
-			synchronizationErrors = append(synchronizationErrors, fmt.Errorf("synchronize mapping %s: %w", mappings[mappingIndex].ID, synchronizationError))
+	for stateIndex := range syncStates {
+		if _, synchronizationError := service.Synchronize(ctx, organizerID, syncStates[stateIndex].ID); synchronizationError != nil {
+			synchronizationErrors = append(synchronizationErrors, fmt.Errorf("synchronize provider calendar %s: %w", syncStates[stateIndex].ID, synchronizationError))
 		}
 	}
 	return errors.Join(synchronizationErrors...)
 }
 
-func (service *CalendarSyncService) mappingCredential(ctx context.Context, organizerID string, mappingID string) (*models.SourceCalendarMapping, CalendarProviderCredential, error) {
-	var mapping models.SourceCalendarMapping
-	if findError := service.database.WithContext(ctx).Preload("Connection").First(&mapping, "id = ?", mappingID).Error; findError != nil {
+func (service *CalendarSyncService) syncStateCredential(ctx context.Context, organizerID string, syncStateID string) (*models.ProviderCalendarSyncState, CalendarProviderCredential, error) {
+	var syncState models.ProviderCalendarSyncState
+	if findError := service.database.WithContext(ctx).Preload("Connection").First(&syncState, "id = ?", syncStateID).Error; findError != nil {
 		return nil, CalendarProviderCredential{}, findError
 	}
-	if mapping.Connection.OrganizerID != organizerID {
+	if syncState.Connection.OrganizerID != organizerID {
 		return nil, CalendarProviderCredential{}, ErrResourceForbidden
 	}
-	credential, credentialError := currentCalendarCredential(ctx, service.database, service.adapter, service.cipher, &mapping.Connection, service.now())
-	return &mapping, credential, credentialError
+	credential, credentialError := currentCalendarCredential(ctx, service.database, service.adapter, service.cipher, &syncState.Connection, service.now())
+	return &syncState, credential, credentialError
 }
 
-func (service *CalendarSyncService) applyBatch(database *gorm.DB, mapping *models.SourceCalendarMapping, startedAt time.Time, batch ProviderEventBatch, complete bool) error {
-	seen := make(map[string]struct{}, len(batch.Events))
-	for _, providerEvent := range batch.Events {
-		seen[providerEvent.ID] = struct{}{}
-		if providerEvent.Status == "cancelled" {
-			if deleteError := deleteExternalEvent(database, mapping.ID, providerEvent.ID); deleteError != nil {
+func (service *CalendarSyncService) applyBatch(database *gorm.DB, syncState *models.ProviderCalendarSyncState, startedAt time.Time, batch ProviderEventBatch, complete bool) error {
+	mappings := make(map[SemanticCalendarGroup]*models.SourceCalendarMapping, len(syncState.Mappings))
+	for mappingIndex := range syncState.Mappings {
+		mapping := &syncState.Mappings[mappingIndex]
+		group := SemanticCalendarGroup(mapping.SemanticGroup)
+		if group != SemanticCalendarGroupCalendar && group != SemanticCalendarGroupBirthdays {
+			return errors.New("source calendar mapping has an unknown semantic group")
+		}
+		mappings[group] = mapping
+	}
+	placements, seriesPlacements, groupingError := providerSeriesPlacements(database, syncState.ID, batch.Changes, complete)
+	if groupingError != nil {
+		return groupingError
+	}
+	seen := make(map[string]struct{}, len(batch.Changes))
+	for _, change := range batch.Changes {
+		if change.ProviderEventID == "" {
+			return errors.New("provider event change has no source identity")
+		}
+		seen[change.ProviderEventID] = struct{}{}
+		if change.Deleted {
+			if deleteError := deleteExternalEvent(database, syncState.ID, change.ProviderEventID); deleteError != nil {
 				return deleteError
 			}
 			continue
 		}
-		if applyError := upsertExternalEvent(database, mapping, startedAt, providerEvent); applyError != nil {
+		placementGroup, found := placements[change.ProviderEventID]
+		if !found {
+			return fmt.Errorf("provider event %s has no placement group", change.ProviderEventID)
+		}
+		mapping, found := mappings[placementGroup]
+		if !found {
+			return fmt.Errorf("provider calendar %s has no %s mapping", syncState.ProviderCalendarID, placementGroup)
+		}
+		if applyError := upsertExternalEvent(database, syncState.ID, mapping, startedAt, change); applyError != nil {
 			return applyError
 		}
 	}
 	if complete {
 		var links []models.ExternalEventLink
-		if findError := database.Where("mapping_id = ?", mapping.ID).Find(&links).Error; findError != nil {
+		if findError := database.Where("sync_state_id = ?", syncState.ID).Find(&links).Error; findError != nil {
 			return findError
 		}
 		for _, link := range links {
 			if _, found := seen[link.ProviderEventID]; found {
 				continue
 			}
-			if deleteError := deleteExternalEvent(database, mapping.ID, link.ProviderEventID); deleteError != nil {
+			if deleteError := deleteExternalEvent(database, syncState.ID, link.ProviderEventID); deleteError != nil {
 				return deleteError
 			}
 		}
 	}
-	if boundsError := recalculateMappingLaneBounds(database, mapping.ID); boundsError != nil {
+	for providerSeriesID, placementGroup := range seriesPlacements {
+		mapping, found := mappings[placementGroup]
+		if !found {
+			return fmt.Errorf("provider calendar %s has no %s mapping", syncState.ProviderCalendarID, placementGroup)
+		}
+		if placementError := placeProviderSeries(database, syncState.ID, providerSeriesID, mapping.CalendarID); placementError != nil {
+			return placementError
+		}
+	}
+	if boundsError := recalculateSyncStateLaneBounds(database, syncState.ID); boundsError != nil {
 		return boundsError
 	}
-	mapping.SyncCursor = &batch.NextSyncCursor
-	if updateError := database.Model(mapping).Update("sync_cursor", batch.NextSyncCursor).Error; updateError != nil {
-		return updateError
+	if updateError := database.Model(syncState).Update("sync_cursor", batch.NextSyncCursor).Error; updateError != nil {
+		return fmt.Errorf("store provider calendar event cursor: %w", updateError)
 	}
-	return NormalizeLaneOrder(database, mapping.CalendarID)
+	for _, mapping := range mappings {
+		if orderError := NormalizeLaneOrder(database, mapping.CalendarID); orderError != nil {
+			return orderError
+		}
+	}
+	return nil
 }
 
-func recalculateMappingLaneBounds(database *gorm.DB, mappingID string) error {
+func providerSeriesPlacements(database *gorm.DB, syncStateID string, changes []ProviderEventChange, complete bool) (map[string]SemanticCalendarGroup, map[string]SemanticCalendarGroup, error) {
+	var links []models.ExternalEventLink
+	if findError := database.Where("sync_state_id = ?", syncStateID).Find(&links).Error; findError != nil {
+		return nil, nil, findError
+	}
+	linksByEventID := make(map[string]models.ExternalEventLink, len(links))
+	seriesByEventID := make(map[string]string, len(links))
+	groupsByEventID := make(map[string]SemanticCalendarGroup, len(links))
+	for _, link := range links {
+		linksByEventID[link.ProviderEventID] = link
+		if link.ProviderSeriesID == nil {
+			continue
+		}
+		group := SemanticCalendarGroup(link.SemanticGroup)
+		if group != SemanticCalendarGroupCalendar && group != SemanticCalendarGroupBirthdays {
+			return nil, nil, errors.New("external event link has an unknown semantic group")
+		}
+		seriesByEventID[link.ProviderEventID] = *link.ProviderSeriesID
+		groupsByEventID[link.ProviderEventID] = group
+	}
+
+	seen := make(map[string]struct{}, len(changes))
+	affectedSeries := make(map[string]struct{})
+	placements := make(map[string]SemanticCalendarGroup, len(changes))
+	for _, change := range changes {
+		if change.ProviderEventID == "" {
+			return nil, nil, errors.New("provider event change has no source identity")
+		}
+		seen[change.ProviderEventID] = struct{}{}
+		existingLink, exists := linksByEventID[change.ProviderEventID]
+		existingSeriesID := ""
+		if exists && existingLink.ProviderSeriesID != nil {
+			existingSeriesID = *existingLink.ProviderSeriesID
+		}
+		seriesID := change.ProviderSeriesID
+		if exists && seriesID != "" && seriesID != existingSeriesID {
+			return nil, nil, errors.New("provider event series identity changed")
+		}
+		if seriesID == "" && change.Deleted {
+			seriesID = existingSeriesID
+		}
+		if change.Deleted {
+			delete(seriesByEventID, change.ProviderEventID)
+			delete(groupsByEventID, change.ProviderEventID)
+			if seriesID != "" {
+				affectedSeries[seriesID] = struct{}{}
+			}
+			continue
+		}
+		if change.SemanticGroup != SemanticCalendarGroupCalendar && change.SemanticGroup != SemanticCalendarGroupBirthdays {
+			return nil, nil, fmt.Errorf("provider event %s has an unknown semantic group", change.ProviderEventID)
+		}
+		placements[change.ProviderEventID] = change.SemanticGroup
+		if seriesID != "" {
+			seriesByEventID[change.ProviderEventID] = seriesID
+			groupsByEventID[change.ProviderEventID] = change.SemanticGroup
+			affectedSeries[seriesID] = struct{}{}
+		}
+	}
+	if complete {
+		for _, link := range links {
+			if _, found := seen[link.ProviderEventID]; found {
+				continue
+			}
+			if seriesID, found := seriesByEventID[link.ProviderEventID]; found {
+				affectedSeries[seriesID] = struct{}{}
+			}
+			delete(seriesByEventID, link.ProviderEventID)
+			delete(groupsByEventID, link.ProviderEventID)
+		}
+	}
+
+	seriesGroups := make(map[string]SemanticCalendarGroup)
+	for providerEventID, seriesID := range seriesByEventID {
+		group := groupsByEventID[providerEventID]
+		if group == SemanticCalendarGroupBirthdays {
+			seriesGroups[seriesID] = group
+			continue
+		}
+		if _, found := seriesGroups[seriesID]; !found {
+			seriesGroups[seriesID] = group
+		}
+	}
+	seriesPlacements := make(map[string]SemanticCalendarGroup, len(affectedSeries))
+	for seriesID := range affectedSeries {
+		if group, found := seriesGroups[seriesID]; found {
+			seriesPlacements[seriesID] = group
+		}
+	}
+	for _, change := range changes {
+		if change.Deleted || change.ProviderSeriesID == "" {
+			continue
+		}
+		placements[change.ProviderEventID] = seriesGroups[change.ProviderSeriesID]
+	}
+	return placements, seriesPlacements, nil
+}
+
+func recalculateSyncStateLaneBounds(database *gorm.DB, syncStateID string) error {
 	var events []models.Event
 	if findError := database.Model(&models.Event{}).
 		Joins("JOIN external_event_links ON external_event_links.event_id = events.id AND external_event_links.deleted_at IS NULL").
-		Where("external_event_links.mapping_id = ?", mappingID).Find(&events).Error; findError != nil {
+		Where("external_event_links.sync_state_id = ?", syncStateID).Find(&events).Error; findError != nil {
 		return findError
 	}
 	lastByLane := make(map[string]time.Time)
@@ -178,26 +315,36 @@ func recalculateMappingLaneBounds(database *gorm.DB, mappingID string) error {
 	return nil
 }
 
-func upsertExternalEvent(database *gorm.DB, mapping *models.SourceCalendarMapping, startedAt time.Time, providerEvent ProviderEvent) error {
-	eventTime, boundsStart, boundsEnd, timeError := providerEventTime(providerEvent)
+func upsertExternalEvent(database *gorm.DB, syncStateID string, mapping *models.SourceCalendarMapping, startedAt time.Time, change ProviderEventChange) error {
+	eventTime, boundsStart, boundsEnd, timeError := providerEventTime(change)
 	if timeError != nil {
 		return fmt.Errorf("convert source event time: %w", timeError)
 	}
 	var link models.ExternalEventLink
-	findError := database.First(&link, "mapping_id = ? AND provider_event_id = ?", mapping.ID, providerEvent.ID).Error
+	findError := database.First(&link, "sync_state_id = ? AND provider_event_id = ?", syncStateID, change.ProviderEventID).Error
 	if findError == nil {
 		var event models.Event
 		if eventError := database.First(&event, "id = ?", link.EventID).Error; eventError != nil {
 			return eventError
 		}
-		candidate, candidateError := models.NewEvent(event.LaneID, providerEvent.Title, providerEvent.Description, nil, eventRelation(event), eventTime)
+		currentSeriesID := ""
+		if link.ProviderSeriesID != nil {
+			currentSeriesID = *link.ProviderSeriesID
+		}
+		if currentSeriesID != change.ProviderSeriesID {
+			return errors.New("provider event series identity changed")
+		}
+		candidate, candidateError := models.NewEvent(event.LaneID, change.Title, change.Description, nil, eventRelation(event), eventTime)
 		if candidateError != nil {
 			return fmt.Errorf("construct updated source event: %w", candidateError)
 		}
-		if boundsError := expandSourceLane(database, event.LaneID, startedAt, boundsStart, boundsEnd); boundsError != nil {
-			return boundsError
+		if placementError := placeSourceLane(database, event.LaneID, mapping.CalendarID, change.Title, startedAt, boundsStart, boundsEnd); placementError != nil {
+			return placementError
 		}
 		if updateError := database.Model(&event).Updates(map[string]any{"title": candidate.Title, "description": candidate.Description, "time_shape": candidate.TimeShape, "at": candidate.At, "starts_at": candidate.StartsAt, "ends_at": candidate.EndsAt, "start_date": candidate.StartDate, "end_date": candidate.EndDate, "timezone": candidate.Timezone}).Error; updateError != nil {
+			return updateError
+		}
+		if updateError := database.Model(&link).Updates(map[string]any{"semantic_group": models.SourceCalendarGroup(change.SemanticGroup), "diagnostic_code": diagnosticCode(change.DiagnosticCode)}).Error; updateError != nil {
 			return updateError
 		}
 		ownerID, ownerError := event.OwnerID(database)
@@ -209,7 +356,7 @@ func upsertExternalEvent(database *gorm.DB, mapping *models.SourceCalendarMappin
 	if !errors.Is(findError, gorm.ErrRecordNotFound) {
 		return findError
 	}
-	lane, series, laneError := sourceLane(database, mapping, startedAt, boundsStart, boundsEnd, providerEvent)
+	lane, series, laneError := sourceLane(database, syncStateID, mapping.CalendarID, startedAt, boundsStart, boundsEnd, change)
 	if laneError != nil {
 		return fmt.Errorf("prepare source event lane: %w", laneError)
 	}
@@ -220,7 +367,7 @@ func upsertExternalEvent(database *gorm.DB, mapping *models.SourceCalendarMappin
 			return laneError
 		}
 	}
-	event, eventError := models.NewEvent(lane.ID, providerEvent.Title, providerEvent.Description, nil, relation, eventTime)
+	event, eventError := models.NewEvent(lane.ID, change.Title, change.Description, nil, relation, eventTime)
 	if eventError != nil {
 		return fmt.Errorf("construct source event: %w", eventError)
 	}
@@ -228,27 +375,61 @@ func upsertExternalEvent(database *gorm.DB, mapping *models.SourceCalendarMappin
 		return createError
 	}
 	var providerSeriesID *string
-	if providerEvent.SeriesID != "" {
-		providerSeriesID = &providerEvent.SeriesID
+	if change.ProviderSeriesID != "" {
+		providerSeriesID = &change.ProviderSeriesID
 	}
-	externalLink, externalError := models.NewExternalEventLink(mapping.ID, event.ID, providerEvent.ID, providerSeriesID)
+	externalLink, externalError := models.NewExternalEventLink(syncStateID, event.ID, change.ProviderEventID, providerSeriesID, models.SourceCalendarGroup(change.SemanticGroup), diagnosticCode(change.DiagnosticCode))
 	if externalError != nil {
 		return externalError
 	}
 	return database.Create(externalLink).Error
 }
 
-func sourceLane(database *gorm.DB, mapping *models.SourceCalendarMapping, startedAt time.Time, markerStart time.Time, markerEnd time.Time, providerEvent ProviderEvent) (*models.Lane, *models.EventSeries, error) {
-	if providerEvent.SeriesID != "" {
+func diagnosticCode(code string) *string {
+	if code == "" {
+		return nil
+	}
+	return &code
+}
+
+func placeProviderSeries(database *gorm.DB, syncStateID string, providerSeriesID string, calendarID string) error {
+	var externalSeries models.ExternalEventSeriesLink
+	findError := database.First(&externalSeries, "sync_state_id = ? AND provider_series_id = ?", syncStateID, providerSeriesID).Error
+	if errors.Is(findError, gorm.ErrRecordNotFound) {
+		return nil
+	}
+	if findError != nil {
+		return findError
+	}
+	var series models.EventSeries
+	if findError := database.First(&series, "id = ?", externalSeries.EventSeriesID).Error; findError != nil {
+		return findError
+	}
+	var lane models.Lane
+	if findError := database.First(&lane, "id = ?", series.LaneID).Error; findError != nil {
+		return findError
+	}
+	if lane.CalendarID == calendarID {
+		return nil
+	}
+	order, orderError := models.NextLaneDisplayOrder(database, calendarID)
+	if orderError != nil {
+		return orderError
+	}
+	return database.Model(&lane).Updates(map[string]any{"calendar_id": calendarID, "display_order": order}).Error
+}
+
+func sourceLane(database *gorm.DB, syncStateID string, calendarID string, startedAt time.Time, markerStart time.Time, markerEnd time.Time, change ProviderEventChange) (*models.Lane, *models.EventSeries, error) {
+	if change.ProviderSeriesID != "" {
 		var externalSeries models.ExternalEventSeriesLink
-		findError := database.First(&externalSeries, "mapping_id = ? AND provider_series_id = ?", mapping.ID, providerEvent.SeriesID).Error
+		findError := database.First(&externalSeries, "sync_state_id = ? AND provider_series_id = ?", syncStateID, change.ProviderSeriesID).Error
 		if findError == nil {
 			var series models.EventSeries
 			if seriesError := database.First(&series, "id = ?", externalSeries.EventSeriesID).Error; seriesError != nil {
 				return nil, nil, seriesError
 			}
-			if boundsError := expandSourceLane(database, series.LaneID, startedAt, markerStart, markerEnd); boundsError != nil {
-				return nil, nil, boundsError
+			if placementError := placeSourceLane(database, series.LaneID, calendarID, change.Title, startedAt, markerStart, markerEnd); placementError != nil {
+				return nil, nil, placementError
 			}
 			var lane models.Lane
 			if laneError := database.First(&lane, "id = ?", series.LaneID).Error; laneError != nil {
@@ -268,21 +449,21 @@ func sourceLane(database *gorm.DB, mapping *models.SourceCalendarMapping, starte
 	if !end.After(start) {
 		end = start.Add(time.Nanosecond)
 	}
-	order, orderError := models.NextLaneDisplayOrder(database, mapping.CalendarID)
+	order, orderError := models.NextLaneDisplayOrder(database, calendarID)
 	if orderError != nil {
 		return nil, nil, orderError
 	}
-	lane, laneError := models.NewFiniteLane(mapping.CalendarID, providerEvent.Title, start, end, order)
+	lane, laneError := models.NewFiniteLane(calendarID, change.Title, start, end, order)
 	if laneError != nil {
 		return nil, nil, laneError
 	}
 	if createError := database.Create(lane).Error; createError != nil {
 		return nil, nil, createError
 	}
-	if providerEvent.SeriesID == "" {
+	if change.ProviderSeriesID == "" {
 		return lane, nil, nil
 	}
-	timezone, timezoneError := models.NewTimezone(providerEvent.Timezone)
+	timezone, timezoneError := models.NewTimezone(change.Timezone)
 	if timezoneError != nil {
 		return nil, nil, timezoneError
 	}
@@ -293,7 +474,7 @@ func sourceLane(database *gorm.DB, mapping *models.SourceCalendarMapping, starte
 	if createError := database.Create(series).Error; createError != nil {
 		return nil, nil, createError
 	}
-	externalSeries, externalError := models.NewExternalEventSeriesLink(mapping.ID, series.ID, providerEvent.SeriesID)
+	externalSeries, externalError := models.NewExternalEventSeriesLink(syncStateID, series.ID, change.ProviderSeriesID)
 	if externalError != nil {
 		return nil, nil, externalError
 	}
@@ -303,10 +484,19 @@ func sourceLane(database *gorm.DB, mapping *models.SourceCalendarMapping, starte
 	return lane, series, nil
 }
 
-func expandSourceLane(database *gorm.DB, laneID string, trackedAt time.Time, markerStart time.Time, markerEnd time.Time) error {
+func placeSourceLane(database *gorm.DB, laneID string, calendarID string, title string, trackedAt time.Time, markerStart time.Time, markerEnd time.Time) error {
 	var lane models.Lane
 	if findError := database.First(&lane, "id = ?", laneID).Error; findError != nil {
 		return findError
+	}
+	updates := map[string]any{"title": title}
+	if lane.CalendarID != calendarID {
+		order, orderError := models.NextLaneDisplayOrder(database, calendarID)
+		if orderError != nil {
+			return orderError
+		}
+		updates["calendar_id"] = calendarID
+		updates["display_order"] = order
 	}
 	start := lane.StartsAt
 	if trackedAt.Before(start) {
@@ -322,10 +512,12 @@ func expandSourceLane(database *gorm.DB, laneID string, trackedAt time.Time, mar
 	if !end.After(start) {
 		end = start.Add(time.Nanosecond)
 	}
-	return database.Model(&lane).Updates(map[string]any{"starts_at": start, "ends_at": end}).Error
+	updates["starts_at"] = start
+	updates["ends_at"] = end
+	return database.Model(&lane).Updates(updates).Error
 }
 
-func providerEventTime(event ProviderEvent) (models.EventTime, time.Time, time.Time, error) {
+func providerEventTime(event ProviderEventChange) (models.EventTime, time.Time, time.Time, error) {
 	timezone, timezoneError := models.NewTimezone(event.Timezone)
 	if timezoneError != nil {
 		return models.EventTime{}, time.Time{}, time.Time{}, timezoneError
@@ -370,9 +562,9 @@ func eventRelation(event models.Event) models.EventRelation {
 	return models.IndependentEventRelation()
 }
 
-func deleteExternalEvent(database *gorm.DB, mappingID string, providerEventID string) error {
+func deleteExternalEvent(database *gorm.DB, syncStateID string, providerEventID string) error {
 	var link models.ExternalEventLink
-	findError := database.First(&link, "mapping_id = ? AND provider_event_id = ?", mappingID, providerEventID).Error
+	findError := database.First(&link, "sync_state_id = ? AND provider_event_id = ?", syncStateID, providerEventID).Error
 	if errors.Is(findError, gorm.ErrRecordNotFound) {
 		return nil
 	}

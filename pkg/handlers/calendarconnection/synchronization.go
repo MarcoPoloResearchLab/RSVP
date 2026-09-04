@@ -14,7 +14,7 @@ type connectionSynchronization struct {
 }
 
 type connectionSynchronizationRow struct {
-	MappingID          string
+	SyncStateID        string
 	State              models.CalendarSyncState
 	LastSuccessfulSync string
 }
@@ -22,17 +22,17 @@ type connectionSynchronizationRow struct {
 func readConnectionSynchronization(database *gorm.DB, connectionID string) (connectionSynchronization, error) {
 	rankedSynchronizations := database.Model(&models.CalendarSync{}).
 		Select(
-			"calendar_syncs.mapping_id, calendar_syncs.state, "+
-				"ROW_NUMBER() OVER (PARTITION BY calendar_syncs.mapping_id ORDER BY calendar_syncs.started_at DESC, calendar_syncs.created_at DESC, calendar_syncs.id DESC) AS synchronization_rank, "+
+			"calendar_syncs.sync_state_id, calendar_syncs.state, "+
+				"ROW_NUMBER() OVER (PARTITION BY calendar_syncs.sync_state_id ORDER BY calendar_syncs.started_at DESC, calendar_syncs.created_at DESC, calendar_syncs.id DESC) AS synchronization_rank, "+
 				"COALESCE(strftime('%Y-%m-%dT%H:%M:%SZ', MAX(CASE WHEN calendar_syncs.state = ? THEN calendar_syncs.finished_at END) OVER ()), '') AS last_successful_sync",
 			models.CalendarSyncSucceeded,
 		).
-		Joins("JOIN source_calendar_mappings ON source_calendar_mappings.id = calendar_syncs.mapping_id AND source_calendar_mappings.deleted_at IS NULL").
-		Where("source_calendar_mappings.connection_id = ?", connectionID)
+		Joins("JOIN provider_calendar_sync_states ON provider_calendar_sync_states.id = calendar_syncs.sync_state_id AND provider_calendar_sync_states.deleted_at IS NULL").
+		Where("provider_calendar_sync_states.connection_id = ?", connectionID)
 
 	var rows []connectionSynchronizationRow
 	queryError := database.Table("(?) AS ranked_synchronizations", rankedSynchronizations).
-		Select("mapping_id, state, last_successful_sync").
+		Select("sync_state_id, state, last_successful_sync").
 		Where("synchronization_rank = ?", 1).
 		Scan(&rows).Error
 	if queryError != nil {

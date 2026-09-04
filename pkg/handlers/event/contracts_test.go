@@ -190,11 +190,11 @@ func TestEventCreationAssignsIndependentAndDependentLanes(testingContext *testin
 	if confirmationError := owner.ConfirmTimezone(fixture.Database, timezone); confirmationError != nil {
 		testingContext.Fatalf("confirm timezone: %v", confirmationError)
 	}
-	firstCalendar, calendarError := models.NewCalendar(owner.ID, "Personal", "P", "personal", 0)
+	firstCalendar, calendarError := models.NewCalendar(owner.ID, "Personal", "personal", 0)
 	if calendarError != nil {
 		testingContext.Fatalf("construct first calendar: %v", calendarError)
 	}
-	secondCalendar, calendarError := models.NewCalendar(owner.ID, "Travel", "T", "travel", 1)
+	secondCalendar, calendarError := models.NewCalendar(owner.ID, "Travel", "travel", 1)
 	if calendarError != nil {
 		testingContext.Fatalf("construct second calendar: %v", calendarError)
 	}
@@ -343,14 +343,21 @@ func TestEventUpdateRejectsProviderOwnedMarker(testingContext *testing.T) {
 	if createError := fixture.Database.Create(connection).Error; createError != nil {
 		testingContext.Fatalf("create connection: %v", createError)
 	}
-	mapping, mappingError := models.NewSourceCalendarMapping(connection.ID, lane.CalendarID, "source", models.SourceCalendarGroupCalendar)
+	syncState, stateError := models.NewProviderCalendarSyncState(connection.ID, "source")
+	if stateError != nil {
+		testingContext.Fatalf("construct provider calendar state: %v", stateError)
+	}
+	if createError := fixture.Database.Create(syncState).Error; createError != nil {
+		testingContext.Fatalf("create provider calendar state: %v", createError)
+	}
+	mapping, mappingError := models.NewSourceCalendarMapping(syncState.ID, lane.CalendarID, models.SourceCalendarGroupCalendar)
 	if mappingError != nil {
 		testingContext.Fatalf("construct source mapping: %v", mappingError)
 	}
 	if createError := fixture.Database.Create(mapping).Error; createError != nil {
 		testingContext.Fatalf("create source mapping: %v", createError)
 	}
-	link, linkError := models.NewExternalEventLink(mapping.ID, eventRecord.ID, "provider-event", nil)
+	link, linkError := models.NewExternalEventLink(syncState.ID, eventRecord.ID, "provider-event", nil, models.SourceCalendarGroupCalendar, nil)
 	if linkError != nil {
 		testingContext.Fatalf("construct external event link: %v", linkError)
 	}

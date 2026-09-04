@@ -7,8 +7,6 @@ import (
 	"errors"
 	"net/url"
 	"reflect"
-	"slices"
-	"strings"
 	"testing"
 	"time"
 
@@ -43,7 +41,7 @@ func (adapter *synchronizationAdapter) RefreshCredential(_ context.Context, cred
 func (adapter *synchronizationAdapter) ListCalendars(context.Context, services.CalendarProviderCredential, string) (services.ProviderCalendarBatch, error) {
 	return adapter.calendarBatch, nil
 }
-func (adapter *synchronizationAdapter) SynchronizeEvents(_ context.Context, credential services.CalendarProviderCredential, providerCalendarID string, _ services.ProviderCalendarGroupKey, cursor string) (services.ProviderEventBatch, error) {
+func (adapter *synchronizationAdapter) SynchronizeEvents(_ context.Context, credential services.CalendarProviderCredential, providerCalendarID string, cursor string) (services.ProviderEventBatch, error) {
 	adapter.providerCalls = append(adapter.providerCalls, providerCalendarID)
 	adapter.cursors = append(adapter.cursors, cursor)
 	adapter.synchronizedCredentials = append(adapter.synchronizedCredentials, credential)
@@ -93,6 +91,7 @@ func TestCalendarSynchronizationContinuesAndRetriesFailedMappings(testingContext
 	if confirmationError != nil {
 		testingContext.Fatalf("validate callback: %v", confirmationError)
 	}
+	confirmation.Timezone = testsupport.TimezoneName
 	connection, _, createError := connectionService.CreateConnection(context.Background(), owner.ID, confirmation, "connection")
 	if createError != nil {
 		testingContext.Fatalf("create connection: %v", createError)
@@ -101,34 +100,31 @@ func TestCalendarSynchronizationContinuesAndRetriesFailedMappings(testingContext
 	if confirmationError := owner.ConfirmTimezone(fixture.Database, timezone); confirmationError != nil {
 		testingContext.Fatalf("confirm organizer timezone: %v", confirmationError)
 	}
-	mappings, mappingError := connectionService.ReconcileSourceCalendars(context.Background(), owner.ID, connection.ID)
+	syncStates, mappingError := connectionService.ReconcileSourceCalendars(context.Background(), owner.ID, connection.ID)
 	if mappingError != nil {
 		testingContext.Fatalf("reconcile sources: %v", mappingError)
 	}
-	slices.SortFunc(mappings, func(left models.SourceCalendarMapping, right models.SourceCalendarMapping) int {
-		return strings.Compare(left.ID, right.ID)
-	})
-	adapter.providerErrors[mappings[0].ProviderCalendarID] = errors.New("provider unavailable")
+	adapter.providerErrors[syncStates[0].ProviderCalendarID] = errors.New("provider unavailable")
 	syncService, syncServiceError := services.NewCalendarSyncService(fixture.Database, adapter, cipher, func() time.Time { return referenceTime })
 	if syncServiceError != nil {
 		testingContext.Fatalf("construct sync service: %v", syncServiceError)
 	}
-	if synchronizationError := syncService.SynchronizeMappings(context.Background(), owner.ID, mappings); synchronizationError == nil {
+	if synchronizationError := syncService.SynchronizeSyncStates(context.Background(), owner.ID, syncStates); synchronizationError == nil {
 		testingContext.Fatal("first synchronization error is absent")
 	}
-	if !reflect.DeepEqual(adapter.providerCalls, []string{mappings[0].ProviderCalendarID, mappings[1].ProviderCalendarID}) {
+	if !reflect.DeepEqual(adapter.providerCalls, []string{syncStates[0].ProviderCalendarID, syncStates[1].ProviderCalendarID}) {
 		testingContext.Fatalf("provider calls = %#v", adapter.providerCalls)
 	}
-	var successfulMapping models.SourceCalendarMapping
-	if findError := fixture.Database.First(&successfulMapping, "id = ?", mappings[1].ID).Error; findError != nil || successfulMapping.SyncCursor == nil || *successfulMapping.SyncCursor != "cursor-1" {
-		testingContext.Fatalf("successful mapping = %#v, error = %v", successfulMapping, findError)
+	var successfulState models.ProviderCalendarSyncState
+	if findError := fixture.Database.First(&successfulState, "id = ?", syncStates[1].ID).Error; findError != nil || successfulState.SyncCursor == nil || *successfulState.SyncCursor != "cursor-1" {
+		testingContext.Fatalf("successful sync state = %#v, error = %v", successfulState, findError)
 	}
-	delete(adapter.providerErrors, mappings[0].ProviderCalendarID)
+	delete(adapter.providerErrors, syncStates[0].ProviderCalendarID)
 	adapter.providerCalls = nil
-	if synchronizationError := syncService.SynchronizeMappings(context.Background(), owner.ID, mappings); synchronizationError != nil {
+	if synchronizationError := syncService.SynchronizeSyncStates(context.Background(), owner.ID, syncStates); synchronizationError != nil {
 		testingContext.Fatalf("retry synchronization: %v", synchronizationError)
 	}
-	if !reflect.DeepEqual(adapter.providerCalls, []string{mappings[0].ProviderCalendarID, mappings[1].ProviderCalendarID}) {
+	if !reflect.DeepEqual(adapter.providerCalls, []string{syncStates[0].ProviderCalendarID, syncStates[1].ProviderCalendarID}) {
 		testingContext.Fatalf("retry provider calls = %#v", adapter.providerCalls)
 	}
 }
@@ -152,19 +148,26 @@ func TestCalendarSynchronizationIsIncrementalAndReconcilesRejectedCursor(testing
 		batches:  map[string]services.ProviderEventBatch{},
 		rejected: map[string]bool{},
 	}
-	adapter.batches[""] = services.ProviderEventBatch{NextSyncCursor: "cursor-1", Events: []services.ProviderEvent{
-		{ID: "birthday", Title: "Birthday", Status: "confirmed", Timezone: testsupport.TimezoneName, StartDate: "2026-09-01", EndDate: "2026-09-02"},
-		{ID: "holiday", Title: "Holiday", Status: "confirmed", Timezone: testsupport.TimezoneName, StartsAt: &timedStart, EndsAt: &timedEnd},
-		{ID: "series-1", SeriesID: "series", Title: "Weekly review", Status: "confirmed", Timezone: testsupport.TimezoneName, StartsAt: &seriesStartOne, EndsAt: &seriesEndOne},
-		{ID: "series-2", SeriesID: "series", Title: "Weekly review", Status: "confirmed", Timezone: testsupport.TimezoneName, StartsAt: &seriesStartTwo, EndsAt: &seriesEndTwo},
-		{ID: "deadline", Title: "Deadline", Status: "confirmed", Timezone: testsupport.TimezoneName, At: &pointAt},
+	adapter.batches[""] = services.ProviderEventBatch{NextSyncCursor: "cursor-1", Changes: []services.ProviderEventChange{
+		{ProviderEventID: "birthday", SemanticGroup: services.SemanticCalendarGroupCalendar, Title: "General reminder", Timezone: testsupport.TimezoneName, StartDate: "2026-09-01", EndDate: "2026-09-02"},
+		{ProviderEventID: "holiday", SemanticGroup: services.SemanticCalendarGroupCalendar, Title: "Holiday", Timezone: testsupport.TimezoneName, StartsAt: &timedStart, EndsAt: &timedEnd},
+		{ProviderEventID: "series-1", ProviderSeriesID: "series", SemanticGroup: services.SemanticCalendarGroupCalendar, Title: "Weekly review", Timezone: testsupport.TimezoneName, StartsAt: &seriesStartOne, EndsAt: &seriesEndOne},
+		{ProviderEventID: "series-2", ProviderSeriesID: "series", SemanticGroup: services.SemanticCalendarGroupBirthdays, DiagnosticCode: "unknown_event_type", Title: "Weekly birthday review", Timezone: testsupport.TimezoneName, StartsAt: &seriesStartTwo, EndsAt: &seriesEndTwo},
+		{ProviderEventID: "deadline", SemanticGroup: services.SemanticCalendarGroupCalendar, Title: "Deadline", Timezone: testsupport.TimezoneName, At: &pointAt},
 	}}
 	updatedStart := timedStart.Add(2 * time.Hour)
 	updatedEnd := updatedStart.Add(2 * time.Hour)
-	adapter.batches["cursor-1"] = services.ProviderEventBatch{NextSyncCursor: "cursor-2", Events: []services.ProviderEvent{
-		{ID: "birthday", Title: "Updated Birthday", Status: "confirmed", Timezone: testsupport.TimezoneName, StartDate: "2026-09-01", EndDate: "2026-09-02"},
-		{ID: "holiday", Status: "cancelled"},
-		{ID: "series-1", SeriesID: "series", Title: "Weekly review updated", Status: "confirmed", Timezone: testsupport.TimezoneName, StartsAt: &updatedStart, EndsAt: &updatedEnd},
+	adapter.batches["cursor-1"] = services.ProviderEventBatch{NextSyncCursor: "cursor-2", Changes: []services.ProviderEventChange{
+		{ProviderEventID: "birthday", SemanticGroup: services.SemanticCalendarGroupBirthdays, Title: "Updated Birthday", Timezone: testsupport.TimezoneName, StartDate: "2026-09-01", EndDate: "2026-09-02"},
+		{ProviderEventID: "holiday", Deleted: true},
+		{ProviderEventID: "series-1", ProviderSeriesID: "series", SemanticGroup: services.SemanticCalendarGroupCalendar, Title: "Weekly review updated", Timezone: testsupport.TimezoneName, StartsAt: &updatedStart, EndsAt: &updatedEnd},
+		{ProviderEventID: "series-2", ProviderSeriesID: "series", SemanticGroup: services.SemanticCalendarGroupCalendar, Title: "Weekly review", Timezone: testsupport.TimezoneName, StartsAt: &seriesStartTwo, EndsAt: &seriesEndTwo},
+	}}
+	adapter.batches["cursor-2"] = services.ProviderEventBatch{NextSyncCursor: "cursor-3", Changes: []services.ProviderEventChange{
+		{ProviderEventID: "series-2", ProviderSeriesID: "series", SemanticGroup: services.SemanticCalendarGroupBirthdays, DiagnosticCode: "unknown_event_type", Title: "Weekly birthday review", Timezone: testsupport.TimezoneName, StartsAt: &seriesStartTwo, EndsAt: &seriesEndTwo},
+	}}
+	adapter.batches["cursor-3"] = services.ProviderEventBatch{NextSyncCursor: "cursor-4", Changes: []services.ProviderEventChange{
+		{ProviderEventID: "series-2", Deleted: true},
 	}}
 	cipher, cipherError := services.NewCredentialCipher(base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{0x42}, 32)), bytes.NewReader(bytes.Repeat([]byte{0x21}, 512)))
 	if cipherError != nil {
@@ -183,6 +186,7 @@ func TestCalendarSynchronizationIsIncrementalAndReconcilesRejectedCursor(testing
 	if confirmationError != nil {
 		testingContext.Fatalf("validate callback: %v", confirmationError)
 	}
+	confirmation.Timezone = testsupport.TimezoneName
 	connection, _, createError := connectionService.CreateConnection(context.Background(), owner.ID, confirmation, "connection")
 	if createError != nil {
 		testingContext.Fatalf("create connection: %v", createError)
@@ -191,7 +195,7 @@ func TestCalendarSynchronizationIsIncrementalAndReconcilesRejectedCursor(testing
 	if confirmationError := owner.ConfirmTimezone(fixture.Database, timezone); confirmationError != nil {
 		testingContext.Fatalf("confirm organizer timezone: %v", confirmationError)
 	}
-	mappings, mappingError := connectionService.ReconcileSourceCalendars(context.Background(), owner.ID, connection.ID)
+	syncStates, mappingError := connectionService.ReconcileSourceCalendars(context.Background(), owner.ID, connection.ID)
 	if mappingError != nil {
 		testingContext.Fatalf("reconcile source: %v", mappingError)
 	}
@@ -201,7 +205,7 @@ func TestCalendarSynchronizationIsIncrementalAndReconcilesRejectedCursor(testing
 		testingContext.Fatalf("construct sync service: %v", syncServiceError)
 	}
 
-	initial, initialError := syncService.Synchronize(context.Background(), owner.ID, mappings[0].ID)
+	initial, initialError := syncService.Synchronize(context.Background(), owner.ID, syncStates[0].ID)
 	if initialError != nil || initial.State != models.CalendarSyncSucceeded {
 		testingContext.Fatalf("initial sync = %#v, error = %v", initial, initialError)
 	}
@@ -209,12 +213,39 @@ func TestCalendarSynchronizationIsIncrementalAndReconcilesRejectedCursor(testing
 		testingContext.Fatalf("refreshes = %d, synchronized credentials = %#v", adapter.refreshCount, adapter.synchronizedCredentials)
 	}
 	assertSourceCounts(testingContext, fixture.Database, 5, 4, 1)
+	calendarMapping, birthdayMapping := mappingsForState(syncStates[0])
+	var seriesOneLink models.ExternalEventLink
+	var seriesTwoLink models.ExternalEventLink
+	if findError := fixture.Database.First(&seriesOneLink, "provider_event_id = ?", "series-1").Error; findError != nil {
+		testingContext.Fatalf("find first series link: %v", findError)
+	}
+	if findError := fixture.Database.First(&seriesTwoLink, "provider_event_id = ?", "series-2").Error; findError != nil {
+		testingContext.Fatalf("find second series link: %v", findError)
+	}
+	if seriesOneLink.SemanticGroup != models.SourceCalendarGroupCalendar || seriesTwoLink.SemanticGroup != models.SourceCalendarGroupBirthdays || seriesTwoLink.DiagnosticCode == nil || *seriesTwoLink.DiagnosticCode != "unknown_event_type" {
+		testingContext.Fatalf("stored series classifications = %#v, %#v", seriesOneLink, seriesTwoLink)
+	}
+	var firstSeriesEvent models.Event
+	var secondSeriesEvent models.Event
+	if findError := fixture.Database.First(&firstSeriesEvent, "id = ?", seriesOneLink.EventID).Error; findError != nil {
+		testingContext.Fatalf("find first series event: %v", findError)
+	}
+	if findError := fixture.Database.First(&secondSeriesEvent, "id = ?", seriesTwoLink.EventID).Error; findError != nil {
+		testingContext.Fatalf("find second series event: %v", findError)
+	}
+	if firstSeriesEvent.LaneID != secondSeriesEvent.LaneID {
+		testingContext.Fatalf("provider series split across lanes %s and %s", firstSeriesEvent.LaneID, secondSeriesEvent.LaneID)
+	}
+	var initialSeriesLane models.Lane
+	if findError := fixture.Database.First(&initialSeriesLane, "id = ?", firstSeriesEvent.LaneID).Error; findError != nil || initialSeriesLane.CalendarID != birthdayMapping.CalendarID {
+		testingContext.Fatalf("mixed series lane = %#v, error = %v", initialSeriesLane, findError)
+	}
 	var holidayLink models.ExternalEventLink
 	if findError := fixture.Database.First(&holidayLink, "provider_event_id = ?", "holiday").Error; findError != nil {
 		testingContext.Fatalf("find holiday link: %v", findError)
 	}
 	protectedRSVP := fixture.CreateRSVP("PROTECT1", holidayLink.EventID)
-	if _, incrementalError := syncService.Synchronize(context.Background(), owner.ID, mappings[0].ID); !errors.Is(incrementalError, services.ErrCalendarConnectionHasLocalUse) {
+	if _, incrementalError := syncService.Synchronize(context.Background(), owner.ID, syncStates[0].ID); !errors.Is(incrementalError, services.ErrCalendarConnectionHasLocalUse) {
 		testingContext.Fatalf("protected incremental sync error = %v", incrementalError)
 	}
 	if findError := fixture.Database.First(&models.ExternalEventLink{}, "id = ? AND event_id = ?", holidayLink.ID, holidayLink.EventID).Error; findError != nil {
@@ -223,17 +254,27 @@ func TestCalendarSynchronizationIsIncrementalAndReconcilesRejectedCursor(testing
 	if findError := fixture.Database.First(&models.RSVP{}, "id = ? AND event_id = ?", protectedRSVP.ID, holidayLink.EventID).Error; findError != nil {
 		testingContext.Fatalf("protected RSVP was removed: %v", findError)
 	}
-	var protectedMapping models.SourceCalendarMapping
-	if findError := fixture.Database.First(&protectedMapping, "id = ?", mappings[0].ID).Error; findError != nil || protectedMapping.SyncCursor == nil || *protectedMapping.SyncCursor != "cursor-1" {
-		testingContext.Fatalf("protected mapping = %#v, error = %v", protectedMapping, findError)
+	var protectedState models.ProviderCalendarSyncState
+	if findError := fixture.Database.First(&protectedState, "id = ?", syncStates[0].ID).Error; findError != nil || protectedState.SyncCursor == nil || *protectedState.SyncCursor != "cursor-1" {
+		testingContext.Fatalf("protected sync state = %#v, error = %v", protectedState, findError)
 	}
 	if deleteError := fixture.Database.Unscoped().Delete(&protectedRSVP).Error; deleteError != nil {
 		testingContext.Fatalf("remove protected RSVP fixture: %v", deleteError)
 	}
-	if _, incrementalError := syncService.Synchronize(context.Background(), owner.ID, mappings[0].ID); incrementalError != nil {
+	if _, incrementalError := syncService.Synchronize(context.Background(), owner.ID, syncStates[0].ID); incrementalError != nil {
 		testingContext.Fatalf("incremental sync: %v", incrementalError)
 	}
 	assertSourceCounts(testingContext, fixture.Database, 4, 3, 1)
+	if findError := fixture.Database.First(&seriesTwoLink, "provider_event_id = ?", "series-2").Error; findError != nil {
+		testingContext.Fatalf("reload second series link: %v", findError)
+	}
+	if seriesTwoLink.SemanticGroup != models.SourceCalendarGroupCalendar || seriesTwoLink.DiagnosticCode != nil {
+		testingContext.Fatalf("updated second series classification = %#v", seriesTwoLink)
+	}
+	var updatedSeriesLane models.Lane
+	if findError := fixture.Database.First(&updatedSeriesLane, "id = ?", firstSeriesEvent.LaneID).Error; findError != nil || updatedSeriesLane.CalendarID != calendarMapping.CalendarID {
+		testingContext.Fatalf("updated series lane = %#v, error = %v", updatedSeriesLane, findError)
+	}
 	var birthdayLink models.ExternalEventLink
 	if findError := fixture.Database.First(&birthdayLink, "provider_event_id = ?", "birthday").Error; findError != nil {
 		testingContext.Fatalf("find birthday link: %v", findError)
@@ -245,24 +286,43 @@ func TestCalendarSynchronizationIsIncrementalAndReconcilesRejectedCursor(testing
 	if birthday.Title != "Updated Birthday" || birthday.StartDate == nil || *birthday.StartDate != "2026-09-01" {
 		testingContext.Fatalf("updated birthday = %#v", birthday)
 	}
+	var birthdayLane models.Lane
+	if findError := fixture.Database.First(&birthdayLane, "id = ?", birthday.LaneID).Error; findError != nil || birthdayLane.CalendarID != birthdayMapping.CalendarID {
+		testingContext.Fatalf("birthday semantic move lane = %#v, error = %v", birthdayLane, findError)
+	}
+	if _, synchronizationError := syncService.Synchronize(context.Background(), owner.ID, syncStates[0].ID); synchronizationError != nil {
+		testingContext.Fatalf("move recurring exception to birthdays: %v", synchronizationError)
+	}
+	if findError := fixture.Database.First(&updatedSeriesLane, "id = ?", firstSeriesEvent.LaneID).Error; findError != nil || updatedSeriesLane.CalendarID != birthdayMapping.CalendarID {
+		testingContext.Fatalf("birthday exception series lane = %#v, error = %v", updatedSeriesLane, findError)
+	}
+	if _, synchronizationError := syncService.Synchronize(context.Background(), owner.ID, syncStates[0].ID); synchronizationError != nil {
+		testingContext.Fatalf("delete recurring birthday exception: %v", synchronizationError)
+	}
+	if findError := fixture.Database.First(&models.ExternalEventLink{}, "provider_event_id = ?", "series-2").Error; !errors.Is(findError, gorm.ErrRecordNotFound) {
+		testingContext.Fatalf("deleted recurring exception link error = %v", findError)
+	}
+	if findError := fixture.Database.First(&updatedSeriesLane, "id = ?", firstSeriesEvent.LaneID).Error; findError != nil || updatedSeriesLane.CalendarID != calendarMapping.CalendarID {
+		testingContext.Fatalf("remaining series lane = %#v, error = %v", updatedSeriesLane, findError)
+	}
 
-	adapter.rejected["cursor-2"] = true
-	adapter.batches[""] = services.ProviderEventBatch{NextSyncCursor: "cursor-3", Events: []services.ProviderEvent{
-		{ID: "birthday", Title: "Reconciled Birthday", Status: "confirmed", Timezone: testsupport.TimezoneName, StartDate: "2026-09-01", EndDate: "2026-09-02"},
+	adapter.rejected["cursor-4"] = true
+	adapter.batches[""] = services.ProviderEventBatch{NextSyncCursor: "cursor-5", Changes: []services.ProviderEventChange{
+		{ProviderEventID: "birthday", SemanticGroup: services.SemanticCalendarGroupCalendar, Title: "Reconciled reminder", Timezone: testsupport.TimezoneName, StartDate: "2026-09-01", EndDate: "2026-09-02"},
 	}}
-	if _, reconciliationError := syncService.Synchronize(context.Background(), owner.ID, mappings[0].ID); reconciliationError != nil {
+	if _, reconciliationError := syncService.Synchronize(context.Background(), owner.ID, syncStates[0].ID); reconciliationError != nil {
 		testingContext.Fatalf("reconcile sync: %v", reconciliationError)
 	}
 	assertSourceCounts(testingContext, fixture.Database, 1, 1, 0)
-	if !reflect.DeepEqual(adapter.cursors, []string{"", "cursor-1", "cursor-1", "cursor-2", ""}) {
+	if !reflect.DeepEqual(adapter.cursors, []string{"", "cursor-1", "cursor-1", "cursor-2", "cursor-3", "cursor-4", ""}) {
 		testingContext.Fatalf("sync cursors = %#v", adapter.cursors)
 	}
-	var mapping models.SourceCalendarMapping
-	if findError := fixture.Database.First(&mapping, "id = ?", mappings[0].ID).Error; findError != nil {
-		testingContext.Fatalf("read mapping: %v", findError)
+	var syncState models.ProviderCalendarSyncState
+	if findError := fixture.Database.First(&syncState, "id = ?", syncStates[0].ID).Error; findError != nil {
+		testingContext.Fatalf("read sync state: %v", findError)
 	}
-	if mapping.SyncCursor == nil || *mapping.SyncCursor != "cursor-3" {
-		testingContext.Fatalf("mapping cursor = %#v", mapping.SyncCursor)
+	if syncState.SyncCursor == nil || *syncState.SyncCursor != "cursor-5" {
+		testingContext.Fatalf("sync state cursor = %#v", syncState.SyncCursor)
 	}
 	var reconciledBirthdayLink models.ExternalEventLink
 	if findError := fixture.Database.First(&reconciledBirthdayLink, "provider_event_id = ?", "birthday").Error; findError != nil {
@@ -270,6 +330,10 @@ func TestCalendarSynchronizationIsIncrementalAndReconcilesRejectedCursor(testing
 	}
 	if reconciledBirthdayLink.EventID != birthday.ID {
 		testingContext.Fatalf("reconciled event ID = %q, want stable %q", reconciledBirthdayLink.EventID, birthday.ID)
+	}
+	var reconciledLane models.Lane
+	if findError := fixture.Database.First(&reconciledLane, "id = ?", birthday.LaneID).Error; findError != nil || reconciledLane.CalendarID != calendarMapping.CalendarID {
+		testingContext.Fatalf("reverse semantic move lane = %#v, error = %v", reconciledLane, findError)
 	}
 }
 

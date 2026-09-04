@@ -121,7 +121,7 @@ func (horizonHandler *handler) serveHTTP(responseWriter http.ResponseWriter, req
 		horizonHandler.writeError(responseWriter, http.StatusUnauthorized, horizonAuthenticationErrorCode, horizonAuthenticationErrorMessage, nil)
 		return
 	}
-	window, windowError := horizonHandler.windowFromRequest(request, currentUser)
+	window, scale, scaleSelected, windowError := horizonHandler.windowFromRequest(request, currentUser, representation == horizonHTMLMediaType)
 	if windowError != nil {
 		if errors.Is(windowError, models.ErrOrganizerTimezoneRequired) {
 			if representation == horizonHTMLMediaType {
@@ -133,11 +133,14 @@ func (horizonHandler *handler) serveHTTP(responseWriter http.ResponseWriter, req
 			return
 		}
 		statusCode := http.StatusUnprocessableEntity
-		if errors.Is(windowError, errMalformedHorizonWindow) {
+		if errors.Is(windowError, errMalformedHorizonWindow) || errors.Is(windowError, errMalformedHorizonScale) {
 			statusCode = http.StatusBadRequest
 		}
 		horizonHandler.writeInvalidWindow(responseWriter, statusCode, windowError)
 		return
+	}
+	if scaleSelected {
+		setHorizonScaleCookie(responseWriter, scale)
 	}
 	projection, projectionError := horizonHandler.projector.Project(request.Context(), currentUser.ID, window)
 	if projectionError != nil {
@@ -152,7 +155,7 @@ func (horizonHandler *handler) serveHTTP(responseWriter http.ResponseWriter, req
 		}
 		return
 	}
-	viewData, viewDataError := newHorizonViewData(projection, horizonHandler.now())
+	viewData, viewDataError := newHorizonViewData(projection, horizonHandler.now(), scale)
 	if viewDataError != nil {
 		horizonHandler.writeError(responseWriter, http.StatusInternalServerError, horizonInternalErrorCode, horizonInternalErrorMessage, viewDataError)
 		return
@@ -223,32 +226,79 @@ func (horizonHandler *handler) writeTimezoneRequired(responseWriter http.Respons
 	}
 }
 
-func (horizonHandler *handler) windowFromRequest(request *http.Request, currentUser *models.User) (services.HorizonWindow, error) {
+func (horizonHandler *handler) windowFromRequest(request *http.Request, currentUser *models.User, useScale bool) (services.HorizonWindow, horizonScale, bool, error) {
 	if currentUser.Timezone == nil {
-		return services.HorizonWindow{}, models.ErrOrganizerTimezoneRequired
+		return services.HorizonWindow{}, "", false, models.ErrOrganizerTimezoneRequired
 	}
 	timezone, timezoneError := models.NewTimezone(*currentUser.Timezone)
 	if timezoneError != nil {
-		return services.HorizonWindow{}, timezoneError
+		return services.HorizonWindow{}, "", false, timezoneError
+	}
+	location, locationError := timezone.Location()
+	if locationError != nil {
+		return services.HorizonWindow{}, "", false, locationError
 	}
 	query := request.URL.Query()
 	startValues, startPresent := query[config.HorizonStartParam]
 	endValues, endPresent := query[config.HorizonEndParam]
+	if !useScale {
+		if !startPresent && !endPresent {
+			window, windowError := services.NewDefaultHorizonWindow(horizonHandler.now(), timezone)
+			return window, horizonScaleDefault, false, windowError
+		}
+		if !startPresent || !endPresent || len(startValues) != 1 || len(endValues) != 1 || startValues[0] == "" || endValues[0] == "" {
+			return services.HorizonWindow{}, "", false, errMalformedHorizonWindow
+		}
+		start, startError := time.Parse(time.RFC3339, startValues[0])
+		if startError != nil {
+			return services.HorizonWindow{}, "", false, errMalformedHorizonWindow
+		}
+		end, endError := time.Parse(time.RFC3339, endValues[0])
+		if endError != nil {
+			return services.HorizonWindow{}, "", false, errMalformedHorizonWindow
+		}
+		window, windowError := services.NewHorizonWindow(start, end, timezone)
+		return window, horizonScaleDefault, false, windowError
+	}
+	scale, scaleSelected, scaleError := horizonScaleFromRequest(request)
+	if scaleError != nil {
+		return services.HorizonWindow{}, "", false, scaleError
+	}
+	if scaleSelected {
+		if endPresent || (startPresent && (len(startValues) != 1 || startValues[0] == "")) {
+			return services.HorizonWindow{}, "", false, errMalformedHorizonWindow
+		}
+		localReference := horizonHandler.now().In(location)
+		start := time.Date(localReference.Year(), localReference.Month(), localReference.Day(), 0, 0, 0, 0, location)
+		if startPresent {
+			parsedStart, startError := time.Parse(time.RFC3339, startValues[0])
+			if startError != nil {
+				return services.HorizonWindow{}, "", false, errMalformedHorizonWindow
+			}
+			start = parsedStart
+		}
+		window, windowError := services.NewHorizonWindow(start, horizonScaleEnd(start, location, scale), timezone)
+		return window, scale, true, windowError
+	}
 	if !startPresent && !endPresent {
-		return services.NewDefaultHorizonWindow(horizonHandler.now(), timezone)
+		localReference := horizonHandler.now().In(location)
+		start := time.Date(localReference.Year(), localReference.Month(), localReference.Day(), 0, 0, 0, 0, location)
+		window, windowError := services.NewHorizonWindow(start, horizonScaleEnd(start, location, scale), timezone)
+		return window, scale, false, windowError
 	}
 	if !startPresent || !endPresent || len(startValues) != 1 || len(endValues) != 1 || startValues[0] == "" || endValues[0] == "" {
-		return services.HorizonWindow{}, errMalformedHorizonWindow
+		return services.HorizonWindow{}, "", false, errMalformedHorizonWindow
 	}
 	start, startError := time.Parse(time.RFC3339, startValues[0])
 	if startError != nil {
-		return services.HorizonWindow{}, errMalformedHorizonWindow
+		return services.HorizonWindow{}, "", false, errMalformedHorizonWindow
 	}
 	end, endError := time.Parse(time.RFC3339, endValues[0])
 	if endError != nil {
-		return services.HorizonWindow{}, errMalformedHorizonWindow
+		return services.HorizonWindow{}, "", false, errMalformedHorizonWindow
 	}
-	return services.NewHorizonWindow(start, end, timezone)
+	window, windowError := services.NewHorizonWindow(start, end, timezone)
+	return window, scale, false, windowError
 }
 
 func (horizonHandler *handler) writeInvalidWindow(responseWriter http.ResponseWriter, statusCode int, windowError error) {

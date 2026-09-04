@@ -3,6 +3,7 @@ package calendar_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -13,6 +14,7 @@ import (
 	"github.com/tyemirov/RSVP/pkg/config"
 	"github.com/tyemirov/RSVP/pkg/handlers/calendar"
 	"github.com/tyemirov/RSVP/pkg/middleware"
+	"github.com/tyemirov/RSVP/pkg/services"
 	"gorm.io/gorm"
 )
 
@@ -20,16 +22,19 @@ func TestCalendarResourceOperationsPersistOrderAndVisibility(testingContext *tes
 	fixture := testsupport.NewFixture(testingContext)
 	owner := fixture.CreateUser(testsupport.OwnerUserID)
 
-	firstResponse := requestCalendar(testingContext, fixture, owner, http.MethodPost, config.WebCalendars, `{"name":"Personal","symbol":"P","color_token":"personal","timezone":"America/Los_Angeles"}`, "application/json")
+	firstResponse := requestCalendar(testingContext, fixture, owner, http.MethodPost, config.WebCalendars, `{"name":"Personal","color_token":"personal","timezone":"America/Los_Angeles"}`, "application/json")
 	if firstResponse.Code != http.StatusCreated {
 		testingContext.Fatalf("first create status = %d, want %d; body = %s", firstResponse.Code, http.StatusCreated, firstResponse.Body.String())
 	}
 	first := decodeCalendar(testingContext, firstResponse)
+	if strings.Contains(firstResponse.Body.String(), `"symbol"`) {
+		testingContext.Fatalf("calendar response contains removed symbol field: %s", firstResponse.Body.String())
+	}
 	if first.DisplayOrder != 0 || !first.Visible || firstResponse.Header().Get("Location") != config.WebCalendars+first.ID {
 		testingContext.Fatalf("first calendar response = %#v; Location = %q", first, firstResponse.Header().Get("Location"))
 	}
 
-	secondResponse := requestCalendar(testingContext, fixture, owner, http.MethodPost, config.WebCalendars, `{"name":"Work","symbol":"W","color_token":"work","timezone":"America/Los_Angeles"}`, "application/json")
+	secondResponse := requestCalendar(testingContext, fixture, owner, http.MethodPost, config.WebCalendars, `{"name":"Work","color_token":"work","timezone":"America/Los_Angeles"}`, "application/json")
 	if secondResponse.Code != http.StatusCreated {
 		testingContext.Fatalf("second create status = %d, want %d; body = %s", secondResponse.Code, http.StatusCreated, secondResponse.Body.String())
 	}
@@ -128,6 +133,8 @@ func TestCalendarResourceRejectsInvalidBoundaryRequests(testingContext *testing.
 		{name: "media type", method: http.MethodPatch, target: config.WebCalendars + calendarRecord.ID, body: `{"visible":false}`, contentType: "text/plain", wantStatus: http.StatusUnsupportedMediaType},
 		{name: "empty patch", method: http.MethodPatch, target: config.WebCalendars + calendarRecord.ID, body: `{}`, contentType: "application/json", wantStatus: http.StatusUnprocessableEntity},
 		{name: "unknown field", method: http.MethodPatch, target: config.WebCalendars + calendarRecord.ID, body: `{"legacy":true}`, contentType: "application/json", wantStatus: http.StatusBadRequest},
+		{name: "removed symbol field", method: http.MethodPatch, target: config.WebCalendars + calendarRecord.ID, body: `{"symbol":"C"}`, contentType: "application/json", wantStatus: http.StatusBadRequest},
+		{name: "removed create symbol field", method: http.MethodPost, target: config.WebCalendars, body: `{"name":"Legacy","symbol":"L","color_token":"legacy","timezone":"America/Los_Angeles"}`, contentType: "application/json", wantStatus: http.StatusBadRequest},
 		{name: "trailing value", method: http.MethodPatch, target: config.WebCalendars + calendarRecord.ID, body: `{"visible":false}{}`, contentType: "application/json", wantStatus: http.StatusBadRequest},
 	}
 	for _, testCase := range testCases {
@@ -140,6 +147,38 @@ func TestCalendarResourceRejectsInvalidBoundaryRequests(testingContext *testing.
 				assertTypedError(testingContext, response)
 			}
 		})
+	}
+}
+
+func TestCalendarResourceEnforcesVisibleCalendarLimit(testingContext *testing.T) {
+	fixture := testsupport.NewFixture(testingContext)
+	owner := fixture.CreateUser(testsupport.OwnerUserID)
+	confirmTimezone(testingContext, fixture.Database, &owner)
+	calendars := make([]models.Calendar, 0, services.MaxVisibleCalendars+1)
+	for calendarIndex := 0; calendarIndex <= services.MaxVisibleCalendars; calendarIndex++ {
+		calendars = append(calendars, createCalendar(testingContext, fixture.Database, owner.ID, fmt.Sprintf("CAL%05d", calendarIndex), calendarIndex))
+	}
+	hiddenCalendar := calendars[len(calendars)-1]
+	if updateError := fixture.Database.Model(&hiddenCalendar).Update("visible", false).Error; updateError != nil {
+		testingContext.Fatalf("hide overflow calendar: %v", updateError)
+	}
+
+	overflowResponse := requestCalendar(testingContext, fixture, owner, http.MethodPatch, config.WebCalendars+hiddenCalendar.ID, `{"visible":true}`, "application/json")
+	if overflowResponse.Code != http.StatusConflict {
+		testingContext.Fatalf("overflow visibility status = %d, want %d; body = %s", overflowResponse.Code, http.StatusConflict, overflowResponse.Body.String())
+	}
+	createResponse := requestCalendar(testingContext, fixture, owner, http.MethodPost, config.WebCalendars, `{"name":"Overflow","color_token":"overflow","timezone":"America/Los_Angeles"}`, "application/json")
+	if createResponse.Code != http.StatusConflict {
+		testingContext.Fatalf("overflow create status = %d, want %d; body = %s", createResponse.Code, http.StatusConflict, createResponse.Body.String())
+	}
+
+	hideResponse := requestCalendar(testingContext, fixture, owner, http.MethodPatch, config.WebCalendars+calendars[0].ID, `{"visible":false}`, "application/json")
+	if hideResponse.Code != http.StatusOK {
+		testingContext.Fatalf("hide status = %d, want %d; body = %s", hideResponse.Code, http.StatusOK, hideResponse.Body.String())
+	}
+	showResponse := requestCalendar(testingContext, fixture, owner, http.MethodPatch, config.WebCalendars+hiddenCalendar.ID, `{"visible":true}`, "application/json")
+	if showResponse.Code != http.StatusOK || !decodeCalendar(testingContext, showResponse).Visible {
+		testingContext.Fatalf("replacement visibility status = %d; body = %s", showResponse.Code, showResponse.Body.String())
 	}
 }
 
@@ -201,7 +240,7 @@ func confirmTimezone(testingContext *testing.T, database *gorm.DB, owner *models
 
 func createCalendar(testingContext *testing.T, database *gorm.DB, ownerID string, identifier string, order int) models.Calendar {
 	testingContext.Helper()
-	calendarRecord, calendarError := models.NewCalendar(ownerID, "Calendar", "C", "test", order)
+	calendarRecord, calendarError := models.NewCalendar(ownerID, "Calendar", "test", order)
 	if calendarError != nil {
 		testingContext.Fatalf("construct calendar: %v", calendarError)
 	}

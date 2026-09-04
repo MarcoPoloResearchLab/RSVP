@@ -44,6 +44,7 @@ func TestDatabaseInitializationCreatesCanonicalTables(testingContext *testing.T)
 		&models.RSVP{},
 		&models.AttentionPolicy{},
 		&models.Probe{},
+		&models.ProviderCalendarSyncState{},
 	}
 	for _, canonicalModel := range canonicalModels {
 		if !databaseConnection.Migrator().HasTable(canonicalModel) {
@@ -113,147 +114,26 @@ func TestDatabaseInitializationRejectsIncompleteCanonicalColumns(testingContext 
 	}
 }
 
-func TestDatabaseInitializationMigratesPredecessorCalendarConnectionSchema(testingContext *testing.T) {
-	databasePath := filepath.Join(testingContext.TempDir(), "predecessor.db")
+func TestDatabaseInitializationRemovesCalendarSymbolColumn(testingContext *testing.T) {
+	databasePath := filepath.Join(testingContext.TempDir(), "calendar-symbol.db")
 	databaseConnection, openError := services.OpenDatabase(databasePath)
 	if openError != nil {
 		testingContext.Fatalf("open canonical database: %v", openError)
 	}
 	timezoneName := "America/Los_Angeles"
-	owner := models.User{
-		BaseModel: models.BaseModel{ID: "USR00001"},
-		Email:     "owner@example.test",
-		Timezone:  &timezoneName,
-	}
+	owner := models.User{BaseModel: models.BaseModel{ID: "USR00001"}, Email: "owner@example.test", Timezone: &timezoneName}
 	if createError := databaseConnection.Create(&owner).Error; createError != nil {
 		testingContext.Fatalf("create owner: %v", createError)
 	}
-	connection, connectionError := models.NewCalendarConnection(owner.ID, bytes.Repeat([]byte{0x11}, 12), []byte{0x22})
-	if connectionError != nil {
-		testingContext.Fatalf("construct calendar connection: %v", connectionError)
-	}
-	if createError := databaseConnection.Create(connection).Error; createError != nil {
-		testingContext.Fatalf("create calendar connection: %v", createError)
-	}
-	calendar, calendarError := models.NewCalendar(owner.ID, "Existing", "E", "existing", 0)
+	calendar, calendarError := models.NewCalendar(owner.ID, "Personal", "personal", 0)
 	if calendarError != nil {
-		testingContext.Fatalf("construct existing calendar: %v", calendarError)
+		testingContext.Fatalf("construct calendar: %v", calendarError)
 	}
 	if createError := databaseConnection.Create(calendar).Error; createError != nil {
-		testingContext.Fatalf("create existing calendar: %v", createError)
+		testingContext.Fatalf("create calendar: %v", createError)
 	}
-	mapping, mappingError := models.NewSourceCalendarMapping(connection.ID, calendar.ID, "source", models.SourceCalendarGroupCalendar)
-	if mappingError != nil {
-		testingContext.Fatalf("construct existing source mapping: %v", mappingError)
-	}
-	eventCursor := "event-cursor"
-	mapping.SyncCursor = &eventCursor
-	if createError := databaseConnection.Create(mapping).Error; createError != nil {
-		testingContext.Fatalf("create existing source mapping: %v", createError)
-	}
-	sqlDatabase, databaseError := databaseConnection.DB()
-	if databaseError != nil {
-		testingContext.Fatalf("get canonical database handle: %v", databaseError)
-	}
-	sqlDatabase.SetMaxOpenConns(1)
-	predecessorStatements := []string{
-		"PRAGMA foreign_keys = OFF",
-		"CREATE TABLE source_calendar_mappings_predecessor (id varchar(8), created_at datetime, updated_at datetime, deleted_at datetime, connection_id varchar(8) NOT NULL, calendar_id varchar(8) NOT NULL, provider_calendar_id text NOT NULL, sync_cursor text, PRIMARY KEY (id), CONSTRAINT fk_source_calendar_mappings_calendar FOREIGN KEY (calendar_id) REFERENCES calendars(id) ON DELETE RESTRICT ON UPDATE CASCADE, CONSTRAINT fk_calendar_connections_mappings FOREIGN KEY (connection_id) REFERENCES calendar_connections(id) ON DELETE CASCADE ON UPDATE CASCADE)",
-		"INSERT INTO source_calendar_mappings_predecessor (id, created_at, updated_at, deleted_at, connection_id, calendar_id, provider_calendar_id, sync_cursor) SELECT id, created_at, updated_at, deleted_at, connection_id, calendar_id, provider_calendar_id, sync_cursor FROM source_calendar_mappings",
-		"DROP TABLE source_calendar_mappings",
-		"ALTER TABLE source_calendar_mappings_predecessor RENAME TO source_calendar_mappings",
-		"CREATE UNIQUE INDEX idx_source_calendar_mappings_calendar_id ON source_calendar_mappings (calendar_id)",
-		"CREATE UNIQUE INDEX source_provider_calendar ON source_calendar_mappings (connection_id, provider_calendar_id)",
-		"ALTER TABLE calendar_connections DROP COLUMN calendar_import_cutover_at",
-		"ALTER TABLE calendar_connections DROP COLUMN calendar_list_sync_cursor",
-	}
-	for _, statement := range predecessorStatements {
-		if _, alterError := sqlDatabase.Exec(statement); alterError != nil {
-			testingContext.Fatalf("construct predecessor schema with %q: %v", statement, alterError)
-		}
-	}
-	if closeError := sqlDatabase.Close(); closeError != nil {
-		testingContext.Fatalf("close predecessor database: %v", closeError)
-	}
-
-	migratedDatabase, migrationError := services.OpenDatabase(databasePath)
-	if migrationError != nil {
-		testingContext.Fatalf("migrate predecessor database: %v", migrationError)
-	}
-	migratedSQLDatabase, databaseError := migratedDatabase.DB()
-	if databaseError != nil {
-		testingContext.Fatalf("get migrated database handle: %v", databaseError)
-	}
-	testingContext.Cleanup(func() {
-		if closeError := migratedSQLDatabase.Close(); closeError != nil {
-			testingContext.Errorf("close migrated database: %v", closeError)
-		}
-	})
-	if !migratedDatabase.Migrator().HasColumn(&models.CalendarConnection{}, "CalendarListSyncCursor") {
-		testingContext.Fatal("migrated database does not contain CalendarList sync cursor")
-	}
-	if !migratedDatabase.Migrator().HasColumn(&models.CalendarConnection{}, "CalendarImportCutoverAt") ||
-		!migratedDatabase.Migrator().HasColumn(&models.SourceCalendarMapping{}, "SemanticGroup") {
-		testingContext.Fatal("migrated database does not contain the calendar grouping columns")
-	}
-	var migratedConnection models.CalendarConnection
-	if findError := migratedDatabase.First(&migratedConnection, "id = ?", connection.ID).Error; findError != nil {
-		testingContext.Fatalf("read preserved calendar connection: %v", findError)
-	}
-	if migratedConnection.OrganizerID != owner.ID || migratedConnection.CalendarListSyncCursor != nil {
-		testingContext.Fatalf("migrated calendar connection = %#v", migratedConnection)
-	}
-	var migratedMapping models.SourceCalendarMapping
-	if findError := migratedDatabase.First(&migratedMapping, "id = ?", mapping.ID).Error; findError != nil {
-		testingContext.Fatalf("read preserved source mapping: %v", findError)
-	}
-	if migratedMapping.CalendarID != calendar.ID || migratedMapping.SemanticGroup != models.SourceCalendarGroupCalendar || migratedMapping.SyncCursor != nil {
-		testingContext.Fatalf("migrated source mapping = %#v", migratedMapping)
-	}
-}
-
-func TestDatabaseInitializationMigratesProviderGroupToSemanticGroup(testingContext *testing.T) {
-	databasePath := filepath.Join(testingContext.TempDir(), "provider-group-predecessor.db")
-	databaseConnection, openError := services.OpenDatabase(databasePath)
-	if openError != nil {
-		testingContext.Fatalf("open canonical database: %v", openError)
-	}
-	timezoneName := "America/Los_Angeles"
-	owner := models.User{
-		BaseModel: models.BaseModel{ID: "USR00001"},
-		Email:     "owner@example.test",
-		Timezone:  &timezoneName,
-	}
-	if createError := databaseConnection.Create(&owner).Error; createError != nil {
-		testingContext.Fatalf("create owner: %v", createError)
-	}
-	connection, connectionError := models.NewCalendarConnection(owner.ID, bytes.Repeat([]byte{0x11}, 12), []byte{0x22})
-	if connectionError != nil {
-		testingContext.Fatalf("construct calendar connection: %v", connectionError)
-	}
-	listCursor := "calendar-list-cursor"
-	connection.CalendarListSyncCursor = &listCursor
-	if createError := databaseConnection.Create(connection).Error; createError != nil {
-		testingContext.Fatalf("create calendar connection: %v", createError)
-	}
-	calendar, calendarError := models.NewCalendar(owner.ID, "Existing", "E", "existing", 0)
-	if calendarError != nil {
-		testingContext.Fatalf("construct existing calendar: %v", calendarError)
-	}
-	if createError := databaseConnection.Create(calendar).Error; createError != nil {
-		testingContext.Fatalf("create existing calendar: %v", createError)
-	}
-	mapping, mappingError := models.NewSourceCalendarMapping(connection.ID, calendar.ID, "source", models.SourceCalendarGroupCalendar)
-	if mappingError != nil {
-		testingContext.Fatalf("construct source mapping: %v", mappingError)
-	}
-	eventCursor := "event-cursor"
-	mapping.SyncCursor = &eventCursor
-	if createError := databaseConnection.Create(mapping).Error; createError != nil {
-		testingContext.Fatalf("create source mapping: %v", createError)
-	}
-	if renameError := databaseConnection.Exec("ALTER TABLE source_calendar_mappings RENAME COLUMN semantic_group TO provider_group").Error; renameError != nil {
-		testingContext.Fatalf("construct provider group predecessor: %v", renameError)
+	if alterError := databaseConnection.Exec("ALTER TABLE calendars ADD COLUMN symbol text NOT NULL DEFAULT 'P'").Error; alterError != nil {
+		testingContext.Fatalf("add predecessor calendar symbol: %v", alterError)
 	}
 	sqlDatabase, databaseError := databaseConnection.DB()
 	if databaseError != nil {
@@ -265,7 +145,159 @@ func TestDatabaseInitializationMigratesProviderGroupToSemanticGroup(testingConte
 
 	migratedDatabase, migrationError := services.OpenDatabase(databasePath)
 	if migrationError != nil {
-		testingContext.Fatalf("migrate provider group predecessor: %v", migrationError)
+		testingContext.Fatalf("migrate calendar symbol contract: %v", migrationError)
+	}
+	if migratedDatabase.Migrator().HasColumn("calendars", "symbol") {
+		testingContext.Fatal("canonical calendar table contains obsolete symbol column")
+	}
+	var migratedCalendar models.Calendar
+	if findError := migratedDatabase.First(&migratedCalendar, "id = ?", calendar.ID).Error; findError != nil {
+		testingContext.Fatalf("read migrated calendar: %v", findError)
+	}
+	if migratedCalendar.Name != "Personal" || migratedCalendar.ColorToken != "personal" {
+		testingContext.Fatalf("migrated calendar = %#v", migratedCalendar)
+	}
+}
+
+func TestDatabaseInitializationMigratesTaskPredecessor(testingContext *testing.T) {
+	databasePath := filepath.Join(testingContext.TempDir(), "task-predecessor.db")
+	databaseConnection, openError := services.OpenDatabase(databasePath)
+	if openError != nil {
+		testingContext.Fatalf("open canonical database: %v", openError)
+	}
+	owner := models.User{BaseModel: models.BaseModel{ID: "USR00001"}, Email: "owner@example.test"}
+	if createError := databaseConnection.Create(&owner).Error; createError != nil {
+		testingContext.Fatalf("create task predecessor owner: %v", createError)
+	}
+	connection, connectionError := models.NewCalendarConnection(owner.ID, bytes.Repeat([]byte{0x11}, 12), []byte{0x22})
+	if connectionError != nil {
+		testingContext.Fatalf("construct task predecessor connection: %v", connectionError)
+	}
+	if createError := databaseConnection.Create(connection).Error; createError != nil {
+		testingContext.Fatalf("create task predecessor connection: %v", createError)
+	}
+	if alterError := databaseConnection.Exec("ALTER TABLE calendars ADD COLUMN symbol text NOT NULL DEFAULT 'P'").Error; alterError != nil {
+		testingContext.Fatalf("add task predecessor calendar symbol: %v", alterError)
+	}
+	if dropError := databaseConnection.Migrator().DropTable(&models.Task{}); dropError != nil {
+		testingContext.Fatalf("construct task predecessor: %v", dropError)
+	}
+	sqlDatabase, databaseError := databaseConnection.DB()
+	if databaseError != nil {
+		testingContext.Fatalf("get task predecessor database handle: %v", databaseError)
+	}
+	if closeError := sqlDatabase.Close(); closeError != nil {
+		testingContext.Fatalf("close task predecessor database: %v", closeError)
+	}
+
+	migratedDatabase, migrationError := services.OpenDatabase(databasePath)
+	if migrationError != nil {
+		testingContext.Fatalf("migrate task predecessor: %v", migrationError)
+	}
+	migratedSQLDatabase, databaseError := migratedDatabase.DB()
+	if databaseError != nil {
+		testingContext.Fatalf("get migrated task database handle: %v", databaseError)
+	}
+	testingContext.Cleanup(func() {
+		if closeError := migratedSQLDatabase.Close(); closeError != nil {
+			testingContext.Errorf("close migrated task database: %v", closeError)
+		}
+	})
+	if !migratedDatabase.Migrator().HasTable(&models.Task{}) {
+		testingContext.Fatal("canonical task table is absent after migration")
+	}
+	if migratedDatabase.Migrator().HasColumn("calendars", "symbol") {
+		testingContext.Fatal("canonical calendar table contains obsolete symbol column after task migration")
+	}
+	var migratedTask models.Task
+	if findError := migratedDatabase.First(&migratedTask, "resource_type = ? AND resource_id = ?", models.TaskResourceCalendarConnection, connection.ID).Error; findError != nil {
+		testingContext.Fatalf("read completed predecessor task: %v", findError)
+	}
+	if migratedTask.State != models.TaskSucceeded || migratedTask.RetryCount != 1 {
+		testingContext.Fatalf("completed predecessor task = %#v", migratedTask)
+	}
+}
+
+func TestDatabaseInitializationMigratesProviderCalendarSyncPredecessor(testingContext *testing.T) {
+	databasePath := filepath.Join(testingContext.TempDir(), "provider-calendar-predecessor.db")
+	databaseConnection, openError := services.OpenDatabase(databasePath)
+	if openError != nil {
+		testingContext.Fatalf("open canonical database: %v", openError)
+	}
+	timezoneName := "America/Los_Angeles"
+	owner := models.User{
+		BaseModel: models.BaseModel{ID: "USR00001"},
+		Email:     "owner@example.test",
+		Timezone:  &timezoneName,
+	}
+	if createError := databaseConnection.Create(&owner).Error; createError != nil {
+		testingContext.Fatalf("create owner: %v", createError)
+	}
+	connection, connectionError := models.NewCalendarConnection(owner.ID, bytes.Repeat([]byte{0x11}, 12), []byte{0x22})
+	if connectionError != nil {
+		testingContext.Fatalf("construct calendar connection: %v", connectionError)
+	}
+	if createError := databaseConnection.Create(connection).Error; createError != nil {
+		testingContext.Fatalf("create calendar connection: %v", createError)
+	}
+	calendarListCursor := "calendar-list-cursor"
+	if updateError := databaseConnection.Model(connection).Update("calendar_list_sync_cursor", calendarListCursor).Error; updateError != nil {
+		testingContext.Fatalf("store predecessor CalendarList cursor: %v", updateError)
+	}
+	calendar, calendarError := models.NewCalendar(owner.ID, "Existing", "existing", 0)
+	if calendarError != nil {
+		testingContext.Fatalf("construct existing calendar: %v", calendarError)
+	}
+	if createError := databaseConnection.Create(calendar).Error; createError != nil {
+		testingContext.Fatalf("create existing calendar: %v", createError)
+	}
+	syncState, stateError := models.NewProviderCalendarSyncState(connection.ID, "source")
+	if stateError != nil {
+		testingContext.Fatalf("construct provider calendar state: %v", stateError)
+	}
+	eventCursor := "event-cursor"
+	syncState.SyncCursor = &eventCursor
+	if createError := databaseConnection.Create(syncState).Error; createError != nil {
+		testingContext.Fatalf("create provider calendar state: %v", createError)
+	}
+	mapping, mappingError := models.NewSourceCalendarMapping(syncState.ID, calendar.ID, models.SourceCalendarGroupCalendar)
+	if mappingError != nil {
+		testingContext.Fatalf("construct source mapping: %v", mappingError)
+	}
+	if createError := databaseConnection.Create(mapping).Error; createError != nil {
+		testingContext.Fatalf("create source mapping: %v", createError)
+	}
+	sqlDatabase, databaseError := databaseConnection.DB()
+	if databaseError != nil {
+		testingContext.Fatalf("get predecessor database handle: %v", databaseError)
+	}
+	sqlDatabase.SetMaxOpenConns(1)
+	predecessorStatements := []string{
+		"PRAGMA foreign_keys = OFF",
+		"ALTER TABLE calendars ADD COLUMN symbol text NOT NULL DEFAULT 'E'",
+		"CREATE TABLE source_calendar_mappings_predecessor (id text PRIMARY KEY, created_at datetime, updated_at datetime, deleted_at datetime, connection_id text NOT NULL, calendar_id text NOT NULL, provider_calendar_id text NOT NULL, semantic_group text NOT NULL CONSTRAINT source_calendar_group CHECK (semantic_group IN ('calendar','birthdays')), sync_cursor text, FOREIGN KEY (connection_id) REFERENCES calendar_connections(id) ON UPDATE CASCADE ON DELETE CASCADE, FOREIGN KEY (calendar_id) REFERENCES calendars(id) ON UPDATE CASCADE ON DELETE RESTRICT)",
+		"INSERT INTO source_calendar_mappings_predecessor SELECT mappings.id, mappings.created_at, mappings.updated_at, mappings.deleted_at, states.connection_id, mappings.calendar_id, states.provider_calendar_id, mappings.semantic_group, states.sync_cursor FROM source_calendar_mappings AS mappings JOIN provider_calendar_sync_states AS states ON states.id = mappings.sync_state_id",
+		"CREATE TABLE external_event_series_links_predecessor (id text PRIMARY KEY, created_at datetime, updated_at datetime, deleted_at datetime, mapping_id text NOT NULL, event_series_id text NOT NULL, provider_series_id text NOT NULL, FOREIGN KEY (mapping_id) REFERENCES source_calendar_mappings(id) ON UPDATE CASCADE ON DELETE CASCADE, FOREIGN KEY (event_series_id) REFERENCES event_series(id) ON UPDATE CASCADE ON DELETE CASCADE)",
+		"CREATE TABLE external_event_links_predecessor (id text PRIMARY KEY, created_at datetime, updated_at datetime, deleted_at datetime, mapping_id text NOT NULL, event_id text NOT NULL, provider_event_id text NOT NULL, provider_series_id text, FOREIGN KEY (mapping_id) REFERENCES source_calendar_mappings(id) ON UPDATE CASCADE ON DELETE CASCADE, FOREIGN KEY (event_id) REFERENCES events(id) ON UPDATE CASCADE ON DELETE CASCADE)",
+		"CREATE TABLE calendar_syncs_predecessor (id text PRIMARY KEY, created_at datetime, updated_at datetime, deleted_at datetime, mapping_id text NOT NULL, state text NOT NULL CONSTRAINT calendar_sync_state CHECK (state IN ('pending','running','succeeded','failed')), started_at datetime NOT NULL, finished_at datetime, error_code text, FOREIGN KEY (mapping_id) REFERENCES source_calendar_mappings(id) ON UPDATE CASCADE ON DELETE CASCADE)",
+		"DROP TABLE calendar_syncs", "DROP TABLE external_event_links", "DROP TABLE external_event_series_links", "DROP TABLE source_calendar_mappings", "DROP TABLE provider_calendar_sync_states", "DROP TABLE tasks",
+		"ALTER TABLE source_calendar_mappings_predecessor RENAME TO source_calendar_mappings", "ALTER TABLE external_event_series_links_predecessor RENAME TO external_event_series_links", "ALTER TABLE external_event_links_predecessor RENAME TO external_event_links", "ALTER TABLE calendar_syncs_predecessor RENAME TO calendar_syncs",
+		"CREATE UNIQUE INDEX source_provider_calendar ON source_calendar_mappings (connection_id, provider_calendar_id, semantic_group)", "CREATE UNIQUE INDEX source_calendar_identity ON source_calendar_mappings (calendar_id)",
+		"CREATE UNIQUE INDEX external_provider_series ON external_event_series_links (mapping_id, provider_series_id)", "CREATE UNIQUE INDEX external_series_identity ON external_event_series_links (event_series_id)",
+		"CREATE UNIQUE INDEX external_provider_event ON external_event_links (mapping_id, provider_event_id)", "CREATE UNIQUE INDEX external_event_identity ON external_event_links (event_id)",
+	}
+	for _, statement := range predecessorStatements {
+		if _, alterError := sqlDatabase.Exec(statement); alterError != nil {
+			testingContext.Fatalf("construct provider calendar predecessor with %q: %v", statement, alterError)
+		}
+	}
+	if closeError := sqlDatabase.Close(); closeError != nil {
+		testingContext.Fatalf("close predecessor database: %v", closeError)
+	}
+
+	migratedDatabase, migrationError := services.OpenDatabase(databasePath)
+	if migrationError != nil {
+		testingContext.Fatalf("migrate provider calendar predecessor: %v", migrationError)
 	}
 	migratedSQLDatabase, databaseError := migratedDatabase.DB()
 	if databaseError != nil {
@@ -276,22 +308,35 @@ func TestDatabaseInitializationMigratesProviderGroupToSemanticGroup(testingConte
 			testingContext.Errorf("close migrated database: %v", closeError)
 		}
 	})
-	if !migratedDatabase.Migrator().HasColumn(&models.SourceCalendarMapping{}, "SemanticGroup") ||
-		migratedDatabase.Migrator().HasColumn("source_calendar_mappings", "provider_group") {
-		testingContext.Fatal("migrated database does not use the semantic group column")
+	var migratedState models.ProviderCalendarSyncState
+	if findError := migratedDatabase.First(&migratedState, "connection_id = ? AND provider_calendar_id = ?", connection.ID, "source").Error; findError != nil {
+		testingContext.Fatalf("read migrated provider calendar state: %v", findError)
+	}
+	if migratedState.SyncCursor != nil {
+		testingContext.Fatalf("migrated provider calendar cursor = %#v", migratedState.SyncCursor)
 	}
 	var migratedConnection models.CalendarConnection
 	if findError := migratedDatabase.First(&migratedConnection, "id = ?", connection.ID).Error; findError != nil {
-		testingContext.Fatalf("read preserved calendar connection: %v", findError)
+		testingContext.Fatalf("read migrated calendar connection: %v", findError)
 	}
-	if migratedConnection.CalendarListSyncCursor == nil || *migratedConnection.CalendarListSyncCursor != listCursor {
-		testingContext.Fatalf("migrated calendar list cursor = %#v", migratedConnection.CalendarListSyncCursor)
+	if migratedConnection.CalendarListSyncCursor != nil {
+		testingContext.Fatalf("migrated CalendarList cursor = %#v", migratedConnection.CalendarListSyncCursor)
+	}
+	var migratedTask models.Task
+	if findError := migratedDatabase.First(&migratedTask, "resource_type = ? AND resource_id = ?", models.TaskResourceCalendarConnection, connection.ID).Error; findError != nil {
+		testingContext.Fatalf("read migrated connection task: %v", findError)
+	}
+	if migratedTask.State != models.TaskPending || migratedTask.RetryCount != 0 {
+		testingContext.Fatalf("migrated connection task = %#v", migratedTask)
+	}
+	if migratedDatabase.Migrator().HasColumn("calendars", "symbol") {
+		testingContext.Fatal("canonical calendar table contains obsolete symbol column after provider migration")
 	}
 	var migratedMapping models.SourceCalendarMapping
 	if findError := migratedDatabase.First(&migratedMapping, "id = ?", mapping.ID).Error; findError != nil {
 		testingContext.Fatalf("read preserved source mapping: %v", findError)
 	}
-	if migratedMapping.CalendarID != calendar.ID || migratedMapping.SemanticGroup != models.SourceCalendarGroupCalendar || migratedMapping.SyncCursor != nil {
+	if migratedMapping.SyncStateID != migratedState.ID || migratedMapping.CalendarID != calendar.ID || migratedMapping.SemanticGroup != models.SourceCalendarGroupCalendar {
 		testingContext.Fatalf("migrated source mapping = %#v", migratedMapping)
 	}
 }
@@ -327,7 +372,7 @@ func TestCanonicalSchemaEnforcesLaneAndEventConstraints(testingContext *testing.
 	if createError := databaseConnection.Create(&owner).Error; createError != nil {
 		testingContext.Fatalf("create owner: %v", createError)
 	}
-	calendar, calendarError := models.NewCalendar(owner.ID, "Calendar", "calendar", "test", 0)
+	calendar, calendarError := models.NewCalendar(owner.ID, "Calendar", "test", 0)
 	if calendarError != nil {
 		testingContext.Fatalf("construct calendar: %v", calendarError)
 	}
@@ -354,5 +399,8 @@ func TestCanonicalSchemaEnforcesLaneAndEventConstraints(testingContext *testing.
 	}
 	if databaseConnection.Migrator().HasColumn("events", "user_id") {
 		testingContext.Fatal("events table contains obsolete user_id column")
+	}
+	if databaseConnection.Migrator().HasColumn("calendars", "symbol") {
+		testingContext.Fatal("calendars table contains obsolete symbol column")
 	}
 }

@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	// DefaultHorizonWindowDays is the default local calendar-day count.
+	// DefaultHorizonWindowDays is the default JSON projection day count.
 	DefaultHorizonWindowDays = 90
 	// MaximumHorizonWindowDays is the largest accepted local calendar-day count.
 	MaximumHorizonWindowDays = 366
@@ -45,7 +45,7 @@ type HorizonWindow struct {
 	timezone models.Timezone
 }
 
-// NewDefaultHorizonWindow constructs the default 90-day local window.
+// NewDefaultHorizonWindow constructs the default JSON projection window.
 func NewDefaultHorizonWindow(referenceTime time.Time, timezone models.Timezone) (HorizonWindow, error) {
 	if referenceTime.IsZero() {
 		return HorizonWindow{}, ErrInvalidHorizonWindow
@@ -104,7 +104,6 @@ type HorizonProjection struct {
 type HorizonCalendarProjection struct {
 	ID             string                  `json:"id"`
 	Name           string                  `json:"name"`
-	Symbol         string                  `json:"symbol"`
 	ColorToken     string                  `json:"color_token"`
 	DisplayOrder   int                     `json:"display_order"`
 	Visible        bool                    `json:"visible"`
@@ -240,7 +239,7 @@ func (service *HorizonProjectionService) project(ctx context.Context, organizerI
 	for _, calendar := range calendars {
 		calendarPositions[calendar.ID] = len(projection.Calendars)
 		projection.Calendars = append(projection.Calendars, HorizonCalendarProjection{
-			ID: calendar.ID, Name: calendar.Name, Symbol: calendar.Symbol, ColorToken: calendar.ColorToken,
+			ID: calendar.ID, Name: calendar.Name, ColorToken: calendar.ColorToken,
 			DisplayOrder: calendar.DisplayOrder, Visible: calendar.Visible, Lanes: make([]HorizonLaneProjection, 0), TotalLaneCount: laneCounts[calendar.ID],
 		})
 	}

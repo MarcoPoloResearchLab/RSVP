@@ -17,20 +17,23 @@ func TestTimeHorizonSchemaInitializationRecord(testingContext *testing.T) {
 	if schemaError := validateCanonicalSchema(database); schemaError != nil {
 		testingContext.Fatalf("validate initialized schema: %v", schemaError)
 	}
-	if len(canonicalTableNames) != 21 {
-		testingContext.Fatalf("canonical table count = %d, want 21", len(canonicalTableNames))
+	if len(canonicalTableNames) != 23 {
+		testingContext.Fatalf("canonical table count = %d, want 23", len(canonicalTableNames))
 	}
 	requiredRelationships := map[string][]canonicalForeignKey{
-		config.TableCalendars:               {{"organizer_id", config.TableUsers, "id"}},
-		config.TableLanes:                   {{"calendar_id", config.TableCalendars, "id"}},
-		config.TableEvents:                  {{"lane_id", config.TableLanes, "id"}, {"anchor_event_id", config.TableEvents, "id"}},
-		config.TableRSVPs:                   {{"event_id", config.TableEvents, "id"}},
-		config.TableAttentionPolicies:       {{"lane_id", config.TableLanes, "id"}},
-		config.TableProbes:                  {{"policy_id", config.TableAttentionPolicies, "id"}, {"lane_id", config.TableLanes, "id"}},
-		config.TableDerivedMarkers:          {{"rule_id", config.TableDerivedMarkerRules, "id"}, {"lane_id", config.TableLanes, "id"}},
-		config.TableIngestionDrafts:         {{"organizer_id", config.TableUsers, "id"}, {"calendar_id", config.TableCalendars, "id"}},
-		config.TableDraftDerivedMarkerRules: {{"draft_id", config.TableIngestionDrafts, "id"}},
-		config.TableDraftConfirmations:      {{"draft_id", config.TableIngestionDrafts, "id"}, {"lane_id", config.TableLanes, "id"}},
+		config.TableCalendars:                  {{"organizer_id", config.TableUsers, "id"}},
+		config.TableLanes:                      {{"calendar_id", config.TableCalendars, "id"}},
+		config.TableEvents:                     {{"lane_id", config.TableLanes, "id"}, {"anchor_event_id", config.TableEvents, "id"}},
+		config.TableRSVPs:                      {{"event_id", config.TableEvents, "id"}},
+		config.TableAttentionPolicies:          {{"lane_id", config.TableLanes, "id"}},
+		config.TableProbes:                     {{"policy_id", config.TableAttentionPolicies, "id"}, {"lane_id", config.TableLanes, "id"}},
+		config.TableProviderCalendarSyncStates: {{"connection_id", config.TableCalendarConnections, "id"}},
+		config.TableSourceCalendarMappings:     {{"sync_state_id", config.TableProviderCalendarSyncStates, "id"}, {"calendar_id", config.TableCalendars, "id"}},
+		config.TableTasks:                      {{"organizer_id", config.TableUsers, "id"}},
+		config.TableDerivedMarkers:             {{"rule_id", config.TableDerivedMarkerRules, "id"}, {"lane_id", config.TableLanes, "id"}},
+		config.TableIngestionDrafts:            {{"organizer_id", config.TableUsers, "id"}, {"calendar_id", config.TableCalendars, "id"}},
+		config.TableDraftDerivedMarkerRules:    {{"draft_id", config.TableIngestionDrafts, "id"}},
+		config.TableDraftConfirmations:         {{"draft_id", config.TableIngestionDrafts, "id"}, {"lane_id", config.TableLanes, "id"}},
 	}
 	for tableName, relationships := range requiredRelationships {
 		for _, relationship := range relationships {

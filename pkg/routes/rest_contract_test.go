@@ -36,6 +36,7 @@ func TestHorizonOpenAPIContainsCanonicalResourceSurface(testingContext *testing.
 		config.WebCalendars + "{calendar_id}":                               {"get", "patch", "delete"},
 		config.WebLanes:                                                     {"post"},
 		config.WebLanes + "{lane_id}":                                       {"get", "patch", "delete"},
+		config.WebOrganizers + "{organizer_id}":                             {"get", "patch"},
 		config.WebAttentionPolicies:                                         {"post"},
 		config.WebAttentionPolicies + "{policy_id}":                         {"patch", "delete"},
 		config.WebProbes + "{probe_id}":                                     {"patch"},

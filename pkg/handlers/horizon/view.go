@@ -2,6 +2,7 @@ package horizon
 
 import (
 	"fmt"
+	"html/template"
 	"net/url"
 	"time"
 
@@ -10,15 +11,19 @@ import (
 	"github.com/tyemirov/RSVP/pkg/services"
 )
 
-const horizonScaleIntervalDays = 7
-
 type horizonViewData struct {
 	NeedsTimezoneSetup      bool
 	Window                  services.HorizonWindowProjection
 	StylesURL               string
 	ScriptURL               string
-	WindowDays              int
-	TodayPosition           *string
+	Scale                   string
+	BackwardWindowURL       string
+	ForwardWindowURL        string
+	DayScaleURL             string
+	WeekScaleURL            string
+	MonthScaleURL           string
+	YearScaleURL            string
+	TodayStyle              template.HTMLAttr
 	TimeScaleTicks          []horizonTimeScaleTick
 	Calendars               []horizonCalendarView
 	CalendarCreateURL       string
@@ -75,7 +80,6 @@ type horizonTimeScaleTick struct {
 type horizonCalendarView struct {
 	ID            string
 	Name          string
-	Symbol        string
 	ColorToken    string
 	Visible       bool
 	VisibilityURL string
@@ -120,6 +124,7 @@ type horizonMarkerView struct {
 	Type           services.HorizonMarkerType
 	Title          string
 	Position       string
+	IsLaneTerminal bool
 	IsEvent        bool
 	EventURL       string
 	RSVPURL        string
@@ -132,7 +137,7 @@ type horizonMarkerView struct {
 	RuleURL        string
 }
 
-func newHorizonViewData(projection services.HorizonProjection, referenceTime time.Time) (horizonViewData, error) {
+func newHorizonViewData(projection services.HorizonProjection, referenceTime time.Time, scale horizonScale) (horizonViewData, error) {
 	windowStart, startError := time.Parse(time.RFC3339Nano, projection.Window.Start)
 	if startError != nil {
 		return horizonViewData{}, fmt.Errorf("parse horizon view start: %w", startError)
@@ -147,7 +152,7 @@ func newHorizonViewData(projection services.HorizonProjection, referenceTime tim
 	}
 
 	viewData := horizonViewData{
-		Window:    projection.Window,
+		Window: projection.Window, Scale: string(scale),
 		StylesURL: config.HorizonStylesPath, ScriptURL: config.HorizonScriptPath,
 		CalendarCreateURL: config.WebCalendars, LaneCreateURL: config.WebLanes,
 		AttentionCreateURL:      config.WebAttentionPolicies,
@@ -158,31 +163,22 @@ func newHorizonViewData(projection services.HorizonProjection, referenceTime tim
 		TimeScaleTicks:          make([]horizonTimeScaleTick, 0), Calendars: make([]horizonCalendarView, 0, len(projection.Calendars)),
 	}
 	localStart := windowStart.In(location)
-	localEnd := windowEnd.In(location)
-	for day := localStart; day.Before(localEnd); day = day.AddDate(0, 0, 1) {
-		viewData.WindowDays++
-	}
-	if viewData.WindowDays < 1 {
-		viewData.WindowDays = 1
-	}
-
-	for tickTime := localStart; tickTime.Before(windowEnd); tickTime = tickTime.AddDate(0, 0, horizonScaleIntervalDays) {
-		viewData.TimeScaleTicks = append(viewData.TimeScaleTicks, horizonTimeScaleTick{
-			DateTime: tickTime.Format(time.DateOnly),
-			Label:    tickTime.Format("Jan 2"),
-			Position: horizonPosition(tickTime, windowStart, windowEnd),
-		})
-	}
+	viewData.BackwardWindowURL = horizonScaleURL(scale, shiftHorizonScaleStart(windowStart, location, scale, -1))
+	viewData.ForwardWindowURL = horizonScaleURL(scale, shiftHorizonScaleStart(windowStart, location, scale, 1))
+	viewData.DayScaleURL = horizonScaleURL(horizonScaleDay, localStart)
+	viewData.WeekScaleURL = horizonScaleURL(horizonScaleWeek, localStart)
+	viewData.MonthScaleURL = horizonScaleURL(horizonScaleMonth, localStart)
+	viewData.YearScaleURL = horizonScaleURL(horizonScaleYear, localStart)
+	viewData.TimeScaleTicks = horizonScaleTicks(scale, localStart, windowEnd)
 	localReference := referenceTime.In(location)
 	today := time.Date(localReference.Year(), localReference.Month(), localReference.Day(), 0, 0, 0, 0, location)
 	if !today.Before(windowStart) && today.Before(windowEnd) {
-		position := horizonPosition(today, windowStart, windowEnd)
-		viewData.TodayPosition = &position
+		viewData.TodayStyle = template.HTMLAttr(`style="--today-position: ` + horizonPosition(today, windowStart, windowEnd) + `"`)
 	}
 
 	for calendarIndex, calendar := range projection.Calendars {
 		calendarView := horizonCalendarView{
-			ID: calendar.ID, Name: calendar.Name, Symbol: calendar.Symbol, ColorToken: calendar.ColorToken,
+			ID: calendar.ID, Name: calendar.Name, ColorToken: calendar.ColorToken,
 			Visible: calendar.Visible, VisibilityURL: config.WebCalendars + url.PathEscape(calendar.ID),
 			ManagementURL: config.WebCalendars + url.PathEscape(calendar.ID), PreviousOrder: calendar.DisplayOrder - 1,
 			NextOrder: calendar.DisplayOrder + 1, CanMoveUp: calendarIndex > 0, CanMoveDown: calendarIndex < len(projection.Calendars)-1,
@@ -215,6 +211,8 @@ func newHorizonViewData(projection services.HorizonProjection, referenceTime tim
 				NextOrder: lane.DisplayOrder + 1, CanMoveUp: lane.DisplayOrder > 0, CanMoveDown: lane.DisplayOrder < calendar.TotalLaneCount-1,
 				CanResolve: lane.Status == models.LaneStatusActive && lane.EndsAt == nil,
 			}
+			var finalMarkerTime time.Time
+			finalMarkerIndex := -1
 			if lane.Attention != nil {
 				nextProbeTime, parseError := time.Parse(time.RFC3339Nano, lane.Attention.NextProbeAt)
 				if parseError != nil {
@@ -232,6 +230,10 @@ func newHorizonViewData(projection services.HorizonProjection, referenceTime tim
 				markerTime, markerTimeError := horizonMarkerPositionTime(marker.Time)
 				if markerTimeError != nil {
 					return horizonViewData{}, fmt.Errorf("parse horizon marker %s time: %w", marker.ID, markerTimeError)
+				}
+				if finalMarkerIndex == -1 || markerTime.After(finalMarkerTime) {
+					finalMarkerTime = markerTime
+					finalMarkerIndex = len(laneView.Markers)
 				}
 				markerView := horizonMarkerView{
 					ID: marker.ID, Type: marker.Type, Title: marker.Title,
@@ -256,11 +258,58 @@ func newHorizonViewData(projection services.HorizonProjection, referenceTime tim
 				}
 				laneView.Markers = append(laneView.Markers, markerView)
 			}
+			if endStyle == "is-finite" && finalMarkerIndex >= 0 {
+				laneView.EndPosition = horizonPosition(finalMarkerTime, windowStart, windowEnd)
+				laneView.EndStyle += " is-marker-terminated"
+				laneView.Markers[finalMarkerIndex].IsLaneTerminal = true
+			}
 			calendarView.Lanes = append(calendarView.Lanes, laneView)
 		}
 		viewData.Calendars = append(viewData.Calendars, calendarView)
 	}
 	return viewData, nil
+}
+
+func horizonScaleTicks(scale horizonScale, windowStart time.Time, windowEnd time.Time) []horizonTimeScaleTick {
+	ticks := make([]horizonTimeScaleTick, 0)
+	for tickTime := windowStart; tickTime.Before(windowEnd); tickTime = nextHorizonScaleTick(scale, tickTime) {
+		ticks = append(ticks, horizonTimeScaleTick{
+			DateTime: tickTime.Format(time.RFC3339),
+			Label:    horizonScaleTickLabel(scale, tickTime),
+			Position: horizonPosition(tickTime, windowStart, windowEnd),
+		})
+	}
+	return ticks
+}
+
+func nextHorizonScaleTick(scale horizonScale, tickTime time.Time) time.Time {
+	switch scale {
+	case horizonScaleDay:
+		return tickTime.Add(3 * time.Hour)
+	case horizonScaleWeek:
+		return tickTime.AddDate(0, 0, 1)
+	case horizonScaleMonth:
+		return tickTime.AddDate(0, 0, 7)
+	case horizonScaleYear:
+		return tickTime.AddDate(0, 1, 0)
+	default:
+		panic("invalid Horizon scale")
+	}
+}
+
+func horizonScaleTickLabel(scale horizonScale, tickTime time.Time) string {
+	switch scale {
+	case horizonScaleDay:
+		return tickTime.Format("3 PM")
+	case horizonScaleWeek:
+		return tickTime.Format("Mon 2")
+	case horizonScaleMonth:
+		return tickTime.Format("Jan 2")
+	case horizonScaleYear:
+		return tickTime.Format("Jan")
+	default:
+		panic("invalid Horizon scale")
+	}
 }
 
 func horizonMarkerPositionTime(markerTime services.HorizonMarkerTimeProjection) (time.Time, error) {

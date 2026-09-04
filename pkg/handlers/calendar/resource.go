@@ -22,14 +22,12 @@ const (
 
 type createRequest struct {
 	Name       string `json:"name"`
-	Symbol     string `json:"symbol"`
 	ColorToken string `json:"color_token"`
 	Timezone   string `json:"timezone"`
 }
 
 type patchRequest struct {
 	Name         *string `json:"name"`
-	Symbol       *string `json:"symbol"`
 	ColorToken   *string `json:"color_token"`
 	DisplayOrder *int    `json:"display_order"`
 	Visible      *bool   `json:"visible"`
@@ -38,7 +36,6 @@ type patchRequest struct {
 type representation struct {
 	ID           string `json:"id"`
 	Name         string `json:"name"`
-	Symbol       string `json:"symbol"`
 	ColorToken   string `json:"color_token"`
 	DisplayOrder int    `json:"display_order"`
 	Visible      bool   `json:"visible"`
@@ -92,7 +89,7 @@ func handleCreate(applicationContext *config.ApplicationContext, service *servic
 		writeDecodeError(applicationContext, responseWriter, decodeError)
 		return
 	}
-	if strings.TrimSpace(body.Name) == "" || strings.TrimSpace(body.Symbol) == "" || strings.TrimSpace(body.ColorToken) == "" {
+	if strings.TrimSpace(body.Name) == "" || strings.TrimSpace(body.ColorToken) == "" {
 		writeError(applicationContext, responseWriter, http.StatusUnprocessableEntity, "invalid_calendar", "Calendar fields are invalid.", nil)
 		return
 	}
@@ -101,7 +98,7 @@ func handleCreate(applicationContext *config.ApplicationContext, service *servic
 		writeError(applicationContext, responseWriter, http.StatusUnprocessableEntity, "invalid_timezone", "Timezone is invalid.", timezoneError)
 		return
 	}
-	calendar, createError := service.CreateCalendar(request.Context(), currentUser, timezone, body.Name, body.Symbol, body.ColorToken)
+	calendar, createError := service.CreateCalendar(request.Context(), currentUser, timezone, body.Name, body.ColorToken)
 	if createError != nil {
 		writeServiceError(applicationContext, responseWriter, createError)
 		return
@@ -129,17 +126,17 @@ func handleUpdate(applicationContext *config.ApplicationContext, service *servic
 		writeDecodeError(applicationContext, responseWriter, decodeError)
 		return
 	}
-	if body.Name == nil && body.Symbol == nil && body.ColorToken == nil && body.DisplayOrder == nil && body.Visible == nil {
+	if body.Name == nil && body.ColorToken == nil && body.DisplayOrder == nil && body.Visible == nil {
 		writeError(applicationContext, responseWriter, http.StatusUnprocessableEntity, "invalid_calendar_patch", "Calendar patch is empty.", nil)
 		return
 	}
-	if (body.Name != nil && strings.TrimSpace(*body.Name) == "") || (body.Symbol != nil && strings.TrimSpace(*body.Symbol) == "") ||
+	if (body.Name != nil && strings.TrimSpace(*body.Name) == "") ||
 		(body.ColorToken != nil && strings.TrimSpace(*body.ColorToken) == "") || (body.DisplayOrder != nil && *body.DisplayOrder < 0) {
 		writeError(applicationContext, responseWriter, http.StatusUnprocessableEntity, "invalid_calendar_patch", "Calendar patch is invalid.", nil)
 		return
 	}
 	calendar, updateError := service.UpdateCalendar(request.Context(), organizerID, calendarID, services.CalendarPatch{
-		Name: body.Name, Symbol: body.Symbol, ColorToken: body.ColorToken, DisplayOrder: body.DisplayOrder, Visible: body.Visible,
+		Name: body.Name, ColorToken: body.ColorToken, DisplayOrder: body.DisplayOrder, Visible: body.Visible,
 	})
 	if updateError != nil {
 		writeServiceError(applicationContext, responseWriter, updateError)
@@ -159,7 +156,7 @@ func handleDelete(applicationContext *config.ApplicationContext, service *servic
 }
 
 func calendarRepresentation(calendar *models.Calendar) representation {
-	return representation{ID: calendar.ID, Name: calendar.Name, Symbol: calendar.Symbol, ColorToken: calendar.ColorToken, DisplayOrder: calendar.DisplayOrder, Visible: calendar.Visible}
+	return representation{ID: calendar.ID, Name: calendar.Name, ColorToken: calendar.ColorToken, DisplayOrder: calendar.DisplayOrder, Visible: calendar.Visible}
 }
 
 func writeDecodeError(applicationContext *config.ApplicationContext, responseWriter http.ResponseWriter, decodeError error) {
@@ -178,8 +175,10 @@ func writeServiceError(applicationContext *config.ApplicationContext, responseWr
 		writeError(applicationContext, responseWriter, http.StatusNotFound, "calendar_not_found", "Calendar was not found.", serviceError)
 	case errors.Is(serviceError, services.ErrCalendarNotEmpty):
 		writeError(applicationContext, responseWriter, http.StatusConflict, "calendar_not_empty", "Delete each calendar lane first.", serviceError)
+	case errors.Is(serviceError, services.ErrCalendarVisibilityLimit):
+		writeError(applicationContext, responseWriter, http.StatusConflict, "calendar_visibility_limit", "Hide one calendar before you show another calendar.", serviceError)
 	case errors.Is(serviceError, services.ErrDisplayOrderOutOfRange),
-		errors.Is(serviceError, models.ErrCalendarNameRequired), errors.Is(serviceError, models.ErrCalendarPresentationRequired),
+		errors.Is(serviceError, models.ErrCalendarNameRequired), errors.Is(serviceError, models.ErrCalendarColorTokenRequired),
 		errors.Is(serviceError, models.ErrDisplayOrderInvalid), errors.Is(serviceError, models.ErrTimezoneInvalid),
 		errors.Is(serviceError, models.ErrTimezoneRequired):
 		writeError(applicationContext, responseWriter, http.StatusUnprocessableEntity, "invalid_calendar", "Calendar data is invalid.", serviceError)

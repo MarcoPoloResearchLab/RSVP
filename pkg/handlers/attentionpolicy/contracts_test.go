@@ -27,7 +27,7 @@ func TestAttentionPolicyAndProbeResourceContracts(testingContext *testing.T) {
 	if confirmationError := owner.ConfirmTimezone(fixture.Database, timezone); confirmationError != nil {
 		testingContext.Fatalf("confirm timezone: %v", confirmationError)
 	}
-	calendar, calendarError := models.NewCalendar(owner.ID, "Waiting", "W", "waiting", 0)
+	calendar, calendarError := models.NewCalendar(owner.ID, "Waiting", "waiting", 0)
 	if calendarError != nil {
 		testingContext.Fatalf("construct calendar: %v", calendarError)
 	}

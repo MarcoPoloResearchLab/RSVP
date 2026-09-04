@@ -13,20 +13,16 @@ type CalendarProviderCredential struct {
 	ExpiresAt    time.Time `json:"expires_at"`
 }
 
-// ProviderCalendarGroup contains one provider-normalized event grouping.
-type ProviderCalendarGroup struct {
-	Key        ProviderCalendarGroupKey `json:"key"`
-	Name       string                   `json:"name"`
-	ColorToken string                   `json:"color_token"`
-	Visible    bool                     `json:"visible"`
-}
-
 // ProviderCalendar contains one provider-owned source calendar change.
 type ProviderCalendar struct {
-	ID       string                  `json:"id"`
-	Deleted  bool                    `json:"deleted"`
-	Readable bool                    `json:"readable"`
-	Groups   []ProviderCalendarGroup `json:"groups"`
+	ID                  string                 `json:"id"`
+	Name                string                 `json:"name"`
+	ColorToken          string                 `json:"color_token"`
+	Deleted             bool                   `json:"deleted"`
+	Readable            bool                   `json:"readable"`
+	Visible             bool                   `json:"visible"`
+	Default             bool                   `json:"default"`
+	SemanticSourceGroup *SemanticCalendarGroup `json:"semantic_source_group,omitempty"`
 }
 
 // ProviderCalendarBatch contains all CalendarList pages for one cursor transition.
@@ -35,35 +31,37 @@ type ProviderCalendarBatch struct {
 	NextSyncCursor string
 }
 
-// ProviderEvent contains one provider-owned event occurrence or deletion.
-type ProviderEvent struct {
-	ID          string
-	SeriesID    string
-	Title       string
-	Description string
-	Timezone    string
-	Status      string
-	At          *time.Time
-	StartsAt    *time.Time
-	EndsAt      *time.Time
-	StartDate   string
-	EndDate     string
+// ProviderEventChange contains one normalized provider event mutation.
+type ProviderEventChange struct {
+	ProviderEventID  string
+	ProviderSeriesID string
+	SemanticGroup    SemanticCalendarGroup
+	Deleted          bool
+	DiagnosticCode   string
+	Title            string
+	Description      string
+	Timezone         string
+	At               *time.Time
+	StartsAt         *time.Time
+	EndsAt           *time.Time
+	StartDate        string
+	EndDate          string
 }
 
 // ProviderEventBatch contains all pages for one cursor transition.
 type ProviderEventBatch struct {
-	Events         []ProviderEvent
+	Changes        []ProviderEventChange
 	NextSyncCursor string
 }
 
-// ProviderCalendarGroupKey identifies one semantic provider event grouping.
-type ProviderCalendarGroupKey string
+// SemanticCalendarGroup identifies one provider-neutral event grouping.
+type SemanticCalendarGroup string
 
 const (
-	// ProviderCalendarGroupCalendar identifies the provider calendar's general events.
-	ProviderCalendarGroupCalendar ProviderCalendarGroupKey = "calendar"
-	// ProviderCalendarGroupBirthdays identifies birthday events.
-	ProviderCalendarGroupBirthdays ProviderCalendarGroupKey = "birthdays"
+	// SemanticCalendarGroupCalendar identifies the related provider calendar.
+	SemanticCalendarGroupCalendar SemanticCalendarGroup = "calendar"
+	// SemanticCalendarGroupBirthdays identifies normalized birthday meaning.
+	SemanticCalendarGroupBirthdays SemanticCalendarGroup = "birthdays"
 )
 
 var (
@@ -79,5 +77,5 @@ type CalendarProviderAdapter interface {
 	ExchangeCode(ctx context.Context, code string, redirectURI string) (CalendarProviderCredential, error)
 	RefreshCredential(ctx context.Context, credential CalendarProviderCredential) (CalendarProviderCredential, error)
 	ListCalendars(ctx context.Context, credential CalendarProviderCredential, syncCursor string) (ProviderCalendarBatch, error)
-	SynchronizeEvents(ctx context.Context, credential CalendarProviderCredential, providerCalendarID string, providerGroup ProviderCalendarGroupKey, syncCursor string) (ProviderEventBatch, error)
+	SynchronizeEvents(ctx context.Context, credential CalendarProviderCredential, providerCalendarID string, syncCursor string) (ProviderEventBatch, error)
 }

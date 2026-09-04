@@ -16,7 +16,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"unicode"
 
 	"github.com/tyemirov/RSVP/models"
 	"gorm.io/gorm"
@@ -24,11 +23,12 @@ import (
 )
 
 const (
-	calendarAuthorizationLifetime     = 10 * time.Minute
-	calendarCredentialRefreshSkew     = time.Minute
-	idempotencyLifetime               = 24 * time.Hour
-	createCalendarConnectionOperation = "create_calendar_connection"
-	sourceCalendarLocalUseErrorCode   = "source_calendar_has_local_use"
+	calendarAuthorizationLifetime      = 10 * time.Minute
+	calendarCredentialRefreshSkew      = time.Minute
+	idempotencyLifetime                = 24 * time.Hour
+	createCalendarConnectionOperation  = "create_calendar_connection"
+	calendarConnectionFallbackTimezone = "UTC"
+	sourceCalendarLocalUseErrorCode    = "source_calendar_has_local_use"
 )
 
 var (
@@ -106,6 +106,7 @@ type AuthorizationConfirmation struct {
 	RequestID string `json:"request_id"`
 	State     string `json:"state"`
 	Code      string `json:"code"`
+	Timezone  string `json:"timezone"`
 }
 
 // CalendarConnectionService owns Google Calendar consent and source calendar reconciliation.
@@ -164,11 +165,19 @@ func (service *CalendarConnectionService) ValidateCallback(ctx context.Context, 
 	return AuthorizationConfirmation{RequestID: requestRecord.ID, State: state, Code: code}, nil
 }
 
-// CreateConnection exchanges consent and stores only encrypted credential data.
+// CreateConnection exchanges consent, stores encrypted credential data, and creates an import task.
 func (service *CalendarConnectionService) CreateConnection(ctx context.Context, organizerID string, confirmation AuthorizationConfirmation, idempotencyKey string) (*models.CalendarConnection, bool, error) {
 	if strings.TrimSpace(idempotencyKey) == "" {
 		return nil, false, ErrIdempotencyKeyRequired
 	}
+	timezone, timezoneError := models.NewTimezone(confirmation.Timezone)
+	if timezoneError != nil {
+		timezone, timezoneError = models.NewTimezone(calendarConnectionFallbackTimezone)
+		if timezoneError != nil {
+			return nil, false, timezoneError
+		}
+	}
+	confirmation.Timezone = timezone.String()
 	requestPayload, marshalError := json.Marshal(confirmation)
 	if marshalError != nil {
 		return nil, false, fmt.Errorf("serialize connection request: %w", marshalError)
@@ -206,6 +215,13 @@ func (service *CalendarConnectionService) CreateConnection(ctx context.Context, 
 		if lockedRequest.UsedAt != nil || !lockedRequest.ExpiresAt.After(service.now().UTC()) || subtle.ConstantTimeCompare(lockedRequest.StateHash, stateHash[:]) != 1 {
 			return ErrCalendarAuthorizationInvalid
 		}
+		var organizer models.User
+		if findError := transaction.Clauses(clause.Locking{Strength: "UPDATE"}).First(&organizer, "id = ?", organizerID).Error; findError != nil {
+			return findError
+		}
+		if confirmError := organizer.ConfirmTimezone(transaction, timezone); confirmError != nil {
+			return confirmError
+		}
 		connection, connectionError := models.NewCalendarConnection(organizerID, nonce, ciphertext)
 		if connectionError != nil {
 			return connectionError
@@ -213,11 +229,18 @@ func (service *CalendarConnectionService) CreateConnection(ctx context.Context, 
 		if createError := transaction.Create(connection).Error; createError != nil {
 			return fmt.Errorf("create Google Calendar connection for organizer %s: %w", organizerID, createError)
 		}
+		importTask, taskError := models.NewCalendarConnectionImportTask(organizerID, connection.ID, service.now().UTC())
+		if taskError != nil {
+			return taskError
+		}
+		if createError := transaction.Create(importTask).Error; createError != nil {
+			return fmt.Errorf("create calendar connection import task: %w", createError)
+		}
 		usedAt := service.now().UTC()
 		if updateError := transaction.Model(&lockedRequest).Update("used_at", usedAt).Error; updateError != nil {
 			return fmt.Errorf("use calendar authorization request %s: %w", lockedRequest.ID, updateError)
 		}
-		record, recordError := models.NewIdempotencyRecord(organizerID, createCalendarConnectionOperation, keyHash[:], requestHash[:], http.StatusCreated, "calendar_connection", connection.ID, service.now().UTC().Add(idempotencyLifetime))
+		record, recordError := models.NewIdempotencyRecord(organizerID, createCalendarConnectionOperation, keyHash[:], requestHash[:], http.StatusAccepted, "calendar_connection", connection.ID, service.now().UTC().Add(idempotencyLifetime))
 		if recordError != nil {
 			return recordError
 		}
@@ -245,7 +268,7 @@ func (service *CalendarConnectionService) authorizationRequest(ctx context.Conte
 // ReadConnection returns one organizer-owned connection and its mappings.
 func (service *CalendarConnectionService) ReadConnection(ctx context.Context, organizerID string, connectionID string) (*models.CalendarConnection, error) {
 	var connection models.CalendarConnection
-	if findError := service.database.WithContext(ctx).Preload("Mappings.Calendar").First(&connection, "id = ?", connectionID).Error; findError != nil {
+	if findError := service.database.WithContext(ctx).Preload("SyncStates.Mappings.Calendar").First(&connection, "id = ?", connectionID).Error; findError != nil {
 		return nil, findError
 	}
 	if connection.OrganizerID != organizerID {
@@ -255,7 +278,7 @@ func (service *CalendarConnectionService) ReadConnection(ctx context.Context, or
 }
 
 // ReconcileSourceCalendars applies one complete or incremental CalendarList transition.
-func (service *CalendarConnectionService) ReconcileSourceCalendars(ctx context.Context, organizerID string, connectionID string) ([]models.SourceCalendarMapping, error) {
+func (service *CalendarConnectionService) ReconcileSourceCalendars(ctx context.Context, organizerID string, connectionID string) ([]models.ProviderCalendarSyncState, error) {
 	service.reconcileMutex.Lock()
 	defer service.reconcileMutex.Unlock()
 
@@ -284,7 +307,7 @@ func (service *CalendarConnectionService) ReconcileSourceCalendars(ctx context.C
 		return nil, errors.New("provider calendar batch has no sync cursor")
 	}
 
-	protectedMappingID := ""
+	protectedSyncStateID := ""
 	transactionError := service.database.WithContext(ctx).Transaction(func(transaction *gorm.DB) error {
 		var lockedConnection models.CalendarConnection
 		if findError := transaction.Clauses(clause.Locking{Strength: "UPDATE"}).First(&lockedConnection, "id = ?", connectionID).Error; findError != nil {
@@ -293,23 +316,42 @@ func (service *CalendarConnectionService) ReconcileSourceCalendars(ctx context.C
 		if lockedConnection.OrganizerID != organizerID {
 			return ErrResourceForbidden
 		}
-		var existing []models.SourceCalendarMapping
-		if findError := transaction.Preload("Calendar").Where("connection_id = ?", connectionID).Find(&existing).Error; findError != nil {
+		var existing []models.ProviderCalendarSyncState
+		if findError := transaction.Preload("Mappings.Calendar").Where("connection_id = ?", connectionID).Find(&existing).Error; findError != nil {
 			return findError
 		}
-		existingBySource := make(map[string]models.SourceCalendarMapping, len(existing))
-		existingByProviderID := make(map[string][]models.SourceCalendarMapping, len(existing))
-		for _, mapping := range existing {
-			existingBySource[sourceCalendarKey(mapping.ProviderCalendarID, mapping.SemanticGroup)] = mapping
-			existingByProviderID[mapping.ProviderCalendarID] = append(existingByProviderID[mapping.ProviderCalendarID], mapping)
+		existingByProviderID := make(map[string]*models.ProviderCalendarSyncState, len(existing))
+		var birthdaysCalendar *models.Calendar
+		defaultCalendarID := ""
+		for stateIndex := range existing {
+			state := &existing[stateIndex]
+			existingByProviderID[state.ProviderCalendarID] = state
+			for mappingIndex := range state.Mappings {
+				mapping := &state.Mappings[mappingIndex]
+				if state.DefaultCalendar && mapping.SemanticGroup == models.SourceCalendarGroupCalendar {
+					if defaultCalendarID != "" && defaultCalendarID != mapping.CalendarID {
+						return errors.New("calendar connection has multiple default calendars")
+					}
+					defaultCalendarID = mapping.CalendarID
+				}
+				if mapping.SemanticGroup == models.SourceCalendarGroupBirthdays {
+					if birthdaysCalendar != nil && birthdaysCalendar.ID != mapping.CalendarID {
+						return errors.New("calendar connection has multiple Birthdays calendars")
+					}
+					calendar := mapping.Calendar
+					birthdaysCalendar = &calendar
+				}
+			}
 		}
 		if lockedConnection.CalendarImportCutoverAt == nil {
 			if !completeReconciliation {
 				return errors.New("calendar import cutover requires a complete CalendarList reconciliation")
 			}
-			protectedCalendarIDs := make([]string, 0, len(existing))
-			for _, mapping := range existing {
-				protectedCalendarIDs = append(protectedCalendarIDs, mapping.CalendarID)
+			protectedCalendarIDs := make([]string, 0, len(existing)*2)
+			for _, state := range existing {
+				for _, mapping := range state.Mappings {
+					protectedCalendarIDs = append(protectedCalendarIDs, mapping.CalendarID)
+				}
 			}
 			if cutoverError := deletePriorOrganizerCalendars(transaction, organizerID, protectedCalendarIDs); cutoverError != nil {
 				return cutoverError
@@ -317,81 +359,109 @@ func (service *CalendarConnectionService) ReconcileSourceCalendars(ctx context.C
 		}
 		providerCalendars := append([]ProviderCalendar(nil), batch.Calendars...)
 		sort.Slice(providerCalendars, func(left int, right int) bool {
+			if providerCalendars[left].Default != providerCalendars[right].Default {
+				return providerCalendars[left].Default
+			}
+			leftSemantic := providerCalendars[left].SemanticSourceGroup != nil
+			rightSemantic := providerCalendars[right].SemanticSourceGroup != nil
+			if leftSemantic != rightSemantic {
+				return !leftSemantic
+			}
 			return providerCalendars[left].ID < providerCalendars[right].ID
 		})
-		seenSources := make(map[string]struct{}, len(providerCalendars)+1)
+		seenProviderCalendars := make(map[string]struct{}, len(providerCalendars))
 		for _, providerCalendar := range providerCalendars {
 			if providerCalendar.ID == "" {
 				return errors.New("provider calendar ID is required")
 			}
+			seenProviderCalendars[providerCalendar.ID] = struct{}{}
+			existingState, found := existingByProviderID[providerCalendar.ID]
 			if providerCalendar.Deleted || !providerCalendar.Readable {
-				for _, existingMapping := range existingByProviderID[providerCalendar.ID] {
-					if deleteError := deleteSourceCalendarMapping(transaction, existingMapping); deleteError != nil {
+				if found {
+					if deleteError := deleteProviderCalendarSyncState(transaction, existingState); deleteError != nil {
 						if errors.Is(deleteError, ErrCalendarConnectionHasLocalUse) {
-							protectedMappingID = existingMapping.ID
+							protectedSyncStateID = existingState.ID
 						}
 						return deleteError
 					}
-					delete(existingBySource, sourceCalendarKey(existingMapping.ProviderCalendarID, existingMapping.SemanticGroup))
+					delete(existingByProviderID, providerCalendar.ID)
 				}
 				continue
 			}
-			for _, providerGroup := range providerCalendar.Groups {
-				group, groupError := sourceCalendarGroup(providerGroup.Key)
-				if groupError != nil || strings.TrimSpace(providerGroup.Name) == "" || strings.TrimSpace(providerGroup.ColorToken) == "" {
-					return errors.Join(errors.New("semantic calendar group is invalid"), groupError)
+			if !found {
+				state, stateError := models.NewProviderCalendarSyncState(connectionID, providerCalendar.ID)
+				if stateError != nil {
+					return stateError
 				}
-				sourceKey := sourceCalendarKey(providerCalendar.ID, group)
-				if _, duplicate := seenSources[sourceKey]; duplicate {
-					return errors.New("provider calendar batch contains a duplicate group")
+				if createError := transaction.Create(state).Error; createError != nil {
+					return fmt.Errorf("create provider calendar sync state: %w", createError)
 				}
-				seenSources[sourceKey] = struct{}{}
-				if existingMapping, found := existingBySource[sourceKey]; found {
-					expectedSymbol := calendarSymbol(providerGroup.Name)
-					if existingMapping.Calendar.Name != providerGroup.Name || (lockedConnection.CalendarImportCutoverAt == nil && existingMapping.Calendar.Symbol != expectedSymbol) {
-						existingMapping.Calendar.Name = providerGroup.Name
-						if lockedConnection.CalendarImportCutoverAt == nil {
-							existingMapping.Calendar.Symbol = expectedSymbol
-						}
-						if updateError := transaction.Save(&existingMapping.Calendar).Error; updateError != nil {
-							return fmt.Errorf("update RSVP calendar %s from source %s: %w", existingMapping.CalendarID, providerCalendar.ID, updateError)
-						}
+				existingState = state
+				existingByProviderID[providerCalendar.ID] = state
+			}
+			if existingState.DefaultCalendar != providerCalendar.Default {
+				if updateError := transaction.Model(existingState).Update("default_calendar", providerCalendar.Default).Error; updateError != nil {
+					return fmt.Errorf("update provider default calendar identity: %w", updateError)
+				}
+				existingState.DefaultCalendar = providerCalendar.Default
+			}
+			semanticSource := providerCalendar.SemanticSourceGroup != nil
+			if semanticSource && *providerCalendar.SemanticSourceGroup != SemanticCalendarGroupBirthdays {
+				return errors.New("provider calendar has an unknown semantic source group")
+			}
+			if !semanticSource {
+				if strings.TrimSpace(providerCalendar.Name) == "" || strings.TrimSpace(providerCalendar.ColorToken) == "" {
+					return errors.New("provider calendar presentation is invalid")
+				}
+				calendarID, mappingError := ensureProviderCalendarMapping(transaction, organizerID, existingState, providerCalendar)
+				if mappingError != nil {
+					return mappingError
+				}
+				if providerCalendar.Default {
+					if defaultCalendarID != "" && defaultCalendarID != calendarID {
+						return errors.New("provider returned multiple default calendars")
 					}
-					continue
+					defaultCalendarID = calendarID
 				}
+			} else {
+				if defaultCalendarID == "" {
+					return errors.New("semantic provider calendar requires a default RSVP calendar")
+				}
+				if mappingError := ensureSemanticMapping(transaction, existingState, defaultCalendarID, models.SourceCalendarGroupCalendar); mappingError != nil {
+					return mappingError
+				}
+			}
+			if birthdaysCalendar == nil {
 				displayOrder, orderError := models.NextCalendarDisplayOrder(transaction, organizerID)
 				if orderError != nil {
 					return orderError
 				}
-				calendar, calendarError := models.NewCalendar(organizerID, providerGroup.Name, calendarSymbol(providerGroup.Name), providerGroup.ColorToken, displayOrder)
+				calendar, calendarError := models.NewCalendar(organizerID, "Birthdays", "birthdays", displayOrder)
 				if calendarError != nil {
 					return calendarError
 				}
-				calendar.Visible = providerGroup.Visible
+				visible, visibilityError := initialCalendarVisibility(transaction, organizerID, true)
+				if visibilityError != nil {
+					return visibilityError
+				}
+				calendar.Visible = visible
 				if createError := transaction.Create(calendar).Error; createError != nil {
-					return fmt.Errorf("create RSVP calendar for source %s: %w", providerCalendar.ID, createError)
+					return fmt.Errorf("create Birthdays calendar: %w", createError)
 				}
-				if visibilityError := transaction.Model(calendar).Update("visible", providerGroup.Visible).Error; visibilityError != nil {
-					return fmt.Errorf("set initial RSVP calendar visibility for source %s: %w", providerCalendar.ID, visibilityError)
-				}
-				mapping, mappingError := models.NewSourceCalendarMapping(connectionID, calendar.ID, providerCalendar.ID, group)
-				if mappingError != nil {
-					return mappingError
-				}
-				if createError := transaction.Create(mapping).Error; createError != nil {
-					return fmt.Errorf("create source calendar mapping: %w", createError)
-				}
-				existingBySource[sourceKey] = *mapping
+				birthdaysCalendar = calendar
+			}
+			if mappingError := ensureSemanticMapping(transaction, existingState, birthdaysCalendar.ID, models.SourceCalendarGroupBirthdays); mappingError != nil {
+				return mappingError
 			}
 		}
 		if completeReconciliation {
-			for sourceKey, mapping := range existingBySource {
-				if _, found := seenSources[sourceKey]; found {
+			for providerCalendarID, state := range existingByProviderID {
+				if _, found := seenProviderCalendars[providerCalendarID]; found {
 					continue
 				}
-				if deleteError := deleteSourceCalendarMapping(transaction, mapping); deleteError != nil {
+				if deleteError := deleteProviderCalendarSyncState(transaction, state); deleteError != nil {
 					if errors.Is(deleteError, ErrCalendarConnectionHasLocalUse) {
-						protectedMappingID = mapping.ID
+						protectedSyncStateID = state.ID
 					}
 					return deleteError
 				}
@@ -407,21 +477,21 @@ func (service *CalendarConnectionService) ReconcileSourceCalendars(ctx context.C
 		return normalizeCalendarOrder(transaction, organizerID)
 	})
 	if transactionError != nil {
-		if protectedMappingID != "" {
-			transactionError = errors.Join(transactionError, service.recordSourceReconciliationFailure(ctx, protectedMappingID))
+		if protectedSyncStateID != "" {
+			transactionError = errors.Join(transactionError, service.recordSourceReconciliationFailure(ctx, protectedSyncStateID))
 		}
 		return nil, transactionError
 	}
-	var mappings []models.SourceCalendarMapping
-	if findError := service.database.WithContext(ctx).Where("connection_id = ?", connectionID).Order("provider_calendar_id ASC").Find(&mappings).Error; findError != nil {
-		return nil, fmt.Errorf("list reconciled source calendar mappings: %w", findError)
+	var syncStates []models.ProviderCalendarSyncState
+	if findError := service.database.WithContext(ctx).Preload("Mappings.Calendar").Where("connection_id = ?", connectionID).Order("provider_calendar_id ASC").Find(&syncStates).Error; findError != nil {
+		return nil, fmt.Errorf("list reconciled provider calendar states: %w", findError)
 	}
-	return mappings, nil
+	return syncStates, nil
 }
 
-func (service *CalendarConnectionService) recordSourceReconciliationFailure(ctx context.Context, mappingID string) error {
+func (service *CalendarConnectionService) recordSourceReconciliationFailure(ctx context.Context, syncStateID string) error {
 	startedAt := service.now().UTC()
-	synchronization, synchronizationError := models.NewCalendarSync(mappingID, startedAt)
+	synchronization, synchronizationError := models.NewCalendarSync(syncStateID, startedAt)
 	if synchronizationError != nil {
 		return synchronizationError
 	}
@@ -436,28 +506,62 @@ func (service *CalendarConnectionService) recordSourceReconciliationFailure(ctx 
 	return nil
 }
 
-func sourceCalendarGroup(providerGroup ProviderCalendarGroupKey) (models.SourceCalendarGroup, error) {
-	switch providerGroup {
-	case ProviderCalendarGroupCalendar:
-		return models.SourceCalendarGroupCalendar, nil
-	case ProviderCalendarGroupBirthdays:
-		return models.SourceCalendarGroupBirthdays, nil
-	default:
-		return "", errors.New("semantic calendar group is unknown")
+func ensureProviderCalendarMapping(database *gorm.DB, organizerID string, syncState *models.ProviderCalendarSyncState, providerCalendar ProviderCalendar) (string, error) {
+	for mappingIndex := range syncState.Mappings {
+		mapping := &syncState.Mappings[mappingIndex]
+		if mapping.SemanticGroup != models.SourceCalendarGroupCalendar {
+			continue
+		}
+		if mapping.Calendar.Name != providerCalendar.Name {
+			if updateError := database.Model(&mapping.Calendar).Update("name", providerCalendar.Name).Error; updateError != nil {
+				return "", fmt.Errorf("update RSVP calendar %s from source %s: %w", mapping.CalendarID, providerCalendar.ID, updateError)
+			}
+		}
+		return mapping.CalendarID, nil
 	}
+	displayOrder, orderError := models.NextCalendarDisplayOrder(database, organizerID)
+	if orderError != nil {
+		return "", orderError
+	}
+	calendar, calendarError := models.NewCalendar(organizerID, providerCalendar.Name, providerCalendar.ColorToken, displayOrder)
+	if calendarError != nil {
+		return "", calendarError
+	}
+	visible, visibilityError := initialCalendarVisibility(database, organizerID, providerCalendar.Visible)
+	if visibilityError != nil {
+		return "", visibilityError
+	}
+	calendar.Visible = visible
+	if createError := database.Create(calendar).Error; createError != nil {
+		return "", fmt.Errorf("create RSVP calendar for source %s: %w", providerCalendar.ID, createError)
+	}
+	if visibilityError := database.Model(calendar).Update("visible", visible).Error; visibilityError != nil {
+		return "", fmt.Errorf("set initial RSVP calendar visibility for source %s: %w", providerCalendar.ID, visibilityError)
+	}
+	if mappingError := ensureSemanticMapping(database, syncState, calendar.ID, models.SourceCalendarGroupCalendar); mappingError != nil {
+		return "", mappingError
+	}
+	return calendar.ID, nil
 }
 
-func sourceCalendarKey(providerCalendarID string, providerGroup models.SourceCalendarGroup) string {
-	return providerCalendarID + "\x00" + string(providerGroup)
-}
-
-func calendarSymbol(calendarName string) string {
-	for _, character := range strings.TrimSpace(calendarName) {
-		if unicode.IsLetter(character) || unicode.IsNumber(character) {
-			return strings.ToUpper(string(character))
+func ensureSemanticMapping(database *gorm.DB, syncState *models.ProviderCalendarSyncState, calendarID string, group models.SourceCalendarGroup) error {
+	for _, mapping := range syncState.Mappings {
+		if mapping.SemanticGroup == group {
+			if mapping.CalendarID != calendarID {
+				return errors.New("semantic group mapping targets multiple RSVP calendars")
+			}
+			return nil
 		}
 	}
-	return "•"
+	mapping, mappingError := models.NewSourceCalendarMapping(syncState.ID, calendarID, group)
+	if mappingError != nil {
+		return mappingError
+	}
+	if createError := database.Create(mapping).Error; createError != nil {
+		return fmt.Errorf("create semantic calendar mapping: %w", createError)
+	}
+	syncState.Mappings = append(syncState.Mappings, *mapping)
+	return nil
 }
 
 func deletePriorOrganizerCalendars(database *gorm.DB, organizerID string, protectedCalendarIDs []string) error {
@@ -484,11 +588,11 @@ func deletePriorOrganizerCalendars(database *gorm.DB, organizerID string, protec
 // ReconciledCalendarConnection identifies the mappings that are ready for event synchronization.
 type ReconciledCalendarConnection struct {
 	OrganizerID string
-	Mappings    []models.SourceCalendarMapping
+	SyncStates  []models.ProviderCalendarSyncState
 }
 
-// ReconcileAllSourceCalendars applies CalendarList changes for every connected organizer.
-func (service *CalendarConnectionService) ReconcileAllSourceCalendars(ctx context.Context) ([]ReconciledCalendarConnection, error) {
+// ReconcileAllSourceCalendars applies CalendarList changes without connections that an initial task owns.
+func (service *CalendarConnectionService) ReconcileAllSourceCalendars(ctx context.Context, excludedConnectionIDs map[string]struct{}) ([]ReconciledCalendarConnection, error) {
 	var connections []models.CalendarConnection
 	if findError := service.database.WithContext(ctx).Where("status = ?", models.CalendarConnectionConnected).Order("id ASC").Find(&connections).Error; findError != nil {
 		return nil, fmt.Errorf("list calendar connections: %w", findError)
@@ -496,25 +600,57 @@ func (service *CalendarConnectionService) ReconcileAllSourceCalendars(ctx contex
 	reconciledConnections := make([]ReconciledCalendarConnection, 0, len(connections))
 	var reconciliationErrors []error
 	for _, connection := range connections {
+		if _, excluded := excludedConnectionIDs[connection.ID]; excluded {
+			continue
+		}
 		mappings, reconciliationError := service.ReconcileSourceCalendars(ctx, connection.OrganizerID, connection.ID)
 		if reconciliationError != nil {
 			reconciliationErrors = append(reconciliationErrors, fmt.Errorf("reconcile calendar connection %s: %w", connection.ID, reconciliationError))
 			continue
 		}
-		reconciledConnections = append(reconciledConnections, ReconciledCalendarConnection{OrganizerID: connection.OrganizerID, Mappings: mappings})
+		reconciledConnections = append(reconciledConnections, ReconciledCalendarConnection{OrganizerID: connection.OrganizerID, SyncStates: mappings})
 	}
 	return reconciledConnections, errors.Join(reconciliationErrors...)
 }
 
-func deleteSourceCalendarMapping(database *gorm.DB, mapping models.SourceCalendarMapping) error {
-	if useError := requireSourceCalendarUnused(database, mapping); useError != nil {
+func deleteProviderCalendarSyncState(database *gorm.DB, syncState *models.ProviderCalendarSyncState) error {
+	if useError := requireProviderCalendarUnused(database, syncState.ID); useError != nil {
 		return useError
 	}
-	if deleteError := database.Unscoped().Delete(&mapping).Error; deleteError != nil {
-		return fmt.Errorf("delete source calendar mapping %s: %w", mapping.ID, deleteError)
+	var links []models.ExternalEventLink
+	if findError := database.Where("sync_state_id = ?", syncState.ID).Find(&links).Error; findError != nil {
+		return findError
 	}
-	if deleteError := database.Unscoped().Delete(&models.Calendar{}, "id = ?", mapping.CalendarID).Error; deleteError != nil {
-		return fmt.Errorf("delete RSVP calendar %s: %w", mapping.CalendarID, deleteError)
+	for _, link := range links {
+		if deleteError := deleteExternalEvent(database, syncState.ID, link.ProviderEventID); deleteError != nil {
+			return deleteError
+		}
+	}
+	calendarIDs := make([]string, 0, len(syncState.Mappings))
+	for _, mapping := range syncState.Mappings {
+		calendarIDs = append(calendarIDs, mapping.CalendarID)
+	}
+	if deleteError := database.Unscoped().Delete(syncState).Error; deleteError != nil {
+		return fmt.Errorf("delete provider calendar state %s: %w", syncState.ID, deleteError)
+	}
+	for _, calendarID := range calendarIDs {
+		var mappingCount int64
+		if countError := database.Model(&models.SourceCalendarMapping{}).Where("calendar_id = ?", calendarID).Count(&mappingCount).Error; countError != nil {
+			return countError
+		}
+		if mappingCount != 0 {
+			continue
+		}
+		var laneCount int64
+		if countError := database.Model(&models.Lane{}).Where("calendar_id = ?", calendarID).Count(&laneCount).Error; countError != nil {
+			return countError
+		}
+		if laneCount != 0 {
+			return ErrCalendarConnectionHasLocalUse
+		}
+		if deleteError := database.Unscoped().Delete(&models.Calendar{}, "id = ?", calendarID).Error; deleteError != nil {
+			return fmt.Errorf("delete RSVP calendar %s: %w", calendarID, deleteError)
+		}
 	}
 	return nil
 }
@@ -529,19 +665,16 @@ func (service *CalendarConnectionService) DeleteConnection(ctx context.Context, 
 		if connection.OrganizerID != organizerID {
 			return ErrResourceForbidden
 		}
-		var mappings []models.SourceCalendarMapping
-		if findError := transaction.Where("connection_id = ?", connectionID).Find(&mappings).Error; findError != nil {
+		if deleteError := transaction.Unscoped().Delete(&models.Task{}, "organizer_id = ? AND resource_type = ? AND resource_id = ?", organizerID, models.TaskResourceCalendarConnection, connectionID).Error; deleteError != nil {
+			return fmt.Errorf("delete calendar connection tasks: %w", deleteError)
+		}
+		var syncStates []models.ProviderCalendarSyncState
+		if findError := transaction.Preload("Mappings").Where("connection_id = ?", connectionID).Find(&syncStates).Error; findError != nil {
 			return findError
 		}
-		for _, mapping := range mappings {
-			if useError := requireSourceCalendarUnused(transaction, mapping); useError != nil {
-				return useError
-			}
-			if deleteError := transaction.Unscoped().Delete(&mapping).Error; deleteError != nil {
-				return fmt.Errorf("delete source calendar mapping %s: %w", mapping.ID, deleteError)
-			}
-			if deleteError := transaction.Unscoped().Delete(&models.Calendar{}, "id = ?", mapping.CalendarID).Error; deleteError != nil {
-				return fmt.Errorf("delete source calendar %s: %w", mapping.CalendarID, deleteError)
+		for stateIndex := range syncStates {
+			if deleteError := deleteProviderCalendarSyncState(transaction, &syncStates[stateIndex]); deleteError != nil {
+				return deleteError
 			}
 		}
 		if deleteError := transaction.Unscoped().Delete(&connection).Error; deleteError != nil {
@@ -581,112 +714,12 @@ func currentCalendarCredential(ctx context.Context, database *gorm.DB, adapter C
 	return refreshed, nil
 }
 
-func requireSourceMappingUnused(database *gorm.DB, mappingID string) error {
+func requireProviderCalendarUnused(database *gorm.DB, syncStateID string) error {
 	var eventIDs []string
-	if findError := database.Model(&models.ExternalEventLink{}).Where("mapping_id = ?", mappingID).Pluck("event_id", &eventIDs).Error; findError != nil {
+	if findError := database.Model(&models.ExternalEventLink{}).Where("sync_state_id = ?", syncStateID).Pluck("event_id", &eventIDs).Error; findError != nil {
 		return findError
 	}
 	return requireSourceEventsUnused(database, eventIDs)
-}
-
-func requireSourceCalendarUnused(database *gorm.DB, mapping models.SourceCalendarMapping) error {
-	var calendarLaneIDs []string
-	if findError := database.Model(&models.Lane{}).Where("calendar_id = ?", mapping.CalendarID).Pluck("id", &calendarLaneIDs).Error; findError != nil {
-		return findError
-	}
-	var calendarEventIDs []string
-	if len(calendarLaneIDs) != 0 {
-		if findError := database.Model(&models.Event{}).Where("lane_id IN ?", calendarLaneIDs).Pluck("id", &calendarEventIDs).Error; findError != nil {
-			return findError
-		}
-	}
-
-	type sourceEventIdentity struct {
-		EventID string
-		LaneID  string
-	}
-	var sourceEvents []sourceEventIdentity
-	if findError := database.Model(&models.ExternalEventLink{}).
-		Select("external_event_links.event_id, events.lane_id").
-		Joins("JOIN events ON events.id = external_event_links.event_id AND events.deleted_at IS NULL").
-		Where("external_event_links.mapping_id = ?", mapping.ID).
-		Scan(&sourceEvents).Error; findError != nil {
-		return findError
-	}
-	sourceEventIDs := make([]string, 0, len(sourceEvents))
-	sourceLaneIDs := make([]string, 0, len(sourceEvents))
-	for _, sourceEvent := range sourceEvents {
-		sourceEventIDs = append(sourceEventIDs, sourceEvent.EventID)
-		sourceLaneIDs = append(sourceLaneIDs, sourceEvent.LaneID)
-	}
-	if !sameIdentifierSet(calendarEventIDs, sourceEventIDs) || !sameIdentifierSet(calendarLaneIDs, sourceLaneIDs) {
-		return ErrCalendarConnectionHasLocalUse
-	}
-
-	var calendarSeriesIDs []string
-	if len(calendarLaneIDs) != 0 {
-		if findError := database.Model(&models.EventSeries{}).Where("lane_id IN ?", calendarLaneIDs).Pluck("id", &calendarSeriesIDs).Error; findError != nil {
-			return findError
-		}
-	}
-	var sourceSeriesIDs []string
-	if findError := database.Model(&models.ExternalEventSeriesLink{}).Where("mapping_id = ?", mapping.ID).Pluck("event_series_id", &sourceSeriesIDs).Error; findError != nil {
-		return findError
-	}
-	if !sameIdentifierSet(calendarSeriesIDs, sourceSeriesIDs) {
-		return ErrCalendarConnectionHasLocalUse
-	}
-	if useError := requireSourceEventsUnused(database, sourceEventIDs); useError != nil {
-		return useError
-	}
-
-	type localUseCheck struct {
-		model  any
-		query  string
-		values []any
-	}
-	checks := []localUseCheck{
-		{model: &models.IngestionDraft{}, query: "calendar_id = ?", values: []any{mapping.CalendarID}},
-	}
-	if len(calendarLaneIDs) != 0 {
-		checks = append(checks,
-			localUseCheck{model: &models.AttentionPolicy{}, query: "lane_id IN ?", values: []any{calendarLaneIDs}},
-			localUseCheck{model: &models.Probe{}, query: "lane_id IN ?", values: []any{calendarLaneIDs}},
-			localUseCheck{model: &models.DerivedMarkerRule{}, query: "lane_id IN ?", values: []any{calendarLaneIDs}},
-			localUseCheck{model: &models.DerivedMarker{}, query: "lane_id IN ?", values: []any{calendarLaneIDs}},
-			localUseCheck{model: &models.DraftConfirmation{}, query: "lane_id IN ?", values: []any{calendarLaneIDs}},
-		)
-	}
-	for _, check := range checks {
-		var count int64
-		if countError := database.Model(check.model).Where(check.query, check.values...).Count(&count).Error; countError != nil {
-			return countError
-		}
-		if count != 0 {
-			return ErrCalendarConnectionHasLocalUse
-		}
-	}
-	return nil
-}
-
-func sameIdentifierSet(first []string, second []string) bool {
-	firstIdentifiers := make(map[string]struct{}, len(first))
-	for _, identifier := range first {
-		firstIdentifiers[identifier] = struct{}{}
-	}
-	secondIdentifiers := make(map[string]struct{}, len(second))
-	for _, identifier := range second {
-		secondIdentifiers[identifier] = struct{}{}
-	}
-	if len(firstIdentifiers) != len(secondIdentifiers) {
-		return false
-	}
-	for identifier := range firstIdentifiers {
-		if _, found := secondIdentifiers[identifier]; !found {
-			return false
-		}
-	}
-	return true
 }
 
 func requireSourceEventUnused(database *gorm.DB, eventID string) error {

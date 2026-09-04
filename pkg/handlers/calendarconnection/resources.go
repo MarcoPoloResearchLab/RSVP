@@ -17,6 +17,7 @@ import (
 	"github.com/tyemirov/RSVP/pkg/middleware"
 	"github.com/tyemirov/RSVP/pkg/providers/googlecalendar"
 	"github.com/tyemirov/RSVP/pkg/services"
+	utilsscheduler "github.com/tyemirov/utils/scheduler"
 	"gorm.io/gorm"
 )
 
@@ -27,6 +28,7 @@ type Resources struct {
 	applicationContext *config.ApplicationContext
 	service            *services.CalendarConnectionService
 	syncService        *services.CalendarSyncService
+	taskWorker         *utilsscheduler.Worker
 }
 
 // New constructs the Google Calendar connection resources.
@@ -69,7 +71,11 @@ func NewWithServices(applicationContext *config.ApplicationContext, service *ser
 	if applicationContext == nil || service == nil || syncService == nil {
 		return nil, errors.New("calendar connection HTTP dependencies are required")
 	}
-	return &Resources{applicationContext: applicationContext, service: service, syncService: syncService}, nil
+	taskWorker, taskWorkerError := services.NewCalendarConnectionTaskWorker(applicationContext.Database, service, syncService, applicationContext.Logger)
+	if taskWorkerError != nil {
+		return nil, taskWorkerError
+	}
+	return &Resources{applicationContext: applicationContext, service: service, syncService: syncService, taskWorker: taskWorker}, nil
 }
 
 // AuthorizationRequests returns the consent request collection handler.
@@ -195,7 +201,12 @@ func (resources *Resources) Connections() http.Handler {
 				writeServiceError(resources.applicationContext, responseWriter, synchronizationError)
 				return
 			}
-			writeConnection(resources.applicationContext, responseWriter, http.StatusOK, connection, &synchronization)
+			importTask, taskError := services.ReadCalendarConnectionTask(request.Context(), resources.applicationContext.Database, currentUser.ID, connection.ID)
+			if taskError != nil && !errors.Is(taskError, gorm.ErrRecordNotFound) {
+				writeServiceError(resources.applicationContext, responseWriter, taskError)
+				return
+			}
+			writeConnection(resources.applicationContext, responseWriter, http.StatusOK, connection, &synchronization, importTask)
 		case http.MethodDelete:
 			if deleteError := resources.service.DeleteConnection(request.Context(), currentUser.ID, connectionID); deleteError != nil {
 				writeServiceError(resources.applicationContext, responseWriter, deleteError)
@@ -220,21 +231,17 @@ func (resources *Resources) createConnection(currentUser *models.User, responseW
 		writeServiceError(resources.applicationContext, responseWriter, createError)
 		return
 	}
-	statusCode := http.StatusCreated
+	statusCode := http.StatusAccepted
 	if reused {
 		statusCode = http.StatusOK
 	}
-	mappings, reconciliationError := resources.service.ReconcileSourceCalendars(request.Context(), currentUser.ID, connection.ID)
-	if reconciliationError != nil {
-		writeError(resources.applicationContext, responseWriter, http.StatusBadGateway, "calendar_synchronization_failed", "Google Calendar synchronization failed. RSVP will retry automatically.", reconciliationError)
-		return
-	}
-	if synchronizationError := resources.syncService.SynchronizeMappings(request.Context(), currentUser.ID, mappings); synchronizationError != nil {
-		writeError(resources.applicationContext, responseWriter, http.StatusBadGateway, "calendar_synchronization_failed", "Google Calendar synchronization failed. RSVP will retry automatically.", synchronizationError)
+	importTask, taskError := services.ReadCalendarConnectionTask(request.Context(), resources.applicationContext.Database, currentUser.ID, connection.ID)
+	if taskError != nil {
+		writeServiceError(resources.applicationContext, responseWriter, taskError)
 		return
 	}
 	responseWriter.Header().Set("Location", config.WebCalendarConnections+connection.ID)
-	writeConnection(resources.applicationContext, responseWriter, statusCode, connection, nil)
+	writeConnection(resources.applicationContext, responseWriter, statusCode, connection, nil, importTask)
 }
 
 func (resources *Resources) listSources(organizerID string, connectionID string, responseWriter http.ResponseWriter, request *http.Request) {
@@ -251,12 +258,14 @@ func (resources *Resources) listSources(organizerID string, connectionID string,
 		Name               string                     `json:"name"`
 		Visible            bool                       `json:"visible"`
 	}
-	response := make([]sourceRepresentation, 0, len(connection.Mappings))
-	for _, mapping := range connection.Mappings {
-		response = append(response, sourceRepresentation{
-			ID: mapping.ID, ProviderCalendarID: mapping.ProviderCalendarID, SemanticGroup: mapping.SemanticGroup, CalendarID: mapping.CalendarID,
-			Name: mapping.Calendar.Name, Visible: mapping.Calendar.Visible,
-		})
+	response := make([]sourceRepresentation, 0)
+	for _, syncState := range connection.SyncStates {
+		for _, mapping := range syncState.Mappings {
+			response = append(response, sourceRepresentation{
+				ID: mapping.ID, ProviderCalendarID: syncState.ProviderCalendarID, SemanticGroup: mapping.SemanticGroup, CalendarID: mapping.CalendarID,
+				Name: mapping.Calendar.Name, Visible: mapping.Calendar.Visible,
+			})
+		}
 	}
 	if encodeError := handlers.WriteJSON(responseWriter, http.StatusOK, map[string]any{"connection_id": connectionID, "sources": response}); encodeError != nil {
 		resources.applicationContext.Logger.Printf("ERROR: Write source calendar response: %v", encodeError)
@@ -265,18 +274,65 @@ func (resources *Resources) listSources(organizerID string, connectionID string,
 
 // SynchronizeAll reconciles every source calendar list and its event data.
 func (resources *Resources) SynchronizeAll(ctx context.Context) error {
-	reconciledConnections, reconciliationError := resources.service.ReconcileAllSourceCalendars(ctx)
+	incompleteTaskConnectionIDs, taskError := services.IncompleteCalendarConnectionTaskIDs(ctx, resources.applicationContext.Database)
+	if taskError != nil {
+		return taskError
+	}
+	reconciledConnections, reconciliationError := resources.service.ReconcileAllSourceCalendars(ctx, incompleteTaskConnectionIDs)
 	synchronizationErrors := []error{reconciliationError}
 	for _, connection := range reconciledConnections {
-		synchronizationErrors = append(synchronizationErrors, resources.syncService.SynchronizeMappings(ctx, connection.OrganizerID, connection.Mappings))
+		synchronizationErrors = append(synchronizationErrors, resources.syncService.SynchronizeSyncStates(ctx, connection.OrganizerID, connection.SyncStates))
 	}
 	return errors.Join(synchronizationErrors...)
 }
 
-func writeConnection(applicationContext *config.ApplicationContext, responseWriter http.ResponseWriter, statusCode int, connection *models.CalendarConnection, synchronization *connectionSynchronization) {
+// RunTaskWorker executes due calendar connection tasks until shutdown.
+func (resources *Resources) RunTaskWorker(ctx context.Context) {
+	resources.RunTaskCycle(ctx)
+	resources.taskWorker.Run(ctx)
+}
+
+// RunTaskCycle executes one due calendar connection task cycle.
+func (resources *Resources) RunTaskCycle(ctx context.Context) {
+	resources.taskWorker.RunOnce(ctx)
+}
+
+type taskRepresentation struct {
+	ID              string           `json:"id"`
+	Kind            models.TaskKind  `json:"kind"`
+	State           models.TaskState `json:"state"`
+	RetryCount      int              `json:"retry_count"`
+	Active          bool             `json:"active"`
+	Error           bool             `json:"error"`
+	LastAttemptedAt string           `json:"last_attempted_at"`
+	FinishedAt      string           `json:"finished_at"`
+}
+
+func newTaskRepresentation(task *models.Task) *taskRepresentation {
+	if task == nil {
+		return nil
+	}
+	representation := &taskRepresentation{
+		ID: task.ID, Kind: task.Kind, State: task.State, RetryCount: task.RetryCount,
+		Active: task.State == models.TaskPending || task.State == models.TaskRunning || (task.State == models.TaskFailed && task.RetryCount < services.CalendarConnectionTaskMaxRetries),
+		Error:  task.State == models.TaskFailed,
+	}
+	if task.LastAttemptedAt != nil {
+		representation.LastAttemptedAt = task.LastAttemptedAt.UTC().Format(time.RFC3339)
+	}
+	if task.FinishedAt != nil {
+		representation.FinishedAt = task.FinishedAt.UTC().Format(time.RFC3339)
+	}
+	return representation
+}
+
+func writeConnection(applicationContext *config.ApplicationContext, responseWriter http.ResponseWriter, statusCode int, connection *models.CalendarConnection, synchronization *connectionSynchronization, task *models.Task) {
 	value := map[string]any{"id": connection.ID, "provider": connection.Provider, "status": connection.Status}
 	if synchronization != nil {
 		value["synchronization"] = synchronization
+	}
+	if representation := newTaskRepresentation(task); representation != nil {
+		value["task"] = representation
 	}
 	if encodeError := handlers.WriteJSON(responseWriter, statusCode, value); encodeError != nil {
 		applicationContext.Logger.Printf("ERROR: Write calendar connection response: %v", encodeError)
@@ -500,7 +556,7 @@ button:focus-visible { outline: 3px solid rgba(23, 107, 82, 0.28); outline-offse
 .secondary { background: transparent; border-color: var(--line); color: var(--ink); }
 .primary { background: var(--ink); color: white; }
 .primary:hover { background: var(--accent); }
-button:disabled { cursor: wait; opacity: 0.65; }
+button:disabled { cursor: default; opacity: 0.65; }
 .result {
   color: var(--muted);
   flex-basis: 100%;
@@ -510,6 +566,7 @@ button:disabled { cursor: wait; opacity: 0.65; }
   text-align: right;
 }
 .result[data-state="error"] { color: var(--danger); }
+.result[data-state="task"] { color: var(--accent); font-weight: 650; }
 @media (max-width: 34rem) {
   .shell { padding-inline: 0.75rem; }
   .context { display: none; }
@@ -544,7 +601,7 @@ button:disabled { cursor: wait; opacity: 0.65; }
       <div class="actions">
         <button class="secondary" id="cancel" type="button">Back to Horizon</button>
         <button class="primary" id="confirm" type="button" data-request-id="{{.RequestID}}">Create connection</button>
-        <p class="result" id="status" role="status" aria-live="polite"></p>
+        <p class="result" id="status" role="status" aria-live="polite" data-calendar-task-status></p>
       </div>
     </section>
   </main>
@@ -562,22 +619,27 @@ button:disabled { cursor: wait; opacity: 0.65; }
   cancel.addEventListener('click', () => window.location.replace('/horizon/'));
   button.addEventListener('click', async () => {
     button.disabled = true;
-    button.setAttribute('aria-busy', 'true');
     status.dataset.state = 'working';
-    status.textContent = 'Creating connection…';
+    status.textContent = 'Creating the secure connection…';
     try {
       const response = await fetch('/calendar-connections/', {
         method: 'POST',
         credentials: 'same-origin',
         headers: {'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey},
-        body: JSON.stringify({request_id: button.dataset.requestId, state, code})
+	      body: JSON.stringify({request_id: button.dataset.requestId, state, code, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone})
       });
       if (!response.ok) throw new Error('connection request failed');
-      status.textContent = 'Connection created. Returning to Horizon…';
-      window.location.replace('/horizon/');
+      const responseBody = await response.json();
+      if (!responseBody.task || typeof responseBody.task.state !== 'string' || typeof responseBody.task.active !== 'boolean') {
+        throw new Error('connection task response is invalid');
+      }
+      status.dataset.state = 'task';
+      status.textContent = responseBody.task.state === 'running'
+        ? 'Calendar import task is running. Opening Integrations…'
+        : 'Calendar import task is queued. Opening Integrations…';
+      window.setTimeout(() => window.location.replace('/horizon/#settings/integrations'), 600);
     } catch (_) {
       button.disabled = false;
-      button.removeAttribute('aria-busy');
       status.dataset.state = 'error';
       status.textContent = 'RSVP could not create the connection. Try again.';
     }
