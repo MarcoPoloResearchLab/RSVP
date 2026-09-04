@@ -240,9 +240,13 @@ test('keeps each calendar color stable when visibility and the calendar set chan
     await page.reload();
     const readCalendarColors = () => page.locator('[data-calendar-control]').evaluateAll((controls) => Object.fromEntries(controls.map((control) => [
         control.getAttribute('data-calendar-control'),
-        getComputedStyle(control).getPropertyValue('--calendar-color').trim(),
+        getComputedStyle(control.querySelector('[data-calendar-toggle]')).accentColor,
     ])));
     const colorsBeforeVisibilityChange = await readCalendarColors();
+    expect(colorsBeforeVisibilityChange.CALAAAOX).toBeTruthy();
+    expect(colorsBeforeVisibilityChange.CALAAB0X).toBeTruthy();
+    expect(colorsBeforeVisibilityChange.CALAAAOX).not.toBe(colorsBeforeVisibilityChange.CALAAB0X);
+    expect(new Set(Object.values(colorsBeforeVisibilityChange)).size).toBe(Object.keys(colorsBeforeVisibilityChange).length);
     const firstVisibleToggle = page.locator('[data-calendar-toggle]:checked').first();
     const hiddenCalendarID = await firstVisibleToggle.getAttribute('data-calendar-toggle');
     expect(hiddenCalendarID).toBeTruthy();
@@ -269,6 +273,7 @@ test('keeps each calendar color stable when visibility and the calendar set chan
         expect(colorsAfterCalendarAddition[calendarID]).toBe(color);
     }
     expect(Object.values(colorsAfterCalendarAddition).every((color) => color !== '')).toBe(true);
+    expect(new Set(Object.values(colorsAfterCalendarAddition)).size).toBe(Object.keys(colorsAfterCalendarAddition).length);
 
     await page.evaluate(async ({calendarURLs, restoreCalendarID}) => {
         for (const calendarURL of calendarURLs) {
@@ -367,6 +372,7 @@ test('changes and persists the organizer timezone in account settings', async ({
 });
 
 test('creates, reorders, resolves, and persists calendar lanes', async ({context, page}) => {
+    const originalCalendarCount = await page.locator('[data-calendar-toggle]').count();
     await openSettings(page);
     const calendarForm = page.locator('form[data-settings-resource-form][data-resource-url="/calendars/"]');
     await calendarForm.locator('[name="name"]').fill('Browser Calendar');
@@ -383,7 +389,7 @@ test('creates, reorders, resolves, and persists calendar lanes', async ({context
     const calendarManagement = page.locator(`[data-settings-calendar="${calendarID}"]`);
     await calendarManagement.getByRole('button', {name: 'Move up'}).click();
     await closeSettings(page);
-    await expect(page.locator('[data-calendar-toggle]').nth(4)).toHaveAttribute('data-calendar-toggle', calendarID);
+    await expect(page.locator('[data-calendar-toggle]').nth(originalCalendarCount - 1)).toHaveAttribute('data-calendar-toggle', calendarID);
 
     await openSettings(page);
     const laneForm = page.locator('form[data-settings-resource-form][data-resource-url="/lanes/"]');
@@ -417,7 +423,7 @@ test('creates, reorders, resolves, and persists calendar lanes', async ({context
 
     await context.clearCookies();
     await page.goto('/browser-login/');
-    await expect(page.locator('[data-calendar-toggle]').nth(4)).toHaveAttribute('data-calendar-toggle', calendarID);
+    await expect(page.locator('[data-calendar-toggle]').nth(originalCalendarCount - 1)).toHaveAttribute('data-calendar-toggle', calendarID);
     await expect(page.locator(`[data-calendar-id="${calendarID}"] .horizon-lane-title`).first()).toHaveText('Browser finite lane');
 
     const persistedOpenLane = page.locator(`[data-calendar-id="${calendarID}"] [data-lane-id]`, {hasText: 'Browser open lane'});
@@ -515,6 +521,25 @@ test('connects Google Calendar and retains its calendar groups automatically', a
     await page.waitForLoadState('networkidle');
     await openSettings(page, 'Integrations');
     await expect(page.getByRole('button', {name: 'Connect Google Calendar'})).toBeVisible();
+});
+
+test('clamps month and year windows and panning at calendar boundaries', async ({page}) => {
+    for (const scenario of [
+        {scale: 'month', start: '2030-01-31T00:00:00-08:00', end: '2030-02-28', backward: '2029-12-31', forwardEnd: '2030-03-28'},
+        {scale: 'month', start: '2032-01-31T00:00:00-08:00', end: '2032-02-29', backward: '2031-12-31', forwardEnd: '2032-03-29'},
+        {scale: 'month', start: '2030-03-31T00:00:00-07:00', end: '2030-04-30', backward: '2030-02-28', forwardEnd: '2030-05-30'},
+        {scale: 'month', start: '2030-12-31T00:00:00-08:00', end: '2031-01-31', backward: '2030-11-30', forwardEnd: '2031-02-28'},
+        {scale: 'year', start: '2032-02-29T00:00:00-08:00', end: '2033-02-28', backward: '2031-02-28', forwardEnd: '2034-02-28'},
+    ]) {
+        const target = `/horizon/?${new URLSearchParams({scale: scenario.scale, start: scenario.start})}`;
+        await page.goto(target);
+        expect(await readHorizonLocalDates(page)).toEqual([scenario.start.slice(0, 10), scenario.end]);
+        await page.getByRole('button', {name: 'Pan forward'}).click();
+        await expect.poll(() => readHorizonLocalDates(page)).toEqual([scenario.end, scenario.forwardEnd]);
+        await page.goto(target);
+        await page.getByRole('button', {name: 'Pan backward'}).click();
+        await expect.poll(async () => (await readHorizonLocalDates(page))[0]).toBe(scenario.backward);
+    }
 });
 
 test('supports keyboard pan, scale, visibility, and marker selection', async ({page}) => {
