@@ -41,10 +41,10 @@
                         <select class="form-select" id="calendarSelect" name="{{ .ParamNameCalendarID }}">
                             {{ if .CalendarList }}
                                 {{ range .CalendarList }}
-                                    <option value="{{ .ID }}">{{ .Symbol }} {{ .Name }}</option>
+                                    <option value="{{ .ID }}">{{ .Name }}</option>
                                 {{ end }}
                             {{ else }}
-                                <option value="">RSVP Events</option>
+                                <option value="">Personal</option>
                             {{ end }}
                         </select>
                     </div>

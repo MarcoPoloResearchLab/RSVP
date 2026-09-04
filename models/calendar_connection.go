@@ -19,9 +19,16 @@ const (
 // CalendarConnectionStatus identifies one closed connection state.
 type CalendarConnectionStatus string
 
+// SourceCalendarGroup identifies one normalized provider event grouping.
+type SourceCalendarGroup string
+
 const (
 	// CalendarConnectionConnected identifies an authorized connection.
 	CalendarConnectionConnected CalendarConnectionStatus = "connected"
+	// SourceCalendarGroupCalendar identifies the provider calendar's general event grouping.
+	SourceCalendarGroupCalendar SourceCalendarGroup = "calendar"
+	// SourceCalendarGroupBirthdays identifies birthday events.
+	SourceCalendarGroupBirthdays SourceCalendarGroup = "birthdays"
 )
 
 var (
@@ -78,13 +85,15 @@ func (request *CalendarAuthorizationRequest) GetIDGeneratorFunc() func(int) (str
 // CalendarConnection stores one encrypted calendar provider credential.
 type CalendarConnection struct {
 	BaseModel
-	OrganizerID          string                   `gorm:"type:varchar(8);not null;uniqueIndex:calendar_connection_owner"`
-	Provider             CalendarProvider         `gorm:"type:text;not null;uniqueIndex:calendar_connection_owner;check:calendar_connection_provider,provider = 'google'"`
-	CredentialNonce      []byte                   `gorm:"not null"`
-	CredentialCiphertext []byte                   `gorm:"not null"`
-	Status               CalendarConnectionStatus `gorm:"type:text;not null;check:calendar_connection_status,status = 'connected'"`
-	Organizer            User                     `gorm:"foreignKey:OrganizerID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
-	Mappings             []SourceCalendarMapping  `gorm:"foreignKey:ConnectionID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
+	OrganizerID             string                   `gorm:"type:varchar(8);not null;uniqueIndex:calendar_connection_owner"`
+	Provider                CalendarProvider         `gorm:"type:text;not null;uniqueIndex:calendar_connection_owner;check:calendar_connection_provider,provider = 'google'"`
+	CredentialNonce         []byte                   `gorm:"not null"`
+	CredentialCiphertext    []byte                   `gorm:"not null"`
+	Status                  CalendarConnectionStatus `gorm:"type:text;not null;check:calendar_connection_status,status = 'connected'"`
+	CalendarListSyncCursor  *string
+	CalendarImportCutoverAt *time.Time
+	Organizer               User                        `gorm:"foreignKey:OrganizerID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
+	SyncStates              []ProviderCalendarSyncState `gorm:"foreignKey:ConnectionID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
 }
 
 // NewCalendarConnection constructs one encrypted Google Calendar connection.
@@ -115,20 +124,19 @@ func (connection *CalendarConnection) GetIDGeneratorFunc() func(int) (string, er
 	return GenerateBase62ID
 }
 
-// SourceCalendarMapping connects one provider calendar to one RSVP calendar.
+// SourceCalendarMapping connects one semantic calendar group to one RSVP calendar.
 type SourceCalendarMapping struct {
 	BaseModel
-	ConnectionID       string `gorm:"type:varchar(8);not null;uniqueIndex:source_provider_calendar"`
-	CalendarID         string `gorm:"type:varchar(8);not null;uniqueIndex"`
-	ProviderCalendarID string `gorm:"not null;uniqueIndex:source_provider_calendar"`
-	SyncCursor         *string
-	Connection         CalendarConnection `gorm:"foreignKey:ConnectionID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
-	Calendar           Calendar           `gorm:"foreignKey:CalendarID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT"`
+	SyncStateID   string                    `gorm:"type:varchar(8);not null;uniqueIndex:source_semantic_group,priority:1"`
+	CalendarID    string                    `gorm:"type:varchar(8);not null;index"`
+	SemanticGroup SourceCalendarGroup       `gorm:"column:semantic_group;type:text;not null;uniqueIndex:source_semantic_group,priority:2;check:source_calendar_group,semantic_group IN ('calendar','birthdays')"`
+	SyncState     ProviderCalendarSyncState `gorm:"foreignKey:SyncStateID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
+	Calendar      Calendar                  `gorm:"foreignKey:CalendarID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT"`
 }
 
 // NewSourceCalendarMapping constructs one source calendar mapping.
-func NewSourceCalendarMapping(connectionID string, calendarID string, providerCalendarID string) (*SourceCalendarMapping, error) {
-	mapping := &SourceCalendarMapping{ConnectionID: connectionID, CalendarID: calendarID, ProviderCalendarID: providerCalendarID}
+func NewSourceCalendarMapping(syncStateID string, calendarID string, semanticGroup SourceCalendarGroup) (*SourceCalendarMapping, error) {
+	mapping := &SourceCalendarMapping{SyncStateID: syncStateID, CalendarID: calendarID, SemanticGroup: semanticGroup}
 	if validationError := mapping.Validate(); validationError != nil {
 		return nil, validationError
 	}
@@ -136,7 +144,8 @@ func NewSourceCalendarMapping(connectionID string, calendarID string, providerCa
 }
 
 func (mapping *SourceCalendarMapping) Validate() error {
-	if mapping.ConnectionID == "" || mapping.CalendarID == "" || mapping.ProviderCalendarID == "" {
+	if mapping.SyncStateID == "" || mapping.CalendarID == "" ||
+		(mapping.SemanticGroup != SourceCalendarGroupCalendar && mapping.SemanticGroup != SourceCalendarGroupBirthdays) {
 		return ErrSourceCalendarMappingInvalid
 	}
 	return nil

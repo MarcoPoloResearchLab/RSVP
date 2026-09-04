@@ -15,6 +15,8 @@ type SettingsViewData struct {
 	Calendars                []SettingsCalendarView
 	CalendarCreateURL        string
 	LaneCreateURL            string
+	OrganizerManagementURL   string
+	OrganizerTimezone        string
 	CalendarAuthorizationURL string
 	CalendarConnection       *SettingsConnectionView
 }
@@ -23,7 +25,6 @@ type SettingsViewData struct {
 type SettingsCalendarView struct {
 	ID            string
 	Name          string
-	Symbol        string
 	ColorToken    string
 	ManagementURL string
 	PreviousOrder int
@@ -34,13 +35,16 @@ type SettingsCalendarView struct {
 
 // SettingsConnectionView contains one Google Calendar connection's management links.
 type SettingsConnectionView struct {
-	ID                string
-	Status            models.CalendarConnectionStatus
-	ManagementURL     string
-	SourceCalendarURL string
+	ID            string
+	Status        models.CalendarConnectionStatus
+	ManagementURL string
 }
 
 func newSettingsViewData(database *gorm.DB, organizerID string) (SettingsViewData, error) {
+	var organizer models.User
+	if organizerError := organizer.FindByID(database, organizerID); organizerError != nil {
+		return SettingsViewData{}, fmt.Errorf("find settings organizer %s: %w", organizerID, organizerError)
+	}
 	calendars, calendarsError := models.FindCalendarsByOwner(database, organizerID)
 	if calendarsError != nil {
 		return SettingsViewData{}, fmt.Errorf("find settings calendars for organizer %s: %w", organizerID, calendarsError)
@@ -49,11 +53,15 @@ func newSettingsViewData(database *gorm.DB, organizerID string) (SettingsViewDat
 		Calendars:                make([]SettingsCalendarView, 0, len(calendars)),
 		CalendarCreateURL:        config.WebCalendars,
 		LaneCreateURL:            config.WebLanes,
+		OrganizerManagementURL:   config.WebOrganizers + url.PathEscape(organizerID),
 		CalendarAuthorizationURL: config.WebCalendarAuthorizationRequests,
+	}
+	if organizer.Timezone != nil {
+		viewData.OrganizerTimezone = *organizer.Timezone
 	}
 	for calendarIndex, calendar := range calendars {
 		viewData.Calendars = append(viewData.Calendars, SettingsCalendarView{
-			ID: calendar.ID, Name: calendar.Name, Symbol: calendar.Symbol, ColorToken: calendar.ColorToken,
+			ID: calendar.ID, Name: calendar.Name, ColorToken: calendar.ColorToken,
 			ManagementURL: config.WebCalendars + url.PathEscape(calendar.ID), PreviousOrder: calendar.DisplayOrder - 1,
 			NextOrder: calendar.DisplayOrder + 1, CanMoveUp: calendarIndex > 0, CanMoveDown: calendarIndex < len(calendars)-1,
 		})
@@ -69,8 +77,7 @@ func newSettingsViewData(database *gorm.DB, organizerID string) (SettingsViewDat
 	}
 	viewData.CalendarConnection = &SettingsConnectionView{
 		ID: connection.ID, Status: connection.Status,
-		ManagementURL:     config.WebCalendarConnections + url.PathEscape(connection.ID),
-		SourceCalendarURL: config.WebCalendarConnections + url.PathEscape(connection.ID) + "/source-calendars/",
+		ManagementURL: config.WebCalendarConnections + url.PathEscape(connection.ID),
 	}
 	return viewData, nil
 }

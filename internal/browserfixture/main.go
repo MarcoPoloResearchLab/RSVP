@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	gaussConstants "github.com/tyemirov/GAuss/pkg/constants"
@@ -100,7 +101,15 @@ func main() {
 			return
 		}
 		responseWriter.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(responseWriter, `{"items":[{"id":"google-personal","summary":"Google Personal","timeZone":"America/Los_Angeles","backgroundColor":"#405060"},{"id":"google-work","summary":"Google Work","timeZone":"America/Los_Angeles","backgroundColor":"#102030"}]}`)
+		if request.URL.Query().Get("syncToken") != "" {
+			fmt.Fprint(responseWriter, `{"items":[],"nextSyncToken":"browser-calendar-list-2"}`)
+			return
+		}
+		if request.URL.Query().Get("showHidden") != "true" {
+			http.Error(responseWriter, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+			return
+		}
+		fmt.Fprint(responseWriter, `{"items":[{"id":"google-primary","summary":"temirov@gmail.com","timeZone":"America/Los_Angeles","backgroundColor":"#9a9cff","selected":true,"accessRole":"owner","primary":true},{"id":"google-holidays","summary":"Holidays","timeZone":"America/Los_Angeles","backgroundColor":"#42d692","selected":true,"accessRole":"reader"},{"id":"google-family","summary":"Family","timeZone":"America/Los_Angeles","backgroundColor":"#9fc6e7","selected":false,"accessRole":"reader"},{"id":"addressbook#contacts@group.v.calendar.google.com","summary":"Contacts birthdays","timeZone":"America/Los_Angeles","backgroundColor":"#778899","selected":true,"accessRole":"reader"}],"nextSyncToken":"browser-calendar-list-1"}`)
 	})
 	mux.HandleFunc(browserGoogleEventsPath+"/", func(responseWriter http.ResponseWriter, request *http.Request) {
 		if request.Header.Get("Authorization") != "Bearer browser-access" || request.URL.Query().Get("singleEvents") != "true" || request.URL.Query().Get("showDeleted") != "true" {
@@ -108,11 +117,40 @@ func main() {
 			return
 		}
 		responseWriter.Header().Set("Content-Type", "application/json")
-		if request.URL.Query().Get("syncToken") == "browser-sync-1" {
-			fmt.Fprint(responseWriter, `{"timeZone":"America/Los_Angeles","items":[{"id":"birthday-ada","status":"confirmed","summary":"Ada provider birthday updated","start":{"date":"2026-09-15"},"end":{"date":"2026-09-16"}},{"id":"birthday-lin","status":"cancelled"},{"id":"birthday-maya","status":"cancelled"}],"nextSyncToken":"browser-sync-2"}`)
+		if strings.HasSuffix(request.URL.Path, "/google-holidays/events") {
+			if request.URL.Query().Get("syncToken") != "" {
+				fmt.Fprint(responseWriter, `{"timeZone":"America/Los_Angeles","items":[],"nextSyncToken":"browser-holidays-sync-2"}`)
+				return
+			}
+			fmt.Fprint(responseWriter, `{"timeZone":"America/Los_Angeles","items":[{"id":"holiday-founders","status":"confirmed","summary":"Provider Founders Day","start":{"date":"2026-09-20"},"end":{"date":"2026-09-21"}},{"id":"holiday-autumn","status":"confirmed","summary":"Provider Autumn Holiday","start":{"date":"2026-09-24"},"end":{"date":"2026-09-25"}}],"nextSyncToken":"browser-holidays-sync-1"}`)
 			return
 		}
-		fmt.Fprint(responseWriter, `{"timeZone":"America/Los_Angeles","items":[{"id":"birthday-ada","status":"confirmed","summary":"Ada provider birthday","start":{"date":"2026-09-15"},"end":{"date":"2026-09-16"}},{"id":"birthday-lin","status":"confirmed","summary":"Lin provider birthday","start":{"date":"2026-10-01"},"end":{"date":"2026-10-02"}},{"id":"birthday-maya","status":"confirmed","summary":"Maya provider birthday","start":{"date":"2026-10-20"},"end":{"date":"2026-10-21"}}],"nextSyncToken":"browser-sync-1"}`)
+		if strings.HasSuffix(request.URL.Path, "/google-family/events") {
+			if request.URL.Query().Get("syncToken") != "" {
+				fmt.Fprint(responseWriter, `{"timeZone":"America/Los_Angeles","items":[],"nextSyncToken":"browser-family-sync-2"}`)
+				return
+			}
+			fmt.Fprint(responseWriter, `{"timeZone":"America/Los_Angeles","items":[{"id":"family-dinner-1","recurringEventId":"family-dinner","status":"confirmed","summary":"Provider family dinner","start":{"dateTime":"2026-09-18T18:00:00-07:00","timeZone":"America/Los_Angeles"},"end":{"dateTime":"2026-09-18T19:00:00-07:00","timeZone":"America/Los_Angeles"}},{"id":"family-dinner-2","recurringEventId":"family-dinner","status":"confirmed","summary":"Provider family dinner","start":{"dateTime":"2026-09-25T18:00:00-07:00","timeZone":"America/Los_Angeles"},"end":{"dateTime":"2026-09-25T19:00:00-07:00","timeZone":"America/Los_Angeles"}}],"nextSyncToken":"browser-family-sync-1"}`)
+			return
+		}
+		if strings.HasSuffix(request.URL.Path, "/addressbook#contacts@group.v.calendar.google.com/events") {
+			if request.URL.Query().Get("syncToken") != "" {
+				fmt.Fprint(responseWriter, `{"timeZone":"America/Los_Angeles","items":[],"nextSyncToken":"browser-contacts-sync-2"}`)
+				return
+			}
+			fmt.Fprint(responseWriter, `{"timeZone":"America/Los_Angeles","items":[{"id":"contact-birthday","eventType":"birthday","birthdayProperties":{"type":"birthday","contact":"people/100"},"status":"confirmed","summary":"Happy birthday!","start":{"date":"2026-09-22"},"end":{"date":"2026-09-23"}},{"id":"contact-anniversary","eventType":"birthday","birthdayProperties":{"type":"anniversary","contact":"people/101"},"status":"confirmed","summary":"Contact anniversary","start":{"date":"2026-09-23"},"end":{"date":"2026-09-24"}}],"nextSyncToken":"browser-contacts-sync-1"}`)
+			return
+		}
+		if !strings.HasSuffix(request.URL.Path, "/google-primary/events") {
+			http.Error(responseWriter, http.StatusText(http.StatusNotFound), http.StatusNotFound)
+			return
+		}
+		if request.URL.Query().Get("syncToken") != "" {
+			fmt.Fprint(responseWriter, `{"timeZone":"America/Los_Angeles","items":[{"id":"primary-review","eventType":"default","status":"confirmed","summary":"Primary review birthday","start":{"dateTime":"2026-09-10T09:00:00-07:00","timeZone":"America/Los_Angeles"},"end":{"dateTime":"2026-09-10T10:00:00-07:00","timeZone":"America/Los_Angeles"}},{"id":"birthday-ada","eventType":"default","status":"confirmed","summary":"Ada provider birthday updated","start":{"date":"2026-09-15"},"end":{"date":"2026-09-16"}},{"id":"birthday-lin","status":"cancelled"},{"id":"birthday-maya","status":"cancelled"}],"nextSyncToken":"browser-primary-sync-2"}`)
+			return
+		}
+		time.Sleep(2500 * time.Millisecond)
+		fmt.Fprint(responseWriter, `{"timeZone":"America/Los_Angeles","items":[{"id":"primary-review","eventType":"default","status":"confirmed","summary":"Primary review","start":{"dateTime":"2026-09-10T09:00:00-07:00","timeZone":"America/Los_Angeles"},"end":{"dateTime":"2026-09-10T10:00:00-07:00","timeZone":"America/Los_Angeles"}},{"id":"primary-future-type","eventType":"providerFutureType","status":"confirmed","summary":"Provider future event","start":{"dateTime":"2026-09-11T09:00:00-07:00","timeZone":"America/Los_Angeles"},"end":{"dateTime":"2026-09-11T10:00:00-07:00","timeZone":"America/Los_Angeles"}},{"id":"birthday-ada","eventType":"default","status":"confirmed","summary":"Ada provider birthday","start":{"date":"2026-09-15"},"end":{"date":"2026-09-16"}},{"id":"birthday-lin","eventType":"birthday","status":"confirmed","summary":"Lin provider birthday","start":{"date":"2026-10-01"},"end":{"date":"2026-10-02"}},{"id":"birthday-maya","eventType":"birthday","birthdayProperties":{"type":"self"},"status":"confirmed","summary":"Maya provider birthday","start":{"date":"2026-10-20"},"end":{"date":"2026-10-21"}}],"nextSyncToken":"browser-primary-sync-1"}`)
 	})
 	mux.HandleFunc(browserNaturalLanguagePath, func(responseWriter http.ResponseWriter, request *http.Request) {
 		if request.Method != http.MethodPost || request.Header.Get("Authorization") != "Bearer browser-parser-key" {
@@ -154,6 +192,11 @@ func main() {
 		NaturalLanguageParserAPIKey:         "browser-parser-key",
 	})
 	fixtureRoutes.RegisterRoutes(mux)
+	go func() {
+		if taskError := fixtureRoutes.RunCalendarConnectionTasks(context.Background()); taskError != nil {
+			logger.Printf("Calendar connection task worker stopped: %v", taskError)
+		}
+	}()
 	go func() {
 		if synchronizationError := fixtureRoutes.RunCalendarSyncClock(context.Background(), 2*time.Second); synchronizationError != nil {
 			logger.Printf("Calendar synchronization clock stopped: %v", synchronizationError)
@@ -199,29 +242,34 @@ func seedBrowserFixture(database *gorm.DB) error {
 			return fmt.Errorf("create browser venue: %w", createError)
 		}
 
-		birthdays, calendarError := createBrowserCalendar(transaction, organizer.ID, "CALBIRTH", "Birthdays", "✦", "birthdays", 0)
+		birthdays, calendarError := createBrowserCalendar(transaction, organizer.ID, "CALBIRTH", "Birthdays", "birthdays", 0)
 		if calendarError != nil {
 			return calendarError
 		}
-		holidays, calendarError := createBrowserCalendar(transaction, organizer.ID, "CALHOLID", "Holidays", "◆", "holidays", 1)
+		holidays, calendarError := createBrowserCalendar(transaction, organizer.ID, "CALHOLID", "Holidays", "holidays", 1)
 		if calendarError != nil {
 			return calendarError
 		}
-		travel, calendarError := createBrowserCalendar(transaction, organizer.ID, "CALTRAVL", "Travel", "→", "travel", 2)
+		travel, calendarError := createBrowserCalendar(transaction, organizer.ID, "CALTRAVL", "Travel", "travel", 2)
 		if calendarError != nil {
 			return calendarError
 		}
-		waiting, calendarError := createBrowserCalendar(transaction, organizer.ID, "CALWAIT0", "Waiting", "○", "waiting", 3)
+		waiting, calendarError := createBrowserCalendar(transaction, organizer.ID, "CALWAIT0", "Waiting", "waiting", 3)
 		if calendarError != nil {
 			return calendarError
 		}
-		work, calendarError := createBrowserCalendar(transaction, organizer.ID, "CALWORK0", "Work", "□", "work", 4)
+		work, calendarError := createBrowserCalendar(transaction, organizer.ID, "CALWORK0", "Work", "work", 4)
 		if calendarError != nil {
 			return calendarError
+		}
+		for index, calendarID := range []string{"CALAAAOX", "CALAAB0X"} {
+			if _, calendarError := createBrowserCalendar(transaction, organizer.ID, calendarID, "Color collision "+calendarID, "google-default", 5+index); calendarError != nil {
+				return calendarError
+			}
 		}
 
 		for index, title := range []string{"Ada's birthday", "Lin's birthday", "Maya's birthday"} {
-			markerTime := browserReferenceTime.AddDate(0, 0, 12+index*10)
+			markerTime := browserReferenceTime.AddDate(0, 0, 12+index*8)
 			laneID := fmt.Sprintf("LANBRT%02d", index)
 			eventID := fmt.Sprintf("EVTBRT%02d", index)
 			lane, laneError := createBrowserFiniteLane(transaction, birthdays.ID, laneID, title, browserReferenceTime.AddDate(0, 0, -3), markerTime, index)
@@ -234,7 +282,7 @@ func seedBrowserFixture(database *gorm.DB) error {
 		}
 
 		for index, title := range []string{"Founders Day", "Summer Holiday"} {
-			markerTime := browserReferenceTime.AddDate(0, 0, 18+index*16)
+			markerTime := browserReferenceTime.AddDate(0, 0, 18+index*10)
 			laneID := fmt.Sprintf("LANHOL%02d", index)
 			eventID := fmt.Sprintf("EVTHOL%02d", index)
 			lane, laneError := createBrowserFiniteLane(transaction, holidays.ID, laneID, title, browserReferenceTime.AddDate(0, 0, -2), markerTime, index)
@@ -332,7 +380,7 @@ func seedBrowserFixture(database *gorm.DB) error {
 		}
 		for index, eventID := range []string{"EVTSER00", "EVTSER01"} {
 			if _, eventError := createBrowserPointEvent(
-				transaction, seriesLane.ID, eventID, "Design review", browserReferenceTime.AddDate(0, 0, 30+index*7), seriesRelation,
+				transaction, seriesLane.ID, eventID, "Design review", browserReferenceTime.AddDate(0, 0, 14+index*7), seriesRelation,
 			); eventError != nil {
 				return eventError
 			}
@@ -348,7 +396,7 @@ func seedBrowserFixture(database *gorm.DB) error {
 			return laneError
 		}
 		boundaryLane, laneError := createBrowserFiniteLane(
-			transaction, work.ID, "LANBOUND", "Window boundary", windowStart, windowStart.AddDate(0, 0, 1), 2,
+			transaction, work.ID, "LANBOUND", "Quarterly estimated tax payment deadline", windowStart, windowStart.AddDate(0, 0, 1), 2,
 		)
 		if laneError != nil {
 			return laneError
@@ -371,8 +419,8 @@ func browserWindowStart() (time.Time, error) {
 	return time.Date(localReference.Year(), localReference.Month(), localReference.Day(), 0, 0, 0, 0, location), nil
 }
 
-func createBrowserCalendar(database *gorm.DB, organizerID string, identifier string, name string, symbol string, colorToken string, order int) (*models.Calendar, error) {
-	calendar, calendarError := models.NewCalendar(organizerID, name, symbol, colorToken, order)
+func createBrowserCalendar(database *gorm.DB, organizerID string, identifier string, name string, colorToken string, order int) (*models.Calendar, error) {
+	calendar, calendarError := models.NewCalendar(organizerID, name, colorToken, order)
 	if calendarError != nil {
 		return nil, calendarError
 	}

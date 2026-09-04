@@ -8,6 +8,308 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 ## BugFixes
 
+- [x] [B054] (P2) {B051} Correct Horizon dates at month ends
+  Goal:
+  A month window that starts on January 31 ends in March instead of February.
+  Requirements:
+  - Use the last day of the target month when the original day does not exist.
+  - Use the same date calculation for the window end and each navigation direction.
+  - Preserve the local wall time and organizer timezone.
+  Validation:
+  - Verify month ends, leap years, and year changes through browser navigation.
+  - Run `make ci` and `make browser-test`.
+
+- [x] [B053] (P2) {B047} Correct calendar color collisions
+  Goal:
+  Calendars `CALAAAOX` and `CALAAB0X` with color token `google-default` have the same presentation color.
+  Requirements:
+  - Derive color components from a 64-bit hash of the calendar identifier and color token.
+  - Keep each presentation color when visibility or the calendar set changes.
+  Validation:
+  - Confirm different rendered colors for the reported calendar pair.
+  - Confirm different rendered colors with eight visible calendars and one hidden calendar.
+  - Run `make ci` and `make browser-test`.
+
+- [x] [B052] (P1) {I006} Correct the migration from master
+  Goal:
+  The migration rejects the database schema from `master`.
+  Requirements:
+  - Accept the schema from merge base `881c0bc` as the migration input.
+  - Move persisted data directly into the canonical schema.
+  - Preserve credentials, source mappings, events, series links, and synchronization records.
+  - Remove obsolete columns and temporary tables during the migration transaction.
+  Validation:
+  - Open a populated database with the master schema through `OpenDatabase`.
+  - Confirm that the imported records remain in the canonical schema.
+  - Open the migrated database again and confirm that its new sync cursor remains unchanged.
+  - Run `make ci`.
+
+- [x] [B051] (P1) {I013,F002} Make the Horizon window match the selected scale
+  Goal:
+  The scale controls change the day width but keep the 90-day Horizon window.
+  The selected scale must control the visible time window.
+  Requirements:
+  - Use one local day for the day scale.
+  - Use seven local days for the week scale.
+  - Use one calendar month for the month scale.
+  - Use one calendar year for the year scale.
+  - Use the month scale when the browser has no stored scale.
+  - Store the selected scale as a browser preference.
+  - Use the stored scale for each later Horizon load.
+  - Move the window by one selected scale when the user pans.
+  - Render time ticks that agree with the selected scale.
+  - Keep explicit projection windows available for the JSON representation.
+  Validation:
+  - Select each scale and confirm the exact visible time window.
+  - Reload the Horizon and confirm that the last scale stays selected.
+  - Pan in each direction and confirm one selected-scale movement.
+  - Confirm that only the selected scale has the active state.
+  - Run `make ci` and `make browser-test`.
+
+- [x] [B050] (P1) {B049,F002} End each finite lane at its final marker
+  Goal:
+  A finite lane can extend past its final marker and show a second visual endpoint.
+  The terminal circle is a visual part of the lane and must end the rail.
+  Requirements:
+  - Keep the stored lane end time unchanged.
+  - End the visible rail at the final marker when the stored lane end is in the horizon window.
+  - Render the terminal circle as part of the finite lane.
+  - Use the final marker only as the interaction target for the terminal circle.
+  - Align the rail end with the marker center at a horizon window boundary.
+  - Do not render a separate marker circle at the lane end.
+  - Keep the stored lane end when the horizon window contains no marker.
+  - Keep the continuation arrow when the stored lane end is after the horizon window.
+  Validation:
+  - Confirm that the rail does not extend past the final marker.
+  - Confirm that the lane renders one terminal circle.
+  - Confirm that the final marker has no separate marker circle.
+  - Confirm the boundary alignment with a browser test.
+  - Run `make ci` and `make browser-test`.
+
+- [x] [B049] (P1) {B046,F002} Correct the lane design
+  Goal:
+  The horizon view uses a thin lane rail and a narrow finite endpoint.
+  The horizon view also cuts long lane titles at the fixed label boundary.
+  Requirements:
+  - Use a 16-pixel lane rail.
+  - Use a round finite endpoint with the same size as the lane rail.
+  - Mask the finite endpoint behind a marker at the same position.
+  - Make the lane label width responsive.
+  - Wrap a long lane title inside its lane label.
+  - Keep the calendar symbol and lane management control visible.
+  - Keep the sticky lane label separate from the time track.
+  - Keep the Today label inside the time track at each window boundary.
+  Validation:
+  - Confirm that the lane rail is 16 pixels high.
+  - Confirm that the finite endpoint has the same width and height as the lane rail.
+  - Render a long event title at desktop and mobile widths.
+  - Confirm that the complete title is visible.
+  - Confirm that the lane management control stays inside the lane label.
+  - Confirm that the time rail keeps its date positions.
+  - Run `make ci` and `make browser-test`.
+
+- [x] [B048] (P1) {B047,I006} Run calendar connection work as a background task
+  Goal:
+  Calendar connection creation must return before RSVP imports source calendars and events.
+  The current request imports all provider data before it returns and makes the connection control appear inactive.
+  Requirements:
+  - Store one durable task for each initial calendar connection import.
+  - Use the `tyemirov/utils` scheduler for task claims, retries, and attempt results.
+  - Keep provider credentials out of the task payload.
+  - Return the connection and task state without waiting for calendar import.
+  - Show the task state on the consent callback page.
+  - Show the task state in the Integrations rubric.
+  - Poll the connection resource while the initial task is active.
+  - Keep scheduled calendar synchronization separate from the initial task.
+  Deliverables:
+  - Add the provider-neutral task model and canonical database contract.
+  - Add the scheduler repository and calendar import dispatcher.
+  - Add the task state to the calendar connection representation.
+  - Start the task worker with the application runtime.
+  - Replace the callback wait cursor with an explicit task status.
+  - Update the architecture, API, acceptance matrix, user guide, and operator runbook.
+  - Add model, service, HTTP, and browser contract tests.
+  Validation:
+  - Create a connection while the provider event request remains blocked.
+  - Confirm that the connection request returns with an active task.
+  - Confirm that the callback page reports the background import.
+  - Confirm that Settings reports the task state.
+  - Release the provider request and confirm that the task succeeds.
+  - Return a provider error and confirm a scheduled retry.
+  - Run `make ci` and `make browser-test`.
+  - Run the Governor check and the language checker for each changed technical document.
+
+- [x] [B047] (P1) {I006} Correct Google calendar import semantics
+  Goal:
+  Google calendar import must preserve the organizer's source calendar groupings and normalized birthday meaning.
+  RSVP currently misclassifies Google events and can retain obsolete local groupings between local starts.
+  Requirements:
+  - Treat each readable CalendarList entry as one provider calendar.
+  - Include hidden and unselected entries during CalendarList synchronization.
+  - Use `selected` only as the initial RSVP visibility value.
+  - Include the browser IANA timezone in the connection confirmation request.
+  - Use `UTC` when the browser timezone is absent or invalid.
+  - Confirm the organizer timezone in the connection creation transaction.
+  - Use `summaryOverride` before `summary` for the initial RSVP name.
+  - Keep a source rename separate from RSVP group identity.
+  - Exclude `freeBusyReader` entries because they do not supply event details.
+  - Treat a deleted CalendarList entry as a provider calendar deletion.
+  - Treat the Google Contacts birthday entry as a semantic source, not a visible source calendar.
+  - Create `Birthdays` from normalized birthday meaning.
+  - Do not use a provider name, event type, or RSVP source as a semantic group.
+  - Preserve Holidays, Family, and other readable entries as separate RSVP calendars.
+  - Give each visible RSVP calendar one distinct presentation color.
+  - Derive each presentation color only from the calendar identifier and color token.
+  - Keep each presentation color when visibility or the calendar set changes.
+  - Allow at most eight visible calendars for one organizer.
+
+  - Map `birthdayProperties.type=self` to `Birthdays`.
+  - Map `birthdayProperties.type=birthday` to `Birthdays`.
+  - Map absent `birthdayProperties.type` to `Birthdays` when `birthdayProperties` exists.
+  - Keep `anniversary`, `custom`, and `other` subtypes in the source calendar.
+  - Do not use `birthdayProperties.contact` as a grouping requirement.
+  - Do not use `customTypeName` as an RSVP group name.
+  - Map `eventType=birthday` without birthday properties to `Birthdays`.
+  - Map `eventType=default` to the provider calendar by default.
+  - Use complete title words as a fallback only for an untyped `default` event.
+  - Map `birthday`, `birthdays`, and `bday` title words to `Birthdays`.
+  - Do not match a partial word such as `Unbirthday`.
+  - Keep `focusTime`, `fromGmail`, `outOfOffice`, and `workingLocation` in the provider calendar.
+  - Keep an unknown `eventType` or birthday subtype in the provider calendar.
+  - Record a provider-safe diagnostic code for each unknown value.
+  - Use `Busy` when Google withholds event details.
+  - Apply available type metadata before the `Busy` title.
+  - Keep all occurrences of one recurring event in the same semantic group.
+  - Keep each occurrence classification for recurring-series reconciliation.
+  - Do not derive a semantic group from recurrence, date shape, visibility, or transparency.
+
+  - Evaluate grouping rules in one ordered Google classification table.
+  - Apply cancellation before all classification rules.
+  - Apply an explicit special-date subtype before `eventType`.
+  - Apply `eventType` before the title fallback.
+  - Apply the provider-calendar default after all other rules.
+  - Return one normalized event change from the provider adapter.
+  - Include the target semantic group in each normalized event change.
+  - Keep Google fields out of the synchronization service and database models.
+  - Request one unfiltered event feed for each provider calendar.
+  - Do not request one duplicate feed for each semantic group.
+  - Store one event sync cursor for each provider calendar.
+  - Keep each initial and incremental request parameter set consistent.
+  - Store `nextSyncToken` only after the final page and successful persistence.
+  - On `410 Gone`, clear the provider calendar state and complete a full reconciliation.
+
+  - Treat a canceled event as a deletion across all semantic group mappings.
+  - Use provider calendar ID and provider event ID as the event source identity.
+  - Do not require a canceled record to contain title or birthday metadata.
+  - Move a changed event between semantic groups in one database transaction.
+  - Remove the prior event placement before the transaction stores the new placement.
+  - Keep one external event link after a semantic group move.
+  - Remove absent source-owned events during a complete reconciliation.
+  - Keep provider copies from different source calendars as distinct source events.
+
+  - Stop the `rsvp-local` Compose project before each `make up` startup.
+  - Delete the local `rsvp-data` volume before each `make up` startup.
+  - Preserve the local environment file and calendar credential encryption key.
+  - Keep the production retained volume unchanged.
+  - Build and start the local services after the reset.
+
+  Deliverables:
+  - Add one closed provider-neutral semantic group type.
+  - Add one normalized provider event change type with source identity and semantic group.
+  - Remove the semantic group argument from `CalendarProviderAdapter.SynchronizeEvents`.
+  - Add one provider calendar sync-state model that owns the event cursor.
+  - Make each semantic group mapping reference that sync-state model.
+  - Make external event and series links use provider calendar source identity.
+  - Replace group-specific synchronization with one source-calendar reconciliation transaction.
+  - Add one declarative Google classification table with explicit precedence.
+  - Add one table-driven contract matrix for all documented Google event types.
+  - Add cases for every documented birthday subtype and each missing-field form.
+  - Add cancellation, semantic move, unknown-value, and complete-reconciliation cases.
+  - Add browser acceptance for personal, Birthdays, Holidays, Family, and unknown provider types.
+  - Add browser acceptance for stable colors with eight visible calendars and one hidden calendar.
+  - Add connection acceptance for an organizer without a confirmed timezone.
+  - Add connection acceptance for the `UTC` fallback.
+  - Update the architecture, acceptance matrix, user guide, and operator runbook.
+  - Use the official Google Event types, Events, CalendarList, and synchronization documents as source evidence.
+  Validation:
+  - Run the classification matrix without network access.
+  - Run one deterministic CalendarList and Events API server.
+  - Synchronize one provider calendar and confirm that RSVP makes one Events request.
+  - Return a Google self-birthday event and confirm that RSVP puts it only in `Birthdays`.
+  - Return a contact birthday and confirm that RSVP puts it only in `Birthdays`.
+  - Return an anniversary and confirm that RSVP keeps it only in the source calendar.
+  - Confirm that the browser shows `Happy birthday!` only in `Birthdays`.
+  - Change a default title to an explicit birthday title and confirm one atomic move.
+  - Change the title back and confirm the reverse move.
+  - Cancel each event form with a sparse canceled record and confirm complete deletion.
+  - Reject a sync cursor and confirm one complete source reconciliation.
+  - Confirm that a repeated synchronization creates no duplicate calendar, lane, event, or link.
+  - Hide one calendar and confirm that each assigned color stays the same.
+  - Add one calendar and confirm that each prior assigned color stays the same.
+  - Run `make up` with an existing local database.
+  - Confirm that Docker creates a new local `rsvp-data` volume.
+  - Confirm that the new local database contains no organizer data.
+  - Confirm that the local health request succeeds.
+  - Run `make ci` and `make browser-test`.
+  - Run the Governor check and the language checker for each changed technical document.
+
+- [x] [B046] (P1) {F002} Refine lane and marker geometry
+  Goal:
+  The current finite lane cap overlaps the event marker and creates a clunky endpoint.
+  The lane rail and marker border also use too much visual weight.
+  Requirements:
+  - Keep the lane trajectory visible across the time grid.
+  - Use a narrow terminal tick for a finite lane.
+  - Mask the terminal tick behind a marker at the same position.
+  - Reduce the visible event marker size and border weight.
+  - Preserve a minimum 44-pixel marker interaction target.
+  - Keep selected, focus, pending, and missed marker states distinct.
+  Validation:
+  - Confirm that the lane rail height is between 8 and 12 pixels.
+  - Confirm that the event marker is between 16 and 20 pixels.
+  - Confirm that the finite terminal tick is no more than 4 pixels wide.
+  - Confirm that each marker interaction target is at least 44 pixels.
+  - Run `make ci` and `make browser-test`.
+
+- [x] [B045] (P1) {I006} Correct imported calendar groupings
+  Goal:
+  Google Calendar import must replace prior local groupings with distinct semantic calendar groupings.
+  Google currently labels some explicit birthday events as `default` events without birthday properties.
+  RSVP currently puts these events in the primary calendar instead of `Birthdays`.
+  Requirements:
+  - Remove all prior unmapped calendars and their temporal resources during the first complete import.
+  - Preserve calendars that already have a source calendar mapping during the I006 data migration.
+  - Use `Personal` as the local default calendar name.
+  - Normalize Google API calendar and event values into RSVP calendar groups at the provider boundary.
+  - Use `calendar` and `birthdays` as the current closed semantic group keys.
+  - Map Google birthday metadata to a separate `Birthdays` calendar.
+  - Map the complete title words `birthday`, `birthdays`, and `bday` to `Birthdays`.
+  - Do not classify a title from a partial word match.
+  - Request the same Google event feed without an event-type filter for each semantic group.
+  - Remove an event from its prior semantic group when its meaning changes.
+  - Keep the general calendar and birthday group cursors separate.
+  - Keep unknown or non-semantic Google event types in the general calendar group.
+  - Do not use a raw Google event type as an RSVP calendar name.
+  - Use the calendar meaning for each visible symbol and name.
+  - Do not create a visible grouping for the RSVP or Google source.
+  - Give each calendar one stable presentation color.
+  - Clear prior Google sync cursors during the schema migration.
+  - Store the source mapping group in `semantic_group`.
+  - Rename the exact `provider_group` predecessor column to `semantic_group`.
+  Validation:
+  - Import a Google account after a local calendar exists and confirm that RSVP removes the local calendar.
+  - Confirm that RSVP imports birthday events into `Birthdays`.
+  - Confirm that RSVP excludes birthday events from the primary calendar.
+  - Return a `default` event with an explicit birthday title and confirm that it appears only in `Birthdays`.
+  - Change a general event title to a birthday title and confirm that the event moves to `Birthdays`.
+  - Return `Unbirthday` in a title and confirm that the event stays in the general group.
+  - Return an unknown Google event type and confirm that it stays in the general calendar group.
+  - Confirm that all visible calendar colors are unique.
+  - Confirm that calendar visibility changes do not change another calendar color.
+  - Migrate each I006 predecessor and confirm that RSVP preserves mapped calendars and clears event sync cursors.
+  - Run `make ci` and `make browser-test`.
+  - Run the Governor check and the language checker for each changed technical document.
+
 - [x] [B044] (P1) {I003} Use one REST interface for Horizon resources
   Goal:
   Horizon must use the repository REST contract for reads, writes, and errors.
@@ -276,6 +578,214 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Verify the public frontend, authentication surface, authorization boundary, and protected workspace separately.
   - Run the Governor check and the language checker for each changed technical document.
   Blocked: Approve the production TAuth configuration and LLM Proxy routing values before implementation.
+
+- [x] [I006] (P1) {F005,F006} Preserve Google source calendars during import
+  Goal:
+  This change preserves each Google source calendar as one RSVP calendar during connection and synchronization.
+  The current browser creates mappings only after manual source selection.
+  Background synchronization processes existing mappings and cannot discover other source calendars.
+  Requirements:
+  - Treat each non-deleted CalendarList entry with event read access as one source calendar.
+  - Request hidden CalendarList entries during each complete source calendar synchronization.
+  - Store one CalendarList sync cursor for each calendar connection.
+  - Store the cursor only after all source calendar mapping changes commit.
+  - Use `summaryOverride` when present for the RSVP calendar name.
+  - Use `summary` when `summaryOverride` is absent.
+  - Create one RSVP calendar and one source calendar mapping for each new provider calendar.
+  - Use Google `selected` as the initial RSVP calendar visibility value.
+  - Use Google `backgroundColor` as the initial RSVP calendar color token.
+  - Preserve the RSVP symbol, color token, visibility, and display order after initial creation.
+  - Update the RSVP calendar name when the source calendar name changes.
+  - Synchronize each source calendar mapping into its related RSVP calendar.
+  - Keep calendar membership separate from lane membership.
+  - Reconcile the source calendar list before each background event synchronization.
+  - When Google rejects a CalendarList sync cursor, do a complete source calendar synchronization.
+  - Apply the current local-use protection rules when Google deletes a source calendar.
+  - Record a source synchronization error when local use prevents source calendar deletion.
+  - Remove the manual source calendar selection controls and request contract.
+  - Keep the current Google Calendar read-only scopes.
+  Deliverables:
+  - Make `CalendarProviderAdapter.ListCalendars` accept a cursor and return a `ProviderCalendarBatch`.
+  - Add CalendarList pages, hidden entries, deletions, and sync cursors to `pkg/providers/googlecalendar/adapter.go`.
+  - Add the CalendarList sync cursor to `CalendarConnection` and the canonical database contract.
+  - Replace `ReplaceSourceCalendars` with `ReconcileSourceCalendars` in the calendar connection service.
+  - Run `ReconcileSourceCalendars` during connection creation and scheduled synchronization.
+  - Delete the manual source selection `PUT` operation.
+  - Delete the source calendar selection interface and its browser code.
+  - Update `ARCHITECTURE.md`, `TIME_HORIZON_ACCEPTANCE.md`, `USER_GUIDE.md`, and `OPERATOR_RUNBOOK.md`.
+  - Add adapter, service, HTTP, and browser contract tests.
+  Validation:
+  - Connect an account that contains Birthdays, Holidays, and Family calendars.
+  - Confirm that RSVP creates three source calendar mappings and three RSVP calendars.
+  - Confirm that each imported marker belongs to the RSVP calendar for its source calendar.
+  - Confirm that independent events use separate lanes inside each imported calendar.
+  - Confirm that occurrences from one event series use one lane.
+  - Repeat source calendar reconciliation and confirm that it creates no duplicate resource.
+  - Add a Google source calendar and confirm that scheduled synchronization creates its RSVP calendar.
+  - Rename a Google source calendar and confirm that RSVP keeps the mapping identifier.
+  - Import a source calendar with `selected=false` and confirm its initial RSVP visibility value.
+  - Reject a CalendarList sync cursor and confirm a complete reconciliation.
+  - Remove a source calendar and confirm the current local-use protection result.
+  - Confirm that connection completion requires no source selection step.
+  - Run `make ci` and `make browser-test`.
+  - Run the Governor check and the language checker for each changed technical document.
+
+- [x] [I008] (P1) {F002} Remove the Horizon tagline
+  Goal:
+  The Horizon heading uses only the product title.
+  The `Your time, in motion` tagline does not supply necessary interface information.
+  Requirements:
+  - Remove `Your time, in motion` from the configured Horizon view.
+  - Remove `Your time, in motion` from the Horizon setup view.
+  - Keep `Horizon` as the configured view heading.
+  - Keep `Set up Horizon` as the setup view heading.
+  - Preserve the accessible section name in both views.
+  - Remove the obsolete tagline style when no element uses it.
+  Deliverables:
+  - Update `templates/horizon.tmpl` and `static/horizon.css`.
+  - Update the Horizon HTML and browser contract tests.
+  Validation:
+  - Open the configured Horizon view and confirm that the tagline is absent.
+  - Open the Horizon setup view and confirm that the tagline is absent.
+  - Confirm that each view has one visible level-one heading.
+  - Confirm that the removed element leaves no empty space above the heading.
+  - Run `make ci` and `make browser-test`.
+
+- [x] [I009] (P1) {F002} Put Horizon controls on the time window row
+  Goal:
+  The time window and its four view controls need one horizontal action row.
+  Requirements:
+  - Put the window start, window end, and organizer timezone in one time window group.
+  - Put the pan and scale control group on the same row.
+  - Keep the control order as backward pan, scale out, scale in, and forward pan.
+  - Keep each current button label and keyboard operation.
+  - Keep the complete time window text available to assistive technology.
+  - Prevent the time window text from overlapping the controls.
+  - Keep the row usable at each supported browser width.
+  Deliverables:
+  - Add one time window row to `templates/horizon.tmpl`.
+  - Update the row and control layout in `static/horizon.css`.
+  - Update the Horizon HTML and browser contract tests.
+  Validation:
+  - Confirm that the time window group and control group share one row at the supported desktop width.
+  - Confirm that all four controls remain visible at the supported mobile width.
+  - Confirm that the row shows the complete start, end, and timezone values.
+  - Use each button and confirm the current pan or scale result.
+  - Use each keyboard operation and confirm the same result.
+  - Run `make ci` and `make browser-test`.
+
+- [x] [I010] (P1) {I009} Put the time window row above the Horizon timeline
+  Goal:
+  The time window row belongs directly above the timeline that uses its range.
+  Requirements:
+  - Render the time window row after the Quick add interface.
+  - Render the time window row immediately before the Horizon timeline viewport.
+  - Keep the calendar visibility controls and Quick add interface above the time window row.
+  - Remove the time window row from the Horizon heading.
+  - Keep the document order and visible order the same.
+  - Keep each control in the existing keyboard focus order.
+  - Prevent a visible element from separating the row and timeline.
+  Deliverables:
+  - Move the time window row in `templates/horizon.tmpl`.
+  - Update the related spacing rules in `static/horizon.css`.
+  - Add HTML order and browser position coverage.
+  Validation:
+  - Confirm that Quick add appears before the time window row.
+  - Confirm that the time window row appears directly above the timeline border.
+  - Confirm that the heading contains only heading content.
+  - Use the controls from the new position and confirm the current results.
+  - Confirm the same order at the supported desktop and mobile widths.
+  - Run `make ci` and `make browser-test`.
+
+- [x] [I011] (P1) {F002,F011} Move the keyboard instructions to Help
+  Goal:
+  Keyboard instructions belong in Help instead of the primary Horizon workspace.
+  Requirements:
+  - Add a Help rubric to the Settings dialog.
+  - Add one Help panel for the Horizon keyboard instructions.
+  - List the pan, scale, marker selection, and calendar visibility operations.
+  - Remove the visible keyboard instruction paragraph from the Horizon workspace.
+  - Remove the obsolete instruction style when no element uses it.
+  - Preserve all current keyboard operations.
+  - Support `#settings/help` as the direct Help location.
+  - Keep the Help rubric in the Settings keyboard navigation order.
+  Deliverables:
+  - Update `templates/partials/settings-dialog.tmpl` and `templates/horizon.tmpl`.
+  - Update the applicable Horizon and Settings styles.
+  - Add Settings rubric, direct location, and keyboard instruction browser coverage.
+  Validation:
+  - Confirm that no keyboard instruction paragraph appears above the timeline.
+  - Open Help and confirm that it lists each current Horizon keyboard operation.
+  - Open `#settings/help` and confirm that the Help rubric is active.
+  - Navigate to Help with the Settings arrow keys.
+  - Use each documented keyboard operation in Horizon.
+  - Run `make ci` and `make browser-test`.
+
+- [x] [I012] (P1) {F002,F003,I006} Remove calendar symbols from the current contract
+  Goal:
+  Calendar names and colors identify calendar groups without a separate letter or symbol.
+  Requirements:
+  - Remove `symbol` from the canonical Calendar model and database schema.
+  - Remove `symbol` from calendar constructors, defaults, patches, and service inputs.
+  - Remove `symbol` from calendar HTTP requests and representations.
+  - Remove `symbol` from the Horizon projection and OpenAPI schema.
+  - Remove provider calendar symbol generation from calendar import.
+  - Remove each calendar symbol field from setup and Settings forms.
+  - Remove symbols from calendar selection options.
+  - Remove symbols from calendar visibility controls and lane labels.
+  - Remove the obsolete calendar and lane symbol styles.
+  - Keep calendar identifiers, names, color tokens, order, visibility, and memberships unchanged.
+  - Keep the numeric `1` through `9` calendar visibility shortcuts.
+  - Reject `symbol` as an unknown field after the API cutover.
+  - Delete obsolete symbol data during the canonical schema cutover.
+  - Keep no symbol alias, compatibility read, or migration bridge after the cutover.
+  Deliverables:
+  - Update the calendar model, database contract, services, handlers, and provider adapter.
+  - Update the Horizon projection, browser fixtures, templates, styles, and scripts.
+  - Update `api/horizon.openapi.json` and each affected technical document.
+  - Replace symbol contract tests with name, color, and visibility contract tests.
+  Validation:
+  - Create and update a calendar without a `symbol` field.
+  - Submit a `symbol` field and confirm that the API rejects it.
+  - Read a calendar and confirm that the response has no `symbol` field.
+  - Read the Horizon projection and confirm that it has no `symbol` field.
+  - Import provider calendars and confirm that RSVP creates no symbol data.
+  - Confirm that setup and Settings contain no Symbol field.
+  - Confirm that calendar controls, options, and lane labels contain no calendar symbol.
+  - Use shortcuts `1` through `9` and confirm calendar visibility changes.
+  - Validate the canonical schema after obsolete symbol data is absent.
+  - Run `make ci` and `make browser-test`.
+  - Run the Governor check and the language checker for each changed technical document.
+
+- [x] [I013] (P1) {I009,I011} Add direct Horizon time scale controls
+  Goal:
+  The Horizon view needs direct day, week, month, and year scale choices.
+  The direct choices replace the two relative scale controls.
+  Requirements:
+  - Replace the scale out and scale in buttons with `D`, `W`, `M`, and `Y` buttons.
+  - Keep the backward pan button before the four scale buttons.
+  - Keep the forward pan button after the four scale buttons.
+  - Use `D` for the day scale.
+  - Use `W` for the week scale.
+  - Use `M` for the month scale.
+  - Use `Y` for the year scale.
+  - Make the month scale the initial choice.
+  - Mark the current scale choice for assistive technology.
+  - Replace the plus and minus keyboard operations with the four letter operations.
+  - Keep each control visible at the supported mobile width.
+  Deliverables:
+  - Update the Horizon template, script, and styles.
+  - Update the Help instructions and the user documentation.
+  - Update the Horizon HTML and browser contract tests.
+  Validation:
+  - Confirm that the control order is backward, day, week, month, year, and forward.
+  - Confirm that each scale button selects its specified scale.
+  - Confirm that only the current scale button has the active state.
+  - Use each letter key and confirm the same scale result.
+  - Confirm that the plus and minus keys do not change the scale.
+  - Confirm that all six controls remain visible at the supported mobile width.
+  - Run `make ci` and `make browser-test`.
+  - Run the Governor check and the language checker for each changed technical document.
 
 ## Maintenance
 
@@ -827,6 +1337,126 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Reject an invalid provider response without a database change.
   - Run `make ci`.
   - Run the browser test target.
+
+- [ ] [F010] (P1) {F001,F002,F003} Add state cycles to Horizon
+  Goal:
+  This feature represents a subject that changes between states in one repeating schedule.
+  The horizon view shows the current state and the next state transition on one lane.
+
+  Requirements:
+  - Represent one state cycle on one dedicated lane.
+  - Keep the state cycle as the only primary temporal subject on its lane.
+  - Keep calendar membership separate from state cycle lane membership.
+  - Require two or more cycle states.
+  - Give each cycle state one label, color token, and display order.
+  - Define one cycle template as an ordered sequence of cycle phases.
+  - Give each cycle phase one cycle state and one positive whole-day duration.
+  - Permit unequal durations for different cycle phases.
+  - Permit one cycle state in multiple nonadjacent cycle phases.
+  - Require adjacent cycle phases to use different cycle states.
+  - Require the last and first cycle phases to use different cycle states.
+  - Give each state cycle one local anchor date and one IANA timezone.
+  - Calculate the cycle offset from the local date, anchor date, and complete cycle duration.
+  - Keep each cycle offset from zero through the complete cycle duration minus one.
+  - Calculate the next state transition from the active cycle phase boundary.
+  - Keep the cycle template as the canonical persisted schedule.
+  - Generate state intervals only for the requested horizon window.
+  - Use half-open local date ranges for generated state intervals.
+  - Return the current cycle state when the organizer's local date intersects the horizon window.
+  - Return the next transition date and next cycle state.
+  - Keep each state cycle lane active and open while the cycle exists.
+  - Create and replace a complete cycle template in one transaction.
+  - Reject each request that would create an incomplete cycle template.
+  - Require an idempotency key for each state cycle creation request.
+  - Require resource preconditions for each concurrent state cycle update.
+  - Return an entity tag for each state cycle representation.
+  - Delete the dedicated lane in the same transaction as its state cycle.
+  - Render one segmented band for each state cycle lane.
+  - Use segment width to show the duration of each generated state interval.
+  - Use stable state labels and colors for all segments.
+  - Mark the current date with one visible cursor.
+  - Show the current state, next state, and time to the next transition.
+  - Keep the full state and transition text available to assistive technology.
+  - Support two-state and three-state cycle templates with the same resource contract.
+
+  Deliverables:
+  - Add `StateCycle`, `CycleState`, and `CyclePhase` domain types and database tables.
+  - Give `StateCycle` the canonical `lane_id`, `anchor_date`, and `timezone` fields.
+  - Give `CycleState` the canonical `state_cycle_id`, `label`, `color_token`, and `display_order` fields.
+  - Give `CyclePhase` the canonical `state_cycle_id`, `cycle_state_id`, `duration_days`, and `display_order` fields.
+  - Add database constraints for ownership, order, references, and positive phase durations.
+  - Add smart constructors that enforce the complete cycle template invariants.
+  - Add owner-scoped state cycle create, read, replace, and delete services.
+  - Add `POST /state-cycles/` for atomic lane, state cycle, state, and phase creation.
+  - Add `GET /state-cycles/{cycle_id}` and `DELETE /state-cycles/{cycle_id}`.
+  - Add `GET` and `PUT` operations for `/state-cycles/{cycle_id}/template`.
+  - Require `If-Match` for each state cycle template replacement and deletion.
+  - Add the state cycle resources and typed errors to `api/horizon.openapi.json`.
+  - Add a `state_cycle` object to each related horizon lane projection.
+  - Return states, generated intervals, the current state, and the next transition in that object.
+  - Add one bounded projection algorithm for cycle windows.
+  - Add the segmented cycle band, current cursor, and transition summary to the horizon view.
+  - Add state cycle create and edit controls to the organizer interface.
+  - Add uneven binary and three-state cycle data to the browser fixture.
+  - Update `ARCHITECTURE.md`, `TIME_HORIZON_ACCEPTANCE.md`, and `USER_GUIDE.md`.
+  - Update each affected database, REST, service, and browser contract test.
+
+  Open Decisions:
+  - Select how RSVP converts imported provider intervals when the provider gives no state cycle identifier.
+  - Define how RSVP preserves provider event identity after a confirmed conversion.
+  - Select how RSVP replaces one generated state interval for a temporary schedule exception.
+
+  Validation:
+  - Create a binary cycle with phase durations of four, two, five, and one day.
+  - Confirm the state and next transition at each phase boundary.
+  - Confirm that the cycle repeats after the complete twelve-day duration.
+  - Project a window that starts and ends inside generated state intervals.
+  - Confirm that the projection clips the first and last state intervals to the window.
+  - Project the cycle across a daylight time change.
+  - Confirm that each local date keeps the correct cycle state.
+  - Create a three-state cycle and confirm the same projection contract.
+  - Reject a cycle with fewer than two cycle states.
+  - Reject a phase with a zero or negative duration.
+  - Reject adjacent phases with the same cycle state.
+  - Reject a template whose last and first phases use the same cycle state.
+  - Replace one complete cycle template and confirm that the horizon changes in one transaction.
+  - Submit a stale resource precondition and confirm that the update fails.
+  - Delete a state cycle and confirm that its dedicated lane is absent.
+  - Confirm that calendar visibility hides and shows the complete state cycle lane.
+  - Confirm that one binary cycle renders as one segmented lane.
+  - Move the current date through each segment and confirm the transition summary.
+  - Confirm the full state and transition text at narrow browser widths.
+  - Run `make ci` and `make browser-test`.
+  - Run the Governor check and the language checker for each changed technical document.
+
+- [x] [F011] (P1) {F001,F002} Add organizer account settings
+  Goal:
+  The Account rubric gives the organizer direct control of account settings.
+
+  Requirements:
+  - Add an Account rubric to Settings.
+  - Add the organizer timezone to the Account rubric.
+  - Show the current organizer timezone.
+  - Let the organizer store one valid IANA timezone.
+  - Reject an invalid timezone without a database change.
+  - Use the changed timezone for each later default Horizon window.
+  - Keep the timezone of each stored marker.
+
+  Deliverables:
+  - Add the owner-scoped organizer read and update resource.
+  - Add the account timezone form and browser-timezone helper.
+  - Add the organizer resource to the OpenAPI contract.
+  - Add API, HTML, and browser contract tests.
+  - Update the architecture, acceptance matrix, user guide, and operator runbook.
+
+  Validation:
+  - Change the organizer timezone in Settings.
+  - Refresh the page and confirm that the value persists.
+  - Confirm that the next default Horizon window uses the changed timezone.
+  - Submit an invalid timezone and confirm that the stored value does not change.
+  - Confirm that an existing event keeps its marker timezone.
+  - Run `make ci` and `make browser-test`.
+  - Run the Governor check and the language checker for each changed technical document.
 
 ## Planning
 

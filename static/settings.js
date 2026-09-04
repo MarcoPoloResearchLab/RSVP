@@ -134,16 +134,30 @@ window.addEventListener('hashchange', () => {
     }
 });
 
-const browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-if (!browserTimezone) {
-    throw new Error('The browser did not supply an IANA timezone.');
-}
+const browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
 for (const timezoneInput of settingsDialog.querySelectorAll('[data-settings-client-timezone]')) {
     if (!(timezoneInput instanceof HTMLInputElement)) {
         throw new TypeError('A settings timezone input is invalid.');
     }
     timezoneInput.value = browserTimezone;
 }
+
+const organizerTimezoneInput = settingsDialog.querySelector('[data-settings-organizer-timezone]');
+const useBrowserTimezoneButton = settingsDialog.querySelector('[data-settings-use-browser-timezone]');
+const timezoneOptions = settingsDialog.querySelector('[data-settings-timezone-options]');
+if (!(organizerTimezoneInput instanceof HTMLInputElement) || !(useBrowserTimezoneButton instanceof HTMLButtonElement) || !(timezoneOptions instanceof HTMLDataListElement)) {
+    throw new Error('The account timezone contract is incomplete.');
+}
+const supportedTimezones = typeof Intl.supportedValuesOf === 'function' ? Intl.supportedValuesOf('timeZone') : [];
+for (const timezoneName of new Set(['UTC', ...supportedTimezones])) {
+    const option = document.createElement('option');
+    option.value = timezoneName;
+    timezoneOptions.append(option);
+}
+useBrowserTimezoneButton.addEventListener('click', () => {
+    organizerTimezoneInput.value = browserTimezone;
+    organizerTimezoneInput.focus();
+});
 
 /** @param {string} message */
 const showSettingsError = (message) => {
@@ -169,6 +183,9 @@ const requireSettingsResponse = async (response) => {
 };
 
 const synchronizationStatus = settingsDialog.querySelector('[data-settings-sync-status]');
+const importTaskStateRow = settingsDialog.querySelector('[data-calendar-task-state-row]');
+const importTaskState = settingsDialog.querySelector('[data-calendar-task-state]');
+const importTaskError = settingsDialog.querySelector('[data-calendar-task-error]');
 const synchronizationStateRow = settingsDialog.querySelector('[data-calendar-sync-state-row]');
 const synchronizationState = settingsDialog.querySelector('[data-calendar-sync-state]');
 const lastSuccessfulRow = settingsDialog.querySelector('[data-calendar-last-success-row]');
@@ -176,13 +193,14 @@ const lastSuccessfulTime = settingsDialog.querySelector('[data-calendar-last-suc
 const synchronizationError = settingsDialog.querySelector('[data-calendar-sync-error]');
 let synchronizationStatusLoaded = false;
 let synchronizationStatusLoading = false;
+let calendarImportWasActive = false;
 
 const loadCalendarSynchronizationStatus = async () => {
     if (synchronizationStatusLoaded || synchronizationStatusLoading || !(synchronizationStatus instanceof HTMLElement)) {
         return;
     }
     const statusURL = synchronizationStatus.dataset.statusUrl;
-    if (!statusURL || !(synchronizationStateRow instanceof HTMLElement) || !(synchronizationState instanceof HTMLElement) || !(lastSuccessfulRow instanceof HTMLElement) || !(lastSuccessfulTime instanceof HTMLTimeElement) || !(synchronizationError instanceof HTMLElement)) {
+    if (!statusURL || !(importTaskStateRow instanceof HTMLElement) || !(importTaskState instanceof HTMLElement) || !(importTaskError instanceof HTMLElement) || !(synchronizationStateRow instanceof HTMLElement) || !(synchronizationState instanceof HTMLElement) || !(lastSuccessfulRow instanceof HTMLElement) || !(lastSuccessfulTime instanceof HTMLTimeElement) || !(synchronizationError instanceof HTMLElement)) {
         throw new Error('The calendar synchronization status contract is incomplete.');
     }
     synchronizationStatusLoading = true;
@@ -193,13 +211,32 @@ const loadCalendarSynchronizationStatus = async () => {
         if (!body || !body.synchronization || typeof body.synchronization.state !== 'string' || typeof body.synchronization.error !== 'boolean' || typeof body.synchronization.last_successful_sync !== 'string') {
             throw new Error('The calendar synchronization status response is invalid.');
         }
+        if (body.task !== undefined && (!body.task || typeof body.task.state !== 'string' || typeof body.task.active !== 'boolean' || typeof body.task.error !== 'boolean')) {
+            throw new Error('The calendar import task response is invalid.');
+        }
+        const taskStateLabels = {pending: 'Queued', running: 'Running', succeeded: 'Complete', failed: body.task && body.task.active ? 'Retry scheduled' : 'Needs attention'};
+        importTaskStateRow.hidden = !body.task;
+        importTaskState.textContent = body.task ? taskStateLabels[body.task.state] || body.task.state : '';
+        importTaskError.hidden = !body.task || !body.task.error;
+        importTaskError.textContent = body.task && body.task.active
+            ? 'The calendar import did not complete. RSVP will retry the task automatically.'
+            : 'The calendar import needs attention. Review the application logs.';
         synchronizationStateRow.hidden = body.synchronization.state === '';
         synchronizationState.textContent = body.synchronization.state;
         lastSuccessfulRow.hidden = body.synchronization.last_successful_sync === '';
         lastSuccessfulTime.dateTime = body.synchronization.last_successful_sync;
         lastSuccessfulTime.textContent = body.synchronization.last_successful_sync;
         synchronizationError.hidden = !body.synchronization.error;
-        synchronizationStatusLoaded = true;
+        const calendarImportCompleted = calendarImportWasActive && body.task && body.task.state === 'succeeded';
+        calendarImportWasActive = Boolean(body.task && body.task.active);
+        if (calendarImportCompleted) {
+            window.location.reload();
+            return;
+        }
+        synchronizationStatusLoaded = !body.task || !body.task.active;
+        if (!synchronizationStatusLoaded) {
+            window.setTimeout(() => void loadCalendarSynchronizationStatus(), 1000);
+        }
     } catch (error) {
         showSettingsError(error instanceof Error ? error.message : 'Calendar synchronization status failed.');
     } finally {
@@ -330,65 +367,6 @@ if (authorizationButton instanceof HTMLButtonElement) {
         } catch (error) {
             showSettingsError(error instanceof Error ? error.message : 'Calendar authorization failed.');
             authorizationButton.disabled = false;
-        }
-    });
-}
-
-const loadSourcesButton = settingsDialog.querySelector('[data-settings-load-source-calendars]');
-const saveSourcesButton = settingsDialog.querySelector('[data-settings-save-source-calendars]');
-const sourceList = settingsDialog.querySelector('[data-settings-source-calendar-list]');
-if (loadSourcesButton instanceof HTMLButtonElement && saveSourcesButton instanceof HTMLButtonElement && sourceList instanceof HTMLElement) {
-    const sourceURL = loadSourcesButton.dataset.sourceUrl;
-    if (!sourceURL || sourceURL !== saveSourcesButton.dataset.sourceUrl) {
-        throw new Error('The source calendar URL is invalid.');
-    }
-    loadSourcesButton.addEventListener('click', async () => {
-        loadSourcesButton.disabled = true;
-        try {
-            const response = await fetch(sourceURL, {credentials: 'same-origin', headers: {'Accept': 'application/json'}});
-            await requireSettingsResponse(response);
-            const body = await response.json();
-            if (!body || !Array.isArray(body.sources)) {
-                throw new Error('The source calendar response is invalid.');
-            }
-            sourceList.replaceChildren();
-            for (const source of body.sources) {
-                if (!source || typeof source.id !== 'string' || typeof source.name !== 'string' || typeof source.selected !== 'boolean') {
-                    throw new Error('A source calendar is invalid.');
-                }
-                const label = document.createElement('label');
-                const input = document.createElement('input');
-                input.type = 'checkbox';
-                input.value = source.id;
-                input.checked = source.selected;
-                input.dataset.settingsSourceCalendar = '';
-                label.append(input, document.createTextNode(source.name));
-                sourceList.append(label);
-            }
-            saveSourcesButton.hidden = false;
-        } catch (error) {
-            showSettingsError(error instanceof Error ? error.message : 'Source calendar listing failed.');
-            loadSourcesButton.disabled = false;
-        }
-    });
-    saveSourcesButton.addEventListener('click', async () => {
-        saveSourcesButton.disabled = true;
-        const providerCalendarIDs = Array.from(sourceList.querySelectorAll('[data-settings-source-calendar]:checked')).map((input) => {
-            if (!(input instanceof HTMLInputElement)) {
-                throw new TypeError('A source calendar control is invalid.');
-            }
-            return input.value;
-        });
-        try {
-            const response = await fetch(sourceURL, {
-                method: 'PUT', credentials: 'same-origin', headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({provider_calendar_ids: providerCalendarIDs, timezone: browserTimezone}),
-            });
-            await requireSettingsResponse(response);
-            window.location.reload();
-        } catch (error) {
-            showSettingsError(error instanceof Error ? error.message : 'Source calendar selection failed.');
-            saveSourcesButton.disabled = false;
         }
     });
 }

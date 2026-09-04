@@ -24,6 +24,7 @@ Give each term one meaning. Use the same term for the same concept in all docume
 - `backlog`: The set of unresolved issues in the active issue tracker.
 - `backend client`: A code unit that sends requests to a backend.
 - `browser frontend`: A user interface that operates in a web browser.
+- `browser preference`: A browser-stored value that controls one user interface choice.
 - `build`: A process or output that converts source code into an artifact.
 - `changelog`: A file that records completed changes for releases.
 - `CI`: The repository continuous-integration system.
@@ -99,6 +100,10 @@ Add repository-specific technical nouns below this line.
 - `calendar provider`: An external service that supplies source calendars and provider events.
 - `calendar synchronization`: An operation that imports changes from one source calendar.
 - `calendar visibility`: A saved choice that shows or hides one calendar in the horizon view.
+- `cycle offset`: The nonnegative whole-day position of one local date in a cycle template.
+- `cycle phase`: One ordered cycle template position with one cycle state and one positive duration.
+- `cycle state`: One named condition that a state cycle can assign to a time range.
+- `cycle template`: An ordered sequence of cycle phases that repeats from one local anchor date.
 - `daylight time`: A local clock change that an IANA timezone defines.
 - `dependency chain`: An anchor event and related dependent events on one lane.
 - `dependent event`: An event with an explicit dependency that shares a lane with its anchor event.
@@ -110,13 +115,14 @@ Add repository-specific technical nouns below this line.
 - `external event link`: A relationship between one RSVP event and one provider event.
 - `finite lane`: A lane with an end time.
 - `horizon projection`: Structured calendar, lane, and marker data for one time window.
+- `Horizon scale`: The day, week, month, or year choice that controls the visible Horizon window.
 - `horizon view`: The browser frontend that shows calendars, lanes, and markers on a time axis.
 - `idempotency record`: A temporary record that connects one request key to one operation result.
 - `ingestion draft`: Validated proposed temporal data that has not changed persisted data.
 - `independent event`: An event without an explicit dependency that owns one lane.
 - `interval marker`: A timed marker with a start time and an end time.
-- `lane`: A timeline row for one independent event, one event series, or one dependency chain.
-- `lane membership`: The relationship of one independent event, event series, or dependency chain to one lane.
+- `lane`: A timeline row for one independent event, one event series, one dependency chain, or one state cycle.
+- `lane membership`: The relationship of one independent event, event series, dependency chain, or state cycle to one lane.
 - `local wall time`: A local clock date and time that does not contain timezone rules.
 - `marker`: A visible point or interval for one event occurrence, probe, or derived marker.
 - `natural-language parser`: An adapter that changes text into an ingestion draft.
@@ -127,13 +133,21 @@ Add repository-specific technical nouns below this line.
 - `point marker`: A timed marker with a start time and no end time.
 - `probe`: A dated review action for a lane.
 - `provider event`: An event that a calendar provider owns.
+- `provider calendar sync state`: A resource that stores one event sync cursor for one provider calendar.
 - `resolved lane`: A lane with a recorded resolution time and no future probe.
-- `source calendar`: An external calendar that an organizer selects for import.
-- `source calendar mapping`: A relationship between one source calendar and one RSVP calendar.
-- `source reconciliation`: A complete synchronization that compares provider data with source-owned RSVP resources.
+- `semantic calendar group`: An event grouping that RSVP derives from provider calendar and event meaning.
+- `source calendar`: A provider calendar that gives RSVP event read access.
+- `source calendar mapping`: A relationship between one source calendar semantic group and one RSVP calendar.
+- `calendar import cutover`: The first complete source reconciliation that replaces prior local calendar groupings.
+- `source reconciliation`: A synchronization that compares provider changes with source-owned RSVP resources.
 - `source-owned marker`: An imported marker with fields that a calendar provider owns.
+- `state cycle`: A cyclic schedule that assigns one cycle state to each projected state interval.
+- `state interval`: One generated half-open local date range with one cycle state.
+- `state transition`: The boundary where one state interval ends and the next state interval starts.
 - `sync cursor`: Provider data that identifies the next incremental calendar synchronization position.
-- `temporal resource`: A calendar, lane, event, probe, attention policy, or derived marker.
+- `task`: A durable record for one background operation and its attempt state.
+- `task worker`: A runtime component that claims and executes tasks.
+- `temporal resource`: A calendar, lane, event, state cycle, probe, attention policy, or derived marker.
 - `time horizon`: The product contract that represents dated events and unresolved temporal subjects.
 - `time shape`: One closed marker time representation for a point, interval, or all-day date range.
 - `time window`: A bounded interval for one horizon projection.

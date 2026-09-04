@@ -23,7 +23,7 @@ import (
 	"gorm.io/gorm"
 )
 
-func TestHorizonDefaultWindowUsesOrganizerCalendarDays(testingContext *testing.T) {
+func TestHorizonDefaultWindowsMatchTheirRepresentations(testingContext *testing.T) {
 	fixture := testsupport.NewFixture(testingContext)
 	testsupport.LoadTemplates(testingContext)
 	owner := fixture.CreateUser(testsupport.OwnerUserID)
@@ -51,9 +51,75 @@ func TestHorizonDefaultWindowUsesOrganizerCalendarDays(testingContext *testing.T
 	if projection.Window.Timezone != testsupport.TimezoneName {
 		testingContext.Fatalf("window timezone = %q, want %q", projection.Window.Timezone, testsupport.TimezoneName)
 	}
+	if strings.Contains(responseRecorder.Body.String(), `"symbol"`) {
+		testingContext.Fatalf("Horizon projection contains removed symbol field: %s", responseRecorder.Body.String())
+	}
 	htmlResponse := requestHorizon(testingContext, fixture, owner, config.WebHorizon, horizonHTMLMediaType, referenceTime)
-	if htmlResponse.Code != http.StatusOK || !strings.Contains(htmlResponse.Body.String(), `data-window-days="90"`) {
-		testingContext.Fatalf("default horizon HTML does not contain the 90-day local scale: status = %d", htmlResponse.Code)
+	if htmlResponse.Code != http.StatusOK || !strings.Contains(htmlResponse.Body.String(), `data-horizon-scale="month"`) {
+		testingContext.Fatalf("default Horizon HTML does not contain the month scale: status = %d", htmlResponse.Code)
+	}
+	htmlBody := htmlResponse.Body.String()
+	wantHTMLEnd := wantStart.AddDate(0, 1, 0).UTC().Format(time.RFC3339Nano)
+	if !strings.Contains(htmlBody, `datetime="`+wantHTMLEnd+`"`) {
+		testingContext.Fatalf("default Horizon HTML does not end after one calendar month: %s", wantHTMLEnd)
+	}
+	for _, fragment := range []string{`data-settings-tab="account"`, `data-settings-panel="account"`, `data-settings-tab="help"`, `data-settings-panel="help"`, `data-horizon-window-row`, `data-scale-preset="day"`, `data-scale-preset="week"`, `data-scale-preset="month"`, `data-scale-preset="year"`, `aria-label="Month scale" aria-pressed="true"`, `data-resource-url="` + config.WebOrganizers + owner.ID + `"`, `value="` + testsupport.TimezoneName + `"`, `class="horizon-today-label"`} {
+		if !strings.Contains(htmlBody, fragment) {
+			testingContext.Fatalf("Horizon settings HTML does not contain %q", fragment)
+		}
+	}
+	labelIndex := strings.Index(htmlBody, `class="horizon-today-label"`)
+	labelEnd := min(labelIndex+160, len(htmlBody))
+	labelHTML := htmlBody[labelIndex:labelEnd]
+	if !strings.Contains(labelHTML, `--today-position: 0`) {
+		testingContext.Fatalf("Today label HTML has no numeric start position: %q", labelHTML)
+	}
+	if strings.Contains(htmlBody, "ZgotmplZ") {
+		testingContext.Fatal("Horizon HTML contains a rejected template style value")
+	}
+	for _, removedFragment := range []string{"Your time, in motion", "Keyboard: H/L pan", `name="symbol"`, `json:"symbol"`, "horizon-calendar-symbol", "horizon-lane-symbol", `data-scale="out"`, `data-scale="in"`, `aria-label="Scale out"`, `aria-label="Scale in"`} {
+		if strings.Contains(htmlBody, removedFragment) {
+			testingContext.Fatalf("Horizon HTML contains removed fragment %q", removedFragment)
+		}
+	}
+}
+
+func TestHorizonScaleSelectsExactLocalWindow(testingContext *testing.T) {
+	fixture := testsupport.NewFixture(testingContext)
+	owner := fixture.CreateUser(testsupport.OwnerUserID)
+	confirmTimezone(testingContext, fixture.Database, &owner)
+	referenceTime := time.Date(2030, time.March, 8, 18, 30, 0, 0, time.UTC)
+	location, locationError := time.LoadLocation(testsupport.TimezoneName)
+	if locationError != nil {
+		testingContext.Fatalf("load fixture timezone: %v", locationError)
+	}
+	localReference := referenceTime.In(location)
+	wantStart := time.Date(localReference.Year(), localReference.Month(), localReference.Day(), 0, 0, 0, 0, location)
+	testCases := []struct {
+		scale   string
+		wantEnd time.Time
+	}{
+		{scale: "day", wantEnd: wantStart.AddDate(0, 0, 1)},
+		{scale: "week", wantEnd: wantStart.AddDate(0, 0, 7)},
+		{scale: "month", wantEnd: wantStart.AddDate(0, 1, 0)},
+		{scale: "year", wantEnd: wantStart.AddDate(1, 0, 0)},
+	}
+	for _, testCase := range testCases {
+		testingContext.Run(testCase.scale, func(testingContext *testing.T) {
+			target := config.WebHorizon + "?" + config.HorizonScaleParam + "=" + testCase.scale
+			responseRecorder := requestHorizon(testingContext, fixture, owner, target, horizonHTMLMediaType, referenceTime)
+			if responseRecorder.Code != http.StatusOK {
+				testingContext.Fatalf("status = %d, want %d; body = %s", responseRecorder.Code, http.StatusOK, responseRecorder.Body.String())
+			}
+			htmlBody := responseRecorder.Body.String()
+			if !strings.Contains(htmlBody, `data-horizon-scale="`+testCase.scale+`"`) || !strings.Contains(htmlBody, `datetime="`+wantStart.UTC().Format(time.RFC3339Nano)+`"`) || !strings.Contains(htmlBody, `datetime="`+testCase.wantEnd.UTC().Format(time.RFC3339Nano)+`"`) {
+				testingContext.Fatalf("HTML does not contain the %s window", testCase.scale)
+			}
+			cookies := responseRecorder.Result().Cookies()
+			if len(cookies) != 1 || cookies[0].Value != testCase.scale || !cookies[0].HttpOnly || cookies[0].Path != config.WebRoot {
+				testingContext.Fatalf("scale cookies = %#v", cookies)
+			}
+		})
 	}
 }
 
@@ -91,6 +157,9 @@ func TestHorizonRequiresFirstTemporalWriteBeforeDefaultWindow(testingContext *te
 	htmlBody := htmlResponse.Body.String()
 	if !strings.Contains(htmlBody, `data-horizon-setup`) || !strings.Contains(htmlBody, `data-resource-url="`+config.WebCalendars+`"`) || strings.Contains(htmlBody, `invalid_time_window`) {
 		testingContext.Fatalf("Horizon setup HTML is invalid: %s", htmlBody)
+	}
+	if strings.Contains(htmlBody, "Your time, in motion") || strings.Contains(htmlBody, `name="symbol"`) {
+		testingContext.Fatalf("Horizon setup HTML contains removed presentation data: %s", htmlBody)
 	}
 
 	jsonResponse := requestHorizon(testingContext, fixture, owner, config.WebHorizon, horizonJSONMediaType, referenceTime)
@@ -301,7 +370,14 @@ func TestHorizonHTMLDefersCalendarSynchronizationStatus(testingContext *testing.
 	if createError := fixture.Database.Create(connection).Error; createError != nil {
 		testingContext.Fatalf("create calendar connection: %v", createError)
 	}
-	mapping, mappingError := models.NewSourceCalendarMapping(connection.ID, calendar.ID, "source")
+	syncState, stateError := models.NewProviderCalendarSyncState(connection.ID, "source")
+	if stateError != nil {
+		testingContext.Fatalf("construct provider calendar state: %v", stateError)
+	}
+	if createError := fixture.Database.Create(syncState).Error; createError != nil {
+		testingContext.Fatalf("create provider calendar state: %v", createError)
+	}
+	mapping, mappingError := models.NewSourceCalendarMapping(syncState.ID, calendar.ID, models.SourceCalendarGroupCalendar)
 	if mappingError != nil {
 		testingContext.Fatalf("construct source mapping: %v", mappingError)
 	}
@@ -309,7 +385,7 @@ func TestHorizonHTMLDefersCalendarSynchronizationStatus(testingContext *testing.
 		testingContext.Fatalf("create source mapping: %v", createError)
 	}
 	referenceTime := time.Date(2030, time.January, 1, 12, 0, 0, 0, time.UTC)
-	succeeded, succeededError := models.NewCalendarSync(mapping.ID, referenceTime.Add(-2*time.Hour))
+	succeeded, succeededError := models.NewCalendarSync(syncState.ID, referenceTime.Add(-2*time.Hour))
 	if succeededError != nil {
 		testingContext.Fatalf("construct successful synchronization: %v", succeededError)
 	}
@@ -319,7 +395,7 @@ func TestHorizonHTMLDefersCalendarSynchronizationStatus(testingContext *testing.
 	if createError := fixture.Database.Create(succeeded).Error; createError != nil {
 		testingContext.Fatalf("create successful synchronization: %v", createError)
 	}
-	failed, failedError := models.NewCalendarSync(mapping.ID, referenceTime)
+	failed, failedError := models.NewCalendarSync(syncState.ID, referenceTime)
 	if failedError != nil {
 		testingContext.Fatalf("construct failed synchronization: %v", failedError)
 	}
@@ -353,7 +429,7 @@ func TestHorizonHTMLDefersCalendarSynchronizationStatus(testingContext *testing.
 		testingContext.Fatalf("horizon status = %d, body = %s", response.Code, response.Body.String())
 	}
 	body := response.Body.String()
-	for _, fragment := range []string{`data-settings-sync-status`, `data-status-url="` + config.WebCalendarConnections + connection.ID + `"`} {
+	for _, fragment := range []string{`data-settings-sync-status`, `data-calendar-task-state-row`, `data-calendar-task-state`, `data-status-url="` + config.WebCalendarConnections + connection.ID + `"`} {
 		if !strings.Contains(body, fragment) {
 			testingContext.Fatalf("horizon deferred synchronization contract does not contain %q: %s", fragment, body)
 		}
@@ -391,7 +467,7 @@ func TestHorizonHTMLRendersInteractiveLaneContract(testingContext *testing.T) {
 		config.HorizonScriptPath,
 		`data-lane-id="` + openLane.ID + `" data-lane-open="true"`,
 		`class="horizon-lane-line is-open"`,
-		`class="horizon-lane-line is-finite"`,
+		`class="horizon-lane-line is-finite is-marker-terminated"`,
 		`class="horizon-lane-line is-continuing"`,
 		`data-marker-id="EVT00001"`,
 		`href="/events/?event_id=EVT00001"`,
@@ -487,16 +563,23 @@ func TestHorizonRejectsInvalidWindowsWithTypedError(testingContext *testing.T) {
 	tooLargeEnd := start.In(location).AddDate(0, 0, services.MaximumHorizonWindowDays+1)
 	testCases := map[string]struct {
 		target     string
+		accept     string
 		wantStatus int
 	}{
-		"missing end":   {target: config.WebHorizon + "?start=" + start.Format(time.RFC3339), wantStatus: http.StatusBadRequest},
-		"invalid start": {target: config.WebHorizon + "?start=not-a-time&end=" + start.Add(time.Hour).Format(time.RFC3339), wantStatus: http.StatusBadRequest},
-		"reversed":      {target: config.WebHorizon + "?start=" + start.Format(time.RFC3339) + "&end=" + start.Add(-time.Hour).Format(time.RFC3339), wantStatus: http.StatusUnprocessableEntity},
-		"too large":     {target: config.WebHorizon + "?start=" + start.Format(time.RFC3339) + "&end=" + tooLargeEnd.Format(time.RFC3339), wantStatus: http.StatusUnprocessableEntity},
+		"missing end":    {target: config.WebHorizon + "?start=" + start.Format(time.RFC3339), wantStatus: http.StatusBadRequest},
+		"invalid scale":  {target: config.WebHorizon + "?scale=quarter", accept: horizonHTMLMediaType, wantStatus: http.StatusBadRequest},
+		"scale with end": {target: config.WebHorizon + "?scale=month&end=" + start.Format(time.RFC3339), accept: horizonHTMLMediaType, wantStatus: http.StatusBadRequest},
+		"invalid start":  {target: config.WebHorizon + "?start=not-a-time&end=" + start.Add(time.Hour).Format(time.RFC3339), wantStatus: http.StatusBadRequest},
+		"reversed":       {target: config.WebHorizon + "?start=" + start.Format(time.RFC3339) + "&end=" + start.Add(-time.Hour).Format(time.RFC3339), wantStatus: http.StatusUnprocessableEntity},
+		"too large":      {target: config.WebHorizon + "?start=" + start.Format(time.RFC3339) + "&end=" + tooLargeEnd.Format(time.RFC3339), wantStatus: http.StatusUnprocessableEntity},
 	}
 	for testName, testCase := range testCases {
 		testingContext.Run(testName, func(testingContext *testing.T) {
-			responseRecorder := requestHorizon(testingContext, fixture, owner, testCase.target, horizonJSONMediaType, time.Now())
+			accept := testCase.accept
+			if accept == "" {
+				accept = horizonJSONMediaType
+			}
+			responseRecorder := requestHorizon(testingContext, fixture, owner, testCase.target, accept, time.Now())
 			if responseRecorder.Code != testCase.wantStatus {
 				testingContext.Fatalf("status = %d, want %d; body = %s", responseRecorder.Code, testCase.wantStatus, responseRecorder.Body.String())
 			}
@@ -745,7 +828,7 @@ func confirmTimezone(testingContext *testing.T, database *gorm.DB, owner *models
 
 func createCalendar(testingContext *testing.T, database *gorm.DB, ownerID string, identifier string, name string, displayOrder int, visible bool) models.Calendar {
 	testingContext.Helper()
-	calendar, calendarError := models.NewCalendar(ownerID, name, strings.ToLower(name), "test", displayOrder)
+	calendar, calendarError := models.NewCalendar(ownerID, name, "test", displayOrder)
 	if calendarError != nil {
 		testingContext.Fatalf("construct calendar %s: %v", identifier, calendarError)
 	}

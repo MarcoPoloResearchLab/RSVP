@@ -295,7 +295,7 @@ func confirmTimezone(testingContext *testing.T, database *gorm.DB, owner *models
 
 func createCalendar(testingContext *testing.T, database *gorm.DB, ownerID string, identifier string, order int) models.Calendar {
 	testingContext.Helper()
-	calendarRecord, calendarError := models.NewCalendar(ownerID, "Calendar "+identifier, "C", "test", order)
+	calendarRecord, calendarError := models.NewCalendar(ownerID, "Calendar "+identifier, "test", order)
 	if calendarError != nil {
 		testingContext.Fatalf("construct calendar: %v", calendarError)
 	}

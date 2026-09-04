@@ -16,6 +16,8 @@ import (
 var (
 	// ErrCalendarNotEmpty indicates that a calendar still owns a lane.
 	ErrCalendarNotEmpty = errors.New("calendar has lanes")
+	// ErrCalendarVisibilityLimit indicates that eight calendars are already visible.
+	ErrCalendarVisibilityLimit = errors.New("eight calendars are already visible")
 	// ErrLaneHasRSVPs indicates that a lane contains an event with an RSVP.
 	ErrLaneHasRSVPs = errors.New("lane has RSVPs")
 	// ErrSourceOwnedLane indicates that calendar synchronization owns a lane.
@@ -30,10 +32,12 @@ var (
 	ErrResourceForbidden = errors.New("another organizer owns the resource")
 )
 
+// MaxVisibleCalendars is the presentation limit that preserves 45-degree hue separation.
+const MaxVisibleCalendars = 8
+
 // CalendarPatch contains validated optional calendar changes.
 type CalendarPatch struct {
 	Name         *string
-	Symbol       *string
 	ColorToken   *string
 	DisplayOrder *int
 	Visible      *bool
@@ -63,7 +67,7 @@ func NewTemporalManagementService(database *gorm.DB, now func() time.Time) (*Tem
 }
 
 // CreateCalendar creates one calendar at the end of the organizer calendar order.
-func (service *TemporalManagementService) CreateCalendar(ctx context.Context, organizer *models.User, timezone models.Timezone, name string, symbol string, colorToken string) (*models.Calendar, error) {
+func (service *TemporalManagementService) CreateCalendar(ctx context.Context, organizer *models.User, timezone models.Timezone, name string, colorToken string) (*models.Calendar, error) {
 	var createdCalendar *models.Calendar
 	transactionError := service.database.WithContext(ctx).Transaction(func(transaction *gorm.DB) error {
 		if confirmationError := organizer.ConfirmTimezone(transaction, timezone); confirmationError != nil {
@@ -73,7 +77,10 @@ func (service *TemporalManagementService) CreateCalendar(ctx context.Context, or
 		if orderError != nil {
 			return orderError
 		}
-		calendar, calendarError := models.NewCalendar(organizer.ID, name, symbol, colorToken, displayOrder)
+		if visibilityError := requireVisibleCalendarCapacity(transaction, organizer.ID); visibilityError != nil {
+			return visibilityError
+		}
+		calendar, calendarError := models.NewCalendar(organizer.ID, name, colorToken, displayOrder)
 		if calendarError != nil {
 			return calendarError
 		}
@@ -116,11 +123,13 @@ func (service *TemporalManagementService) UpdateCalendar(ctx context.Context, or
 		if patch.Name != nil {
 			updatedCalendar.Name = strings.TrimSpace(*patch.Name)
 		}
-		if patch.Symbol != nil {
-			updatedCalendar.Symbol = strings.TrimSpace(*patch.Symbol)
-		}
 		if patch.ColorToken != nil {
 			updatedCalendar.ColorToken = strings.TrimSpace(*patch.ColorToken)
+		}
+		if patch.Visible != nil && *patch.Visible && !updatedCalendar.Visible {
+			if visibilityError := requireVisibleCalendarCapacity(transaction, organizerID); visibilityError != nil {
+				return visibilityError
+			}
 		}
 		if patch.Visible != nil {
 			updatedCalendar.Visible = *patch.Visible
@@ -129,14 +138,37 @@ func (service *TemporalManagementService) UpdateCalendar(ctx context.Context, or
 			return validationError
 		}
 		if updateError := transaction.Model(&updatedCalendar).Updates(map[string]any{
-			"name": updatedCalendar.Name, "symbol": updatedCalendar.Symbol,
-			"color_token": updatedCalendar.ColorToken, "visible": updatedCalendar.Visible,
+			"name": updatedCalendar.Name, "color_token": updatedCalendar.ColorToken, "visible": updatedCalendar.Visible,
 		}).Error; updateError != nil {
 			return fmt.Errorf("update calendar %s: %w", calendarID, updateError)
 		}
 		return transaction.First(&updatedCalendar, "id = ?", calendarID).Error
 	})
 	return &updatedCalendar, transactionError
+}
+
+func requireVisibleCalendarCapacity(database *gorm.DB, organizerID string) error {
+	var visibleCount int64
+	if countError := database.Model(&models.Calendar{}).Where("organizer_id = ? AND visible = ?", organizerID, true).Count(&visibleCount).Error; countError != nil {
+		return fmt.Errorf("count visible calendars for organizer %s: %w", organizerID, countError)
+	}
+	if visibleCount >= MaxVisibleCalendars {
+		return ErrCalendarVisibilityLimit
+	}
+	return nil
+}
+
+func initialCalendarVisibility(database *gorm.DB, organizerID string, requested bool) (bool, error) {
+	if !requested {
+		return false, nil
+	}
+	if capacityError := requireVisibleCalendarCapacity(database, organizerID); capacityError != nil {
+		if errors.Is(capacityError, ErrCalendarVisibilityLimit) {
+			return false, nil
+		}
+		return false, capacityError
+	}
+	return true, nil
 }
 
 // DeleteCalendar deletes one empty organizer-owned calendar.

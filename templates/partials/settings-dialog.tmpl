@@ -12,7 +12,9 @@
         <div class="settings-layout">
             <div class="settings-rubrics" role="tablist" aria-label="Settings rubrics">
                 <button type="button" role="tab" id="settings-tab-calendars-lanes" aria-controls="settings-panel-calendars-lanes" aria-selected="true" data-settings-tab="calendars-lanes">Calendars &amp; lanes</button>
+                <button type="button" role="tab" id="settings-tab-account" aria-controls="settings-panel-account" aria-selected="false" tabindex="-1" data-settings-tab="account">Account</button>
                 <button type="button" role="tab" id="settings-tab-integrations" aria-controls="settings-panel-integrations" aria-selected="false" tabindex="-1" data-settings-tab="integrations">Integrations</button>
+                <button type="button" role="tab" id="settings-tab-help" aria-controls="settings-panel-help" aria-selected="false" tabindex="-1" data-settings-tab="help">Help</button>
             </div>
 
             <div class="settings-content">
@@ -29,10 +31,7 @@
                         <form class="settings-card settings-form" data-settings-resource-form data-method="POST" data-resource-url="{{ .CalendarCreateURL }}">
                             <h3>Create calendar</h3>
                             <label>Name <input name="name" required></label>
-                            <div class="settings-field-row">
-                                <label>Symbol <input name="symbol" required maxlength="8"></label>
-                                <label>Color token <input name="color_token" required></label>
-                            </div>
+                            <label>Color token <input name="color_token" required></label>
                             <input type="hidden" name="timezone" data-settings-client-timezone>
                             <button type="submit" class="settings-primary-action">Create calendar</button>
                         </form>
@@ -41,7 +40,7 @@
                             <h3>Create lane</h3>
                             <label>Calendar
                                 <select name="calendar_id" required>
-                                    {{ range .Calendars }}<option value="{{ .ID }}">{{ .Symbol }} {{ .Name }}</option>{{ end }}
+                                    {{ range .Calendars }}<option value="{{ .ID }}">{{ .Name }}</option>{{ end }}
                                 </select>
                             </label>
                             <label>Title <input name="title" required></label>
@@ -73,7 +72,6 @@
                                 <form class="settings-form" data-settings-resource-form data-method="PATCH" data-resource-url="{{ .ManagementURL }}">
                                     <div class="settings-field-row settings-field-row-calendar">
                                         <label>Name <input name="name" value="{{ .Name }}" required></label>
-                                        <label>Symbol <input name="symbol" value="{{ .Symbol }}" required maxlength="8"></label>
                                         <label>Color token <input name="color_token" value="{{ .ColorToken }}" required></label>
                                     </div>
                                     <button type="submit" class="settings-secondary-action">Save calendar</button>
@@ -92,13 +90,36 @@
                     </section>
                 </section>
 
+                <section class="settings-panel" role="tabpanel" id="settings-panel-account" aria-labelledby="settings-tab-account" data-settings-panel="account" hidden>
+                    <div class="settings-section-heading">
+                        <div>
+                            <p class="settings-kicker">Account</p>
+                            <h2>Account settings</h2>
+                        </div>
+                        <p>Manage the settings for your RSVP account.</p>
+                    </div>
+
+                    <form class="settings-card settings-form settings-timezone-card" data-settings-resource-form data-method="PATCH" data-resource-url="{{ .OrganizerManagementURL }}">
+                        <h3>Timezone</h3>
+                        <label>IANA timezone
+                            <input name="timezone" value="{{ .OrganizerTimezone }}" list="settings-timezone-options" placeholder="UTC" autocomplete="off" spellcheck="false" required data-settings-organizer-timezone>
+                        </label>
+                        <datalist id="settings-timezone-options" data-settings-timezone-options></datalist>
+                        <p class="settings-form-note">The change applies to new default windows. Stored event timezones do not change.</p>
+                        <div class="settings-form-actions">
+                            <button type="button" class="settings-secondary-action" data-settings-use-browser-timezone>Use browser timezone</button>
+                            <button type="submit" class="settings-primary-action">Save timezone</button>
+                        </div>
+                    </form>
+                </section>
+
                 <section class="settings-panel" role="tabpanel" id="settings-panel-integrations" aria-labelledby="settings-tab-integrations" data-settings-panel="integrations" hidden>
                     <div class="settings-section-heading">
                         <div>
                             <p class="settings-kicker">Integrations</p>
                             <h2>Google Calendar</h2>
                         </div>
-                        <p>RSVP synchronizes selected calendars automatically and retries temporary failures.</p>
+                        <p>RSVP synchronizes readable Google calendars automatically and retries temporary failures.</p>
                     </div>
 
                     <section class="settings-integration-card" data-settings-calendar-connection>
@@ -117,20 +138,34 @@
                         {{ if .CalendarConnection }}
                         <dl class="settings-sync-status" data-settings-sync-status data-status-url="{{ .CalendarConnection.ManagementURL }}">
                             <div><dt>Connection</dt><dd>{{ .CalendarConnection.Status }}</dd></div>
+                            <div data-calendar-task-state-row hidden><dt>Calendar import</dt><dd data-calendar-task-state aria-live="polite"></dd></div>
                             <div data-calendar-sync-state-row hidden><dt>Automatic sync</dt><dd data-calendar-sync-state></dd></div>
                             <div data-calendar-last-success-row hidden><dt>Last completed</dt><dd><time data-calendar-last-success></time></dd></div>
                         </dl>
+                        <p class="settings-alert" data-calendar-task-error hidden>The calendar import did not complete. RSVP will retry the task automatically.</p>
                         <p class="settings-alert" data-calendar-sync-error hidden>Google Calendar did not complete the latest request. RSVP will retry automatically.</p>
-                        <div class="settings-source-controls">
-                            <button type="button" class="settings-primary-action" data-settings-load-source-calendars data-source-url="{{ .CalendarConnection.SourceCalendarURL }}">Select source calendars</button>
-                            <div class="settings-source-list" data-settings-source-calendar-list></div>
-                            <button type="button" class="settings-primary-action" data-settings-save-source-calendars data-source-url="{{ .CalendarConnection.SourceCalendarURL }}" hidden>Save source calendars</button>
-                        </div>
+                        <p>RSVP imports Google calendars and birthdays automatically.</p>
                         <button type="button" class="settings-danger-action settings-disconnect" data-settings-resource-action="DELETE" data-resource-url="{{ .CalendarConnection.ManagementURL }}">Disconnect Google Calendar</button>
                         {{ else }}
                         <button type="button" class="settings-primary-action" data-settings-calendar-authorize data-resource-url="{{ .CalendarAuthorizationURL }}">Connect Google Calendar</button>
                         {{ end }}
                     </section>
+                </section>
+
+                <section class="settings-panel" role="tabpanel" id="settings-panel-help" aria-labelledby="settings-tab-help" data-settings-panel="help" hidden>
+                    <div class="settings-section-heading">
+                        <div>
+                            <p class="settings-kicker">Help</p>
+                            <h2>Horizon keyboard controls</h2>
+                        </div>
+                        <p>Use these controls when the Horizon timeline has keyboard focus.</p>
+                    </div>
+                    <dl class="settings-shortcut-list">
+                        <div><dt><kbd>H</kbd> / <kbd>L</kbd></dt><dd>Pan backward or forward.</dd></div>
+                        <div><dt><kbd>D</kbd> / <kbd>W</kbd> / <kbd>M</kbd> / <kbd>Y</kbd></dt><dd>Select the day, week, month, or year scale.</dd></div>
+                        <div><dt><kbd>J</kbd> / <kbd>K</kbd></dt><dd>Select the next or prior marker.</dd></div>
+                        <div><dt><kbd>1</kbd>–<kbd>9</kbd></dt><dd>Show or hide a calendar.</dd></div>
+                    </dl>
                 </section>
             </div>
         </div>

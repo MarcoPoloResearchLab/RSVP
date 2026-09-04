@@ -22,6 +22,7 @@ import (
 	"github.com/tyemirov/RSVP/pkg/handlers/horizon"
 	"github.com/tyemirov/RSVP/pkg/handlers/ingestiondraft"
 	"github.com/tyemirov/RSVP/pkg/handlers/lane"
+	"github.com/tyemirov/RSVP/pkg/handlers/organizer"
 	"github.com/tyemirov/RSVP/pkg/handlers/probe"
 	"github.com/tyemirov/RSVP/pkg/handlers/response"
 	"github.com/tyemirov/RSVP/pkg/handlers/rsvp"
@@ -207,6 +208,7 @@ func (appRoutes *Routes) RegisterRoutes(mux *http.ServeMux) {
 	}
 	mux.Handle(config.WebAttentionPolicies, strictProtectedChain(attentionpolicy.Handler(appRoutes.ApplicationContext, time.Now)))
 	mux.Handle(config.WebLanes, strictProtectedChain(lane.Handler(appRoutes.ApplicationContext, time.Now)))
+	mux.Handle(config.WebOrganizers, strictProtectedChain(organizer.Handler(appRoutes.ApplicationContext)))
 	mux.Handle(config.WebProbes, strictProtectedChain(probe.Handler(appRoutes.ApplicationContext, time.Now)))
 	horizonHandler := horizon.Handler(appRoutes.ApplicationContext, time.Now)
 	mux.Handle(config.WebHorizon, horizon.AuthenticationMiddleware(appRoutes.ApplicationContext, addUserMiddleware(horizonHandler)))
@@ -270,4 +272,13 @@ func (appRoutes *Routes) RunCalendarSyncClock(ctx context.Context, interval time
 			synchronize()
 		}
 	}
+}
+
+// RunCalendarConnectionTasks executes durable calendar import tasks until shutdown.
+func (appRoutes *Routes) RunCalendarConnectionTasks(ctx context.Context) error {
+	if appRoutes.calendarConnectionRoutes == nil {
+		return errors.New("calendar connection tasks are unavailable")
+	}
+	appRoutes.calendarConnectionRoutes.RunTaskWorker(ctx)
+	return nil
 }

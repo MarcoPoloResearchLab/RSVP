@@ -58,6 +58,11 @@ func main() {
 	routesInstance.RegisterMiddleware(httpServeMuxRouter) // Order matters: GAuss/Auth middleware first
 	routesInstance.RegisterRoutes(httpServeMuxRouter)     // Then application routes
 	go func() {
+		if taskError := routesInstance.RunCalendarConnectionTasks(applicationRuntimeContext); taskError != nil {
+			applicationLogger.Printf("Calendar connection task worker stopped: %v", taskError)
+		}
+	}()
+	go func() {
 		if synchronizationError := routesInstance.RunCalendarSyncClock(applicationRuntimeContext, config.CalendarSyncInterval); synchronizationError != nil {
 			applicationLogger.Printf("Calendar synchronization clock stopped: %v", synchronizationError)
 		}

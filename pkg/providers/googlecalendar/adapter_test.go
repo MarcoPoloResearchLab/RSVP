@@ -46,12 +46,26 @@ func TestAdapterUsesReadOnlyConsentAndListsEveryCalendarPage(testingContext *tes
 			if request.Header.Get("Authorization") != "Bearer secret-access" {
 				testingContext.Errorf("authorization header is invalid")
 			}
-			responseWriter.Header().Set("Content-Type", "application/json")
-			if request.URL.Query().Get("pageToken") == "next" {
-				fmt.Fprint(responseWriter, `{"items":[{"id":"work","summary":"Work","timeZone":"America/Los_Angeles","backgroundColor":"#102030"}]}`)
+			if request.URL.Query().Get("syncToken") == "expired" {
+				responseWriter.WriteHeader(http.StatusGone)
 				return
 			}
-			fmt.Fprint(responseWriter, `{"items":[{"id":"personal","summary":"Personal","timeZone":"America/Los_Angeles","backgroundColor":"#405060"}],"nextPageToken":"next"}`)
+			responseWriter.Header().Set("Content-Type", "application/json")
+			if request.URL.Query().Get("syncToken") == "calendar-cursor-1" {
+				if request.URL.Query().Get("showHidden") != "true" || request.URL.Query().Get("showDeleted") != "true" {
+					testingContext.Errorf("incremental CalendarList query = %v", request.URL.Query())
+				}
+				fmt.Fprint(responseWriter, `{"items":[{"id":"personal","deleted":true},{"id":"family","summary":"Family","timeZone":"America/Los_Angeles","backgroundColor":"#708090","selected":true,"accessRole":"reader"}],"nextSyncToken":"calendar-cursor-2"}`)
+				return
+			}
+			if request.URL.Query().Get("showHidden") != "true" || request.URL.Query().Get("showDeleted") != "true" {
+				testingContext.Errorf("complete CalendarList query = %v", request.URL.Query())
+			}
+			if request.URL.Query().Get("pageToken") == "next" {
+				fmt.Fprint(responseWriter, `{"items":[{"id":"work","summary":"Work","summaryOverride":"Team","timeZone":"America/Los_Angeles","backgroundColor":"#102030","accessRole":"owner"}],"nextSyncToken":"calendar-cursor-1"}`)
+				return
+			}
+			fmt.Fprint(responseWriter, `{"items":[{"id":"personal","summary":"Personal","timeZone":"America/Los_Angeles","backgroundColor":"#405060","selected":true,"accessRole":"reader","primary":true},{"id":"addressbook#contacts@group.v.calendar.google.com","summary":"Contacts birthdays","timeZone":"America/Los_Angeles","backgroundColor":"#778899","selected":true,"accessRole":"reader"}],"nextPageToken":"next"}`)
 		default:
 			http.NotFound(responseWriter, request)
 		}
@@ -87,12 +101,20 @@ func TestAdapterUsesReadOnlyConsentAndListsEveryCalendarPage(testingContext *tes
 	if credential.RefreshToken != "secret-refresh" || !credential.ExpiresAt.Equal(referenceTime.Add(time.Hour)) {
 		testingContext.Fatalf("credential = %#v", credential)
 	}
-	calendars, listError := adapter.ListCalendars(context.Background(), credential)
+	calendarBatch, listError := adapter.ListCalendars(context.Background(), credential, "")
 	if listError != nil {
 		testingContext.Fatalf("list calendars: %v", listError)
 	}
-	if len(calendars) != 2 || calendars[0].ID != "personal" || calendars[1].ID != "work" {
-		testingContext.Fatalf("calendars = %#v", calendars)
+	contactsGroup := calendarBatch.Calendars[1].SemanticSourceGroup
+	if len(calendarBatch.Calendars) != 3 || calendarBatch.NextSyncCursor != "calendar-cursor-1" || calendarBatch.Calendars[0].ID != "personal" || calendarBatch.Calendars[0].Name != "Personal" || !calendarBatch.Calendars[0].Readable || !calendarBatch.Calendars[0].Visible || !calendarBatch.Calendars[0].Default || contactsGroup == nil || *contactsGroup != services.SemanticCalendarGroupBirthdays || calendarBatch.Calendars[2].Name != "Team" || calendarBatch.Calendars[2].Visible {
+		testingContext.Fatalf("calendar batch = %#v", calendarBatch)
+	}
+	incrementalBatch, incrementalError := adapter.ListCalendars(context.Background(), credential, "calendar-cursor-1")
+	if incrementalError != nil || len(incrementalBatch.Calendars) != 2 || !incrementalBatch.Calendars[0].Deleted || incrementalBatch.Calendars[1].Name != "Family" || !incrementalBatch.Calendars[1].Visible || incrementalBatch.NextSyncCursor != "calendar-cursor-2" {
+		testingContext.Fatalf("incremental calendar batch = %#v, error = %v", incrementalBatch, incrementalError)
+	}
+	if _, rejectedError := adapter.ListCalendars(context.Background(), credential, "expired"); !errors.Is(rejectedError, services.ErrCalendarListSyncCursorRejected) {
+		testingContext.Fatalf("rejected CalendarList cursor error = %v", rejectedError)
 	}
 	refreshed, refreshError := adapter.RefreshCredential(context.Background(), credential)
 	if refreshError != nil {
@@ -129,11 +151,14 @@ func TestAdapterPaginatesEventsAndReportsRejectedCursor(testingContext *testing.
 			testingContext.Errorf("sync query = %v", request.URL.Query())
 		}
 		responseWriter.Header().Set("Content-Type", "application/json")
+		if request.URL.Query().Has("eventTypes") {
+			testingContext.Errorf("grouped event query = %v", request.URL.Query())
+		}
 		if request.URL.Query().Get("pageToken") == "page-2" {
-			fmt.Fprint(responseWriter, `{"timeZone":"America/Los_Angeles","items":[{"id":"occurrence","recurringEventId":"series","status":"confirmed","summary":"Review","start":{"dateTime":"2026-09-02T09:00:00-07:00","timeZone":"America/Los_Angeles"},"end":{"dateTime":"2026-09-02T10:00:00-07:00","timeZone":"America/Los_Angeles"}},{"id":"point","status":"confirmed","summary":"Deadline","start":{"dateTime":"2026-09-02T12:00:00-07:00","timeZone":"America/Los_Angeles"},"end":{"dateTime":"2026-09-02T12:00:00-07:00","timeZone":"America/Los_Angeles"},"endTimeUnspecified":true},{"id":"same-day","status":"confirmed","summary":"One day","start":{"date":"2026-09-03"},"end":{"date":"2026-09-03"}}],"nextSyncToken":"cursor-1"}`)
+			fmt.Fprint(responseWriter, `{"timeZone":"America/Los_Angeles","items":[{"id":"occurrence","eventType":"default","recurringEventId":"series","status":"confirmed","summary":"Review","start":{"dateTime":"2026-09-02T09:00:00-07:00","timeZone":"America/Los_Angeles"},"end":{"dateTime":"2026-09-02T10:00:00-07:00","timeZone":"America/Los_Angeles"}},{"id":"point","eventType":"default","status":"confirmed","summary":"Deadline","start":{"dateTime":"2026-09-02T12:00:00-07:00","timeZone":"America/Los_Angeles"},"end":{"dateTime":"2026-09-02T12:00:00-07:00","timeZone":"America/Los_Angeles"},"endTimeUnspecified":true},{"id":"same-day","eventType":"default","status":"confirmed","summary":"One day","start":{"date":"2026-09-03"},"end":{"date":"2026-09-03"}},{"id":"unknown-type","eventType":"providerFutureType","status":"confirmed","summary":"Provider future event","start":{"date":"2026-09-04"},"end":{"date":"2026-09-05"}},{"id":"unbirthday","eventType":"default","status":"confirmed","summary":"Unbirthday planning","start":{"date":"2026-09-05"},"end":{"date":"2026-09-06"}},{"id":"birthday-by-type","eventType":"birthday","status":"confirmed","summary":"Annual contact","start":{"date":"2026-09-06"},"end":{"date":"2026-09-07"}},{"id":"birthday-missing-subtype","eventType":"birthday","birthdayProperties":{},"status":"confirmed","summary":"Annual friend reminder","start":{"date":"2026-09-07"},"end":{"date":"2026-09-08"}},{"id":"birthday-by-title","eventType":"default","status":"confirmed","summary":"Andrew Fert Birthday","start":{"date":"2026-09-08"},"end":{"date":"2026-09-09"}},{"id":"self","eventType":"birthday","birthdayProperties":{"type":"self"},"status":"confirmed","start":{"date":"2026-09-09"},"end":{"date":"2026-09-10"}},{"id":"birthday-subtype","eventType":"birthday","birthdayProperties":{"type":"birthday"},"status":"confirmed","summary":"Contact","start":{"date":"2026-09-10"},"end":{"date":"2026-09-11"}},{"id":"anniversary","eventType":"birthday","birthdayProperties":{"type":"anniversary","contact":"people/1"},"status":"confirmed","summary":"Anniversary","start":{"date":"2026-09-11"},"end":{"date":"2026-09-12"}},{"id":"custom","eventType":"birthday","birthdayProperties":{"type":"custom","contact":"people/2","customTypeName":"Private label"},"status":"confirmed","summary":"Custom","start":{"date":"2026-09-12"},"end":{"date":"2026-09-13"}},{"id":"other","eventType":"birthday","birthdayProperties":{"type":"other","contact":"people/3"},"status":"confirmed","summary":"Other","start":{"date":"2026-09-13"},"end":{"date":"2026-09-14"}},{"id":"unknown-subtype","eventType":"birthday","birthdayProperties":{"type":"future","contact":"people/4"},"status":"confirmed","summary":"Future","start":{"date":"2026-09-14"},"end":{"date":"2026-09-15"}},{"id":"focus","eventType":"focusTime","status":"confirmed","summary":"Focus","start":{"date":"2026-09-15"},"end":{"date":"2026-09-16"}},{"id":"gmail","eventType":"fromGmail","status":"confirmed","summary":"Gmail","start":{"date":"2026-09-16"},"end":{"date":"2026-09-17"}},{"id":"ooo","eventType":"outOfOffice","status":"confirmed","summary":"OOO","start":{"date":"2026-09-17"},"end":{"date":"2026-09-18"}},{"id":"working","eventType":"workingLocation","status":"confirmed","summary":"Office","start":{"date":"2026-09-18"},"end":{"date":"2026-09-19"}},{"id":"sparse-canceled","status":"cancelled"}],"nextSyncToken":"cursor-1"}`)
 			return
 		}
-		fmt.Fprint(responseWriter, `{"timeZone":"America/Los_Angeles","items":[{"id":"birthday","status":"confirmed","summary":"Birthday","start":{"date":"2026-09-01"},"end":{"date":"2026-09-02"}}],"nextPageToken":"page-2"}`)
+		fmt.Fprint(responseWriter, `{"timeZone":"America/Los_Angeles","items":[],"nextPageToken":"page-2"}`)
 	}))
 	defer server.Close()
 	adapter, adapterError := googlecalendar.New(googlecalendar.Config{ClientID: "id", ClientSecret: "secret", AuthorizationEndpoint: server.URL, TokenEndpoint: server.URL, CalendarListEndpoint: server.URL, EventsEndpoint: server.URL}, server.Client(), time.Now)
@@ -145,8 +170,28 @@ func TestAdapterPaginatesEventsAndReportsRejectedCursor(testingContext *testing.
 	if syncError != nil {
 		testingContext.Fatalf("synchronize events: %v", syncError)
 	}
-	if len(batch.Events) != 4 || batch.NextSyncCursor != "cursor-1" || batch.Events[0].StartDate != "2026-09-01" || batch.Events[1].SeriesID != "series" || batch.Events[2].At == nil || batch.Events[2].StartsAt != nil || batch.Events[2].EndsAt != nil || batch.Events[3].StartDate != "2026-09-03" || batch.Events[3].EndDate != "2026-09-04" {
+	if len(batch.Changes) != 19 || batch.NextSyncCursor != "cursor-1" || batch.Changes[0].ProviderSeriesID != "series" || batch.Changes[1].At == nil || batch.Changes[1].StartsAt != nil || batch.Changes[1].EndsAt != nil || batch.Changes[2].StartDate != "2026-09-03" || batch.Changes[2].EndDate != "2026-09-04" || batch.Changes[8].Title != "Busy" || !batch.Changes[18].Deleted {
 		testingContext.Fatalf("batch = %#v", batch)
+	}
+	expectedGroups := map[string]services.SemanticCalendarGroup{
+		"occurrence": services.SemanticCalendarGroupCalendar, "point": services.SemanticCalendarGroupCalendar, "same-day": services.SemanticCalendarGroupCalendar,
+		"unknown-type": services.SemanticCalendarGroupCalendar, "unbirthday": services.SemanticCalendarGroupCalendar,
+		"birthday-by-type": services.SemanticCalendarGroupBirthdays, "birthday-missing-subtype": services.SemanticCalendarGroupBirthdays,
+		"birthday-by-title": services.SemanticCalendarGroupBirthdays, "self": services.SemanticCalendarGroupBirthdays, "birthday-subtype": services.SemanticCalendarGroupBirthdays,
+		"anniversary": services.SemanticCalendarGroupCalendar, "custom": services.SemanticCalendarGroupCalendar, "other": services.SemanticCalendarGroupCalendar,
+		"unknown-subtype": services.SemanticCalendarGroupCalendar, "focus": services.SemanticCalendarGroupCalendar, "gmail": services.SemanticCalendarGroupCalendar,
+		"ooo": services.SemanticCalendarGroupCalendar, "working": services.SemanticCalendarGroupCalendar,
+	}
+	for _, change := range batch.Changes {
+		if change.Deleted {
+			continue
+		}
+		if change.SemanticGroup != expectedGroups[change.ProviderEventID] {
+			testingContext.Errorf("change %s group = %q", change.ProviderEventID, change.SemanticGroup)
+		}
+	}
+	if batch.Changes[3].DiagnosticCode != "google_unknown_event_type" || batch.Changes[13].DiagnosticCode != "google_unknown_birthday_subtype" {
+		testingContext.Fatalf("diagnostic changes = %#v, %#v", batch.Changes[3], batch.Changes[13])
 	}
 	if _, rejectedError := adapter.SynchronizeEvents(context.Background(), credential, "source/calendar", "expired"); !errors.Is(rejectedError, services.ErrCalendarSyncCursorRejected) {
 		testingContext.Fatalf("rejected cursor error = %v", rejectedError)

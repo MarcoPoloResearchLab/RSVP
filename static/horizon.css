@@ -5,7 +5,8 @@
     --horizon-panel: #fffdf7;
     --horizon-grid: #d9ddd7;
     --horizon-accent: #176b52;
-    --horizon-label-width: 13rem;
+    --horizon-label-width: clamp(18rem, 30vw, 22rem);
+    --horizon-lane-height: 16px;
 }
 
 body:has(.horizon-view) {
@@ -30,10 +31,6 @@ main:has(.horizon-view) {
 }
 
 .horizon-heading {
-    align-items: end;
-    display: flex;
-    gap: 1rem;
-    justify-content: space-between;
     margin-bottom: 1rem;
 }
 
@@ -45,22 +42,26 @@ main:has(.horizon-view) {
     margin: 0;
 }
 
-.horizon-eyebrow {
-    color: var(--horizon-accent);
-    font-size: 0.72rem;
-    font-weight: 700;
-    letter-spacing: 0.14em;
-    margin: 0 0 0.5rem;
-    text-transform: uppercase;
+.horizon-window-row {
+    align-items: center;
+    display: flex;
+    gap: 0.75rem;
+    justify-content: space-between;
+    margin-bottom: 0.45rem;
+    min-width: 0;
 }
 
 .horizon-window {
     color: var(--horizon-muted);
     display: flex;
-    flex-wrap: wrap;
+    flex: 1 1 auto;
+    flex-wrap: nowrap;
     font-size: 0.75rem;
     gap: 0.45rem;
-    margin: 0.75rem 0 0;
+    margin: 0;
+    min-width: 0;
+    overflow-x: auto;
+    white-space: nowrap;
 }
 
 .horizon-view-controls {
@@ -69,6 +70,7 @@ main:has(.horizon-view) {
     border: 1px solid var(--horizon-grid);
     border-radius: 999px;
     display: flex;
+    flex: 0 0 auto;
     padding: 0.25rem;
 }
 
@@ -90,6 +92,11 @@ main:has(.horizon-view) {
     background: var(--horizon-ink);
     color: var(--horizon-panel);
     outline: none;
+}
+
+.horizon-view-controls button[aria-pressed="true"] {
+    background: var(--horizon-accent);
+    color: var(--horizon-panel);
 }
 
 .horizon-calendar-controls {
@@ -125,13 +132,6 @@ main:has(.horizon-view) {
     width: 1rem;
 }
 
-.horizon-calendar-symbol,
-.horizon-lane-symbol {
-    color: var(--calendar-color);
-    font-size: 1rem;
-    font-weight: 700;
-}
-
 .horizon-calendar-toggle kbd {
     background: transparent;
     border: 1px solid var(--horizon-grid);
@@ -139,12 +139,6 @@ main:has(.horizon-view) {
     font: inherit;
     font-size: 0.65rem;
     padding: 0.08rem 0.3rem;
-}
-
-.horizon-shortcuts {
-    color: var(--horizon-muted);
-    font-size: 0.7rem;
-    margin: 0 0 0.65rem;
 }
 
 .horizon-management {
@@ -222,9 +216,32 @@ main:has(.horizon-view) {
 }
 
 .horizon-lane-controls {
+    flex: 0 0 auto;
     margin-left: auto;
     overflow: visible;
     position: relative;
+}
+
+.horizon-lane-controls > summary {
+    align-items: center;
+    border-radius: 50%;
+    display: flex;
+    height: 32px;
+    justify-content: center;
+    line-height: 1;
+    list-style: none;
+    width: 32px;
+}
+
+.horizon-lane-controls > summary::-webkit-details-marker {
+    display: none;
+}
+
+.horizon-lane-controls > summary:hover,
+.horizon-lane-controls > summary:focus-visible {
+    background: color-mix(in srgb, var(--calendar-color) 12%, transparent);
+    outline: 2px solid color-mix(in srgb, var(--calendar-color) 28%, transparent);
+    outline-offset: 1px;
 }
 
 .horizon-lane-controls[open] {
@@ -263,10 +280,8 @@ main:has(.horizon-view) {
 }
 
 .horizon-board {
-    --day-width: 10px;
-    --window-days: 90;
     min-width: 100%;
-    width: max(100%, calc(var(--horizon-label-width) + var(--window-days) * var(--day-width)));
+    width: 100%;
 }
 
 .horizon-scale-row,
@@ -298,9 +313,14 @@ main:has(.horizon-view) {
     overflow: hidden;
     padding: 0.65rem 0.8rem;
     position: sticky;
-    text-overflow: ellipsis;
-    white-space: nowrap;
     z-index: 7;
+}
+
+.horizon-lane-title {
+    flex: 1 1 auto;
+    line-height: 1.25;
+    min-width: 0;
+    overflow-wrap: anywhere;
 }
 
 .horizon-scale-label {
@@ -313,10 +333,17 @@ main:has(.horizon-view) {
 
 .horizon-scale-track,
 .horizon-lane-track {
-    background-image: linear-gradient(to right, transparent calc(100% - 1px), rgba(101, 113, 108, 0.12) 1px);
-    background-size: calc(7 * var(--day-width)) 100%;
     min-width: 0;
     position: relative;
+}
+
+.horizon-grid-line {
+    background: rgba(101, 113, 108, 0.12);
+    height: 100%;
+    left: calc(var(--tick-position) * 1%);
+    position: absolute;
+    top: 0;
+    width: 1px;
 }
 
 .horizon-scale-tick {
@@ -334,10 +361,11 @@ main:has(.horizon-view) {
     color: #b44726;
     font-size: 0.65rem;
     font-weight: 700;
-    left: calc(var(--today-position) * 1%);
+    left: clamp(0px, calc(var(--today-position) * 1% - 1.5rem), calc(100% - 3rem));
     position: absolute;
+    text-align: center;
     top: 0.2rem;
-    transform: translateX(-50%);
+    width: 3rem;
 }
 
 .horizon-calendar {
@@ -365,7 +393,7 @@ main:has(.horizon-view) {
 .horizon-lane-line {
     background: var(--calendar-color);
     border-radius: 999px;
-    height: 14px;
+    height: var(--horizon-lane-height);
     left: calc(var(--lane-start) * 1%);
     position: absolute;
     top: 50%;
@@ -373,17 +401,24 @@ main:has(.horizon-view) {
     width: calc((var(--lane-end) - var(--lane-start)) * 1%);
 }
 
+.horizon-lane-line.is-marker-terminated {
+    width: max(0px, calc(clamp(22px, calc(var(--lane-end) * 1%), calc(100% - 22px)) - calc(var(--lane-start) * 1%)));
+}
+
 .horizon-lane-line.is-finite::after {
     background: var(--horizon-panel);
-    border: 3px solid var(--calendar-color);
-    border-radius: 2px;
+    border: 4px solid var(--calendar-color);
+    border-radius: 50%;
+    box-shadow: 0 0 0 3px var(--horizon-panel);
+    box-sizing: border-box;
     content: "";
-    height: 22px;
+    height: 18px;
     position: absolute;
     right: 0;
     top: 50%;
     transform: translate(50%, -50%);
-    width: 7px;
+    transition: transform 120ms ease;
+    width: 18px;
 }
 
 .horizon-lane-line.is-open::after,
@@ -428,12 +463,12 @@ main:has(.horizon-view) {
 
 .horizon-marker-dot {
     background: var(--horizon-panel);
-    border: 6px solid var(--calendar-color);
+    border: 4px solid var(--calendar-color);
     border-radius: 50%;
-    box-shadow: 0 0 0 2px var(--horizon-panel);
-    height: 22px;
+    box-shadow: 0 0 0 3px var(--horizon-panel);
+    height: 18px;
     transition: transform 120ms ease;
-    width: 22px;
+    width: 18px;
 }
 
 .horizon-marker-target:hover .horizon-marker-dot,
@@ -442,6 +477,14 @@ main:has(.horizon-view) {
     outline: 3px solid color-mix(in srgb, var(--calendar-color) 35%, transparent);
     outline-offset: 3px;
     transform: scale(1.14);
+}
+
+.horizon-lane-track:has(.horizon-marker-target.is-lane-terminal:hover) .horizon-lane-line.is-marker-terminated::after,
+.horizon-lane-track:has(.horizon-marker-target.is-lane-terminal:focus-visible) .horizon-lane-line.is-marker-terminated::after,
+.horizon-lane-track:has(.horizon-marker-target.is-lane-terminal.is-selected) .horizon-lane-line.is-marker-terminated::after {
+    outline: 3px solid color-mix(in srgb, var(--calendar-color) 35%, transparent);
+    outline-offset: 3px;
+    transform: translate(50%, -50%) scale(1.14);
 }
 
 .horizon-marker-target:focus-visible {
@@ -484,7 +527,7 @@ main:has(.horizon-view) {
 
 @media (max-width: 640px) {
     :root {
-        --horizon-label-width: 8.5rem;
+        --horizon-label-width: 13rem;
     }
 
     main:has(.horizon-view) {
@@ -518,22 +561,9 @@ main:has(.horizon-view) {
         display: none;
     }
 
-    .horizon-heading {
-        align-items: start;
-    }
-
-    .horizon-window time,
-    .horizon-window > span[aria-hidden="true"] {
-        display: none;
-    }
-
     .horizon-view-controls button {
         height: 40px;
         width: 40px;
-    }
-
-    .horizon-shortcuts {
-        display: none;
     }
 
     .horizon-viewport {
@@ -552,6 +582,10 @@ main:has(.horizon-view) {
     }
 
     .horizon-marker-dot {
+        transition: none;
+    }
+
+    .horizon-lane-line.is-finite::after {
         transition: none;
     }
 }

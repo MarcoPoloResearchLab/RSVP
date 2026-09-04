@@ -8,13 +8,15 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/tyemirov/RSVP/pkg/config"
 	"github.com/tyemirov/RSVP/pkg/services"
 )
+
+const googleContactsBirthdayCalendarIDSuffix = "#contacts@group.v.calendar.google.com"
 
 // Config contains the Google Calendar adapter boundary values.
 type Config struct {
@@ -150,64 +152,114 @@ func (adapter *Adapter) RefreshCredential(ctx context.Context, credential servic
 	return services.CalendarProviderCredential{AccessToken: body.AccessToken, RefreshToken: credential.RefreshToken, ExpiresAt: adapter.now().UTC().Add(time.Duration(body.ExpiresIn) * time.Second)}, nil
 }
 
-// ListCalendars returns each provider calendar available to the credential.
-func (adapter *Adapter) ListCalendars(ctx context.Context, credential services.CalendarProviderCredential) ([]services.ProviderCalendar, error) {
+// ListCalendars returns all CalendarList pages for one cursor transition.
+func (adapter *Adapter) ListCalendars(ctx context.Context, credential services.CalendarProviderCredential, syncCursor string) (services.ProviderCalendarBatch, error) {
 	if credential.AccessToken == "" {
-		return nil, errors.New("Google Calendar access token is required")
+		return services.ProviderCalendarBatch{}, errors.New("Google Calendar access token is required")
 	}
 	calendars := make([]services.ProviderCalendar, 0)
 	nextPageToken := ""
 	for {
 		parsedURL, parseError := url.Parse(adapter.config.CalendarListEndpoint)
 		if parseError != nil {
-			return nil, fmt.Errorf("parse Google Calendar list endpoint: %w", parseError)
+			return services.ProviderCalendarBatch{}, fmt.Errorf("parse Google Calendar list endpoint: %w", parseError)
+		}
+		query := parsedURL.Query()
+		query.Set("showDeleted", "true")
+		query.Set("showHidden", "true")
+		if syncCursor != "" {
+			query.Set("syncToken", syncCursor)
 		}
 		if nextPageToken != "" {
-			query := parsedURL.Query()
 			query.Set("pageToken", nextPageToken)
-			parsedURL.RawQuery = query.Encode()
 		}
+		parsedURL.RawQuery = query.Encode()
 		request, requestError := http.NewRequestWithContext(ctx, http.MethodGet, parsedURL.String(), nil)
 		if requestError != nil {
-			return nil, fmt.Errorf("create Google Calendar list request: %w", requestError)
+			return services.ProviderCalendarBatch{}, fmt.Errorf("create Google Calendar list request: %w", requestError)
 		}
 		request.Header.Set("Authorization", "Bearer "+credential.AccessToken)
 		response, responseError := adapter.client.Do(request)
 		if responseError != nil {
-			return nil, fmt.Errorf("list Google calendars: %w", responseError)
+			return services.ProviderCalendarBatch{}, fmt.Errorf("list Google calendars: %w", responseError)
+		}
+		if response.StatusCode == http.StatusGone {
+			response.Body.Close()
+			return services.ProviderCalendarBatch{}, services.ErrCalendarListSyncCursorRejected
 		}
 		if response.StatusCode != http.StatusOK {
 			response.Body.Close()
-			return nil, fmt.Errorf("list Google calendars: provider status %d", response.StatusCode)
+			return services.ProviderCalendarBatch{}, fmt.Errorf("list Google calendars: provider status %d", response.StatusCode)
 		}
 		var body struct {
-			Items []struct {
-				ID              string `json:"id"`
-				Summary         string `json:"summary"`
-				Timezone        string `json:"timeZone"`
-				BackgroundColor string `json:"backgroundColor"`
-			} `json:"items"`
-			NextPageToken string `json:"nextPageToken"`
+			Items         []googleCalendarListItem `json:"items"`
+			NextPageToken string                   `json:"nextPageToken"`
+			NextSyncToken string                   `json:"nextSyncToken"`
 		}
 		decodeError := json.NewDecoder(response.Body).Decode(&body)
 		response.Body.Close()
 		if decodeError != nil {
-			return nil, fmt.Errorf("decode Google Calendar list response: %w", decodeError)
+			return services.ProviderCalendarBatch{}, fmt.Errorf("decode Google Calendar list response: %w", decodeError)
 		}
 		for _, item := range body.Items {
-			if item.ID == "" || item.Summary == "" {
-				return nil, errors.New("Google Calendar list response is invalid")
+			if item.ID == "" {
+				return services.ProviderCalendarBatch{}, errors.New("Google Calendar list response is invalid")
+			}
+			if item.Deleted {
+				calendars = append(calendars, services.ProviderCalendar{ID: item.ID, Deleted: true})
+				continue
+			}
+			name := item.SummaryOverride
+			if name == "" {
+				name = item.Summary
+			}
+			readable, accessRoleValid := readableCalendarAccessRole(item.AccessRole)
+			if name == "" || !accessRoleValid {
+				return services.ProviderCalendarBatch{}, errors.New("Google Calendar list response is invalid")
 			}
 			colorToken := strings.TrimPrefix(item.BackgroundColor, "#")
 			if colorToken == "" {
-				colorToken = "google-" + strconv.Itoa(len(calendars)+1)
+				colorToken = "google-default"
 			}
-			calendars = append(calendars, services.ProviderCalendar{ID: item.ID, Name: item.Summary, Timezone: item.Timezone, ColorToken: colorToken})
+			providerCalendar := services.ProviderCalendar{
+				ID: item.ID, Name: name, ColorToken: colorToken, Readable: readable, Visible: item.Selected, Default: item.Primary,
+			}
+			if strings.HasSuffix(item.ID, googleContactsBirthdayCalendarIDSuffix) {
+				birthdayGroup := services.SemanticCalendarGroupBirthdays
+				providerCalendar.SemanticSourceGroup = &birthdayGroup
+			}
+			calendars = append(calendars, providerCalendar)
 		}
 		nextPageToken = body.NextPageToken
 		if nextPageToken == "" {
-			return calendars, nil
+			if body.NextSyncToken == "" {
+				return services.ProviderCalendarBatch{}, errors.New("Google Calendar list response has no final sync cursor")
+			}
+			return services.ProviderCalendarBatch{Calendars: calendars, NextSyncCursor: body.NextSyncToken}, nil
 		}
+	}
+}
+
+type googleCalendarListItem struct {
+	ID              string `json:"id"`
+	Summary         string `json:"summary"`
+	SummaryOverride string `json:"summaryOverride"`
+	Timezone        string `json:"timeZone"`
+	BackgroundColor string `json:"backgroundColor"`
+	Selected        bool   `json:"selected"`
+	Deleted         bool   `json:"deleted"`
+	AccessRole      string `json:"accessRole"`
+	Primary         bool   `json:"primary"`
+}
+
+func readableCalendarAccessRole(accessRole string) (bool, bool) {
+	switch accessRole {
+	case "freeBusyReader":
+		return false, true
+	case "reader", "writerWithoutPrivateAccess", "writer", "owner":
+		return true, true
+	default:
+		return false, false
 	}
 }
 
@@ -216,7 +268,7 @@ func (adapter *Adapter) SynchronizeEvents(ctx context.Context, credential servic
 	if credential.AccessToken == "" || providerCalendarID == "" {
 		return services.ProviderEventBatch{}, errors.New("Google Calendar event synchronization values are required")
 	}
-	events := make([]services.ProviderEvent, 0)
+	changes := make([]services.ProviderEventChange, 0)
 	nextPageToken := ""
 	for {
 		endpoint := strings.TrimRight(adapter.config.EventsEndpoint, "/") + "/" + url.PathEscape(providerCalendarID) + "/events"
@@ -258,20 +310,106 @@ func (adapter *Adapter) SynchronizeEvents(ctx context.Context, credential servic
 			return services.ProviderEventBatch{}, fmt.Errorf("decode Google Calendar events response: %w", decodeError)
 		}
 		for _, item := range body.Items {
-			providerEvent, eventError := decodeProviderEvent(item, body.Timezone)
+			if item.ID == "" {
+				return services.ProviderEventBatch{}, errors.New("Google Calendar event response is invalid")
+			}
+			classification := classifyGoogleEvent(item)
+			providerEvent, eventError := decodeProviderEvent(item, body.Timezone, classification)
 			if eventError != nil {
 				return services.ProviderEventBatch{}, eventError
 			}
-			events = append(events, providerEvent)
+			changes = append(changes, providerEvent)
 		}
 		nextPageToken = body.NextPageToken
 		if nextPageToken == "" {
 			if body.NextSyncToken == "" {
 				return services.ProviderEventBatch{}, errors.New("Google Calendar events response has no final sync cursor")
 			}
-			return services.ProviderEventBatch{Events: events, NextSyncCursor: body.NextSyncToken}, nil
+			return services.ProviderEventBatch{Changes: changes, NextSyncCursor: body.NextSyncToken}, nil
 		}
 	}
+}
+
+const (
+	googleUnknownBirthdaySubtypeDiagnostic = "google_unknown_birthday_subtype"
+	googleUnknownEventTypeDiagnostic       = "google_unknown_event_type"
+)
+
+type googleEventClassification struct {
+	group          services.SemanticCalendarGroup
+	deleted        bool
+	diagnosticCode string
+}
+
+type googleEventClassificationRule struct {
+	name     string
+	match    func(googleEventItem) bool
+	classify func(googleEventItem) googleEventClassification
+}
+
+var googleEventClassificationTable = []googleEventClassificationRule{
+	{name: "cancellation", match: func(item googleEventItem) bool { return item.Status == "cancelled" }, classify: func(googleEventItem) googleEventClassification {
+		return googleEventClassification{group: services.SemanticCalendarGroupCalendar, deleted: true}
+	}},
+	{name: "special-date subtype", match: func(item googleEventItem) bool { return item.BirthdayProperties != nil }, classify: classifyGoogleSpecialDate},
+	{name: "birthday event type", match: func(item googleEventItem) bool { return item.EventType == "birthday" }, classify: func(googleEventItem) googleEventClassification {
+		return googleEventClassification{group: services.SemanticCalendarGroupBirthdays}
+	}},
+	{name: "default event type", match: func(item googleEventItem) bool { return item.EventType == "default" }, classify: func(item googleEventItem) googleEventClassification {
+		if googleTitleHasBirthdayMeaning(item.Summary) {
+			return googleEventClassification{group: services.SemanticCalendarGroupBirthdays}
+		}
+		return googleEventClassification{group: services.SemanticCalendarGroupCalendar}
+	}},
+	{name: "known general event type", match: func(item googleEventItem) bool {
+		switch item.EventType {
+		case "focusTime", "fromGmail", "outOfOffice", "workingLocation":
+			return true
+		default:
+			return false
+		}
+	}, classify: func(googleEventItem) googleEventClassification {
+		return googleEventClassification{group: services.SemanticCalendarGroupCalendar}
+	}},
+	{name: "unknown event type", match: func(item googleEventItem) bool { return item.EventType != "" }, classify: func(googleEventItem) googleEventClassification {
+		return googleEventClassification{group: services.SemanticCalendarGroupCalendar, diagnosticCode: googleUnknownEventTypeDiagnostic}
+	}},
+	{name: "provider-calendar default", match: func(googleEventItem) bool { return true }, classify: func(googleEventItem) googleEventClassification {
+		return googleEventClassification{group: services.SemanticCalendarGroupCalendar}
+	}},
+}
+
+func classifyGoogleEvent(item googleEventItem) googleEventClassification {
+	for _, rule := range googleEventClassificationTable {
+		if rule.match(item) {
+			return rule.classify(item)
+		}
+	}
+	return googleEventClassification{group: services.SemanticCalendarGroupCalendar}
+}
+
+func classifyGoogleSpecialDate(item googleEventItem) googleEventClassification {
+	switch item.BirthdayProperties.Type {
+	case "", "birthday", "self":
+		return googleEventClassification{group: services.SemanticCalendarGroupBirthdays}
+	case "anniversary", "custom", "other":
+		return googleEventClassification{group: services.SemanticCalendarGroupCalendar}
+	default:
+		return googleEventClassification{group: services.SemanticCalendarGroupCalendar, diagnosticCode: googleUnknownBirthdaySubtypeDiagnostic}
+	}
+}
+
+func googleTitleHasBirthdayMeaning(title string) bool {
+	words := strings.FieldsFunc(strings.ToLower(title), func(character rune) bool {
+		return !unicode.IsLetter(character) && !unicode.IsNumber(character)
+	})
+	for _, word := range words {
+		switch word {
+		case "birthday", "birthdays", "bday":
+			return true
+		}
+	}
+	return false
 }
 
 type googleEventsResponse struct {
@@ -282,12 +420,18 @@ type googleEventsResponse struct {
 }
 
 type googleEventItem struct {
-	ID               string `json:"id"`
-	RecurringEventID string `json:"recurringEventId"`
-	Status           string `json:"status"`
-	Summary          string `json:"summary"`
-	Description      string `json:"description"`
-	Start            struct {
+	ID                 string `json:"id"`
+	RecurringEventID   string `json:"recurringEventId"`
+	EventType          string `json:"eventType"`
+	Status             string `json:"status"`
+	Summary            string `json:"summary"`
+	Description        string `json:"description"`
+	BirthdayProperties *struct {
+		Contact        string `json:"contact"`
+		Type           string `json:"type"`
+		CustomTypeName string `json:"customTypeName"`
+	} `json:"birthdayProperties"`
+	Start struct {
 		DateTime string `json:"dateTime"`
 		Date     string `json:"date"`
 		Timezone string `json:"timeZone"`
@@ -299,12 +443,15 @@ type googleEventItem struct {
 	} `json:"end"`
 }
 
-func decodeProviderEvent(item googleEventItem, calendarTimezone string) (services.ProviderEvent, error) {
+func decodeProviderEvent(item googleEventItem, calendarTimezone string, classification googleEventClassification) (services.ProviderEventChange, error) {
 	if item.ID == "" {
-		return services.ProviderEvent{}, errors.New("Google Calendar event response is invalid")
+		return services.ProviderEventChange{}, errors.New("Google Calendar event response is invalid")
 	}
-	event := services.ProviderEvent{ID: item.ID, SeriesID: item.RecurringEventID, Title: item.Summary, Description: item.Description, Status: item.Status}
-	if item.Status == "cancelled" {
+	event := services.ProviderEventChange{
+		ProviderEventID: item.ID, ProviderSeriesID: item.RecurringEventID, SemanticGroup: classification.group,
+		Deleted: classification.deleted, DiagnosticCode: classification.diagnosticCode, Title: item.Summary, Description: item.Description,
+	}
+	if event.Deleted {
 		return event, nil
 	}
 	if event.Title == "" {
@@ -316,12 +463,12 @@ func decodeProviderEvent(item googleEventItem, calendarTimezone string) (service
 	}
 	if item.Start.Date != "" || item.End.Date != "" {
 		if item.Start.Date == "" || item.End.Date == "" || event.Timezone == "" {
-			return services.ProviderEvent{}, errors.New("Google Calendar all-day event is invalid")
+			return services.ProviderEventChange{}, errors.New("Google Calendar all-day event is invalid")
 		}
 		startDate, startDateError := time.Parse(time.DateOnly, item.Start.Date)
 		endDate, endDateError := time.Parse(time.DateOnly, item.End.Date)
 		if startDateError != nil || endDateError != nil || endDate.Before(startDate) {
-			return services.ProviderEvent{}, errors.New("Google Calendar all-day event is invalid")
+			return services.ProviderEventChange{}, errors.New("Google Calendar all-day event is invalid")
 		}
 		if endDate.Equal(startDate) {
 			endDate = startDate.AddDate(0, 0, 1)
@@ -332,7 +479,7 @@ func decodeProviderEvent(item googleEventItem, calendarTimezone string) (service
 	start, startError := time.Parse(time.RFC3339, item.Start.DateTime)
 	end, endError := time.Parse(time.RFC3339, item.End.DateTime)
 	if startError != nil || endError != nil || end.Before(start) || event.Timezone == "" {
-		return services.ProviderEvent{}, errors.New("Google Calendar timed event is invalid")
+		return services.ProviderEventChange{}, errors.New("Google Calendar timed event is invalid")
 	}
 	canonicalStart := start.UTC()
 	if end.Equal(start) {

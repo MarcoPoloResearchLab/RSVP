@@ -159,6 +159,22 @@
     gap: 0.6rem;
 }
 
+.settings-timezone-card {
+    max-width: 32rem;
+}
+
+.settings-form-note {
+    color: #68736f;
+    font-size: 0.72rem;
+    margin: 0;
+}
+
+.settings-form-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
 .settings-form h3,
 .settings-integration-card h3 {
     font-size: 0.82rem;
@@ -193,7 +209,45 @@
 }
 
 .settings-field-row-calendar {
-    grid-template-columns: minmax(9rem, 2fr) minmax(5rem, 0.75fr) minmax(7rem, 1fr);
+    grid-template-columns: minmax(9rem, 2fr) minmax(7rem, 1fr);
+}
+
+.settings-shortcut-list {
+    display: grid;
+    gap: 0.6rem;
+    margin: 0;
+    max-width: 32rem;
+}
+
+.settings-shortcut-list div {
+    align-items: center;
+    background: #fbfcfb;
+    border: 1px solid #d8dddb;
+    border-radius: 0.65rem;
+    display: grid;
+    gap: 0.75rem;
+    grid-template-columns: 7rem minmax(0, 1fr);
+    padding: 0.75rem 0.85rem;
+}
+
+.settings-shortcut-list dt,
+.settings-shortcut-list dd {
+    margin: 0;
+}
+
+.settings-shortcut-list kbd {
+    background: #fff;
+    border: 1px solid #cdd4d1;
+    border-radius: 0.25rem;
+    color: #17241f;
+    font: inherit;
+    font-size: 0.72rem;
+    padding: 0.12rem 0.35rem;
+}
+
+.settings-shortcut-list dd {
+    color: #4c5854;
+    font-size: 0.75rem;
 }
 
 .settings-dialog button {
@@ -320,7 +374,7 @@
 .settings-sync-status {
     display: grid;
     gap: 0;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     margin: 0;
 }
 
