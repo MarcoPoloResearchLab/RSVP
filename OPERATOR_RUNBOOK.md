@@ -30,10 +30,14 @@ The production manifest gets each parser value from the `private` resource.
 
 RSVP initializes an empty SQLite database with the complete canonical schema.
 RSVP rejects an incomplete database during startup.
-The I006 startup migrations add the CalendarList cursor, import cutover, and semantic group fields.
-The grouping migration clears prior sync cursors for one complete grouped synchronization.
-The next migration renames `provider_group` to `semantic_group` and clears each event sync cursor.
+The B047 migration creates one provider calendar sync state for each provider calendar.
+The migration clears CalendarList and event cursors for one complete reconciliation.
 The runtime rejects a database that does not use the current or an accepted predecessor schema.
+
+`make up` stops the `rsvp-local` Compose project and deletes its volumes.
+It preserves `.env.docker` and the calendar credential encryption key.
+It then builds the services and creates a new `rsvp-data` volume.
+This local reset does not change the production retained volume.
 
 ## Validate The Complete Capability
 
@@ -52,24 +56,53 @@ It verifies desktop and mobile views, calendar synchronization, drafts, markers,
 The schema test initializes an empty database.
 It validates all canonical tables, constraints, indexes, and required relationships.
 
+## Validate Account Settings
+
+Run the organizer resource contract test:
+
+```shell
+go test ./pkg/handlers/organizer -count=1
+```
+
+Open **Settings** and select **Account**.
+Save one valid IANA timezone and refresh the page.
+Confirm that Settings shows the saved value.
+Confirm that the default Horizon window uses the saved value.
+Submit `Local` and confirm that RSVP returns a validation error.
+Confirm that Settings and the database keep the prior valid value.
+Confirm that an existing event keeps its marker timezone.
+
 ## Diagnose Google Calendar
 
 Examine the connection state in **Manage horizon**.
+Examine the calendar import task state in the Integrations rubric.
 Examine the last synchronization state for each source calendar.
 
+The connection request must return `202 Accepted` before provider calendar or event requests complete.
+The task worker claims the pending task within its scheduler interval.
+A failed attempt stores `failed`, increments `retry_count`, and uses exponential retry delay.
+The task stops automatic retries after five failed attempts.
+The Integrations rubric shows `Needs attention` after the last failed attempt.
+
 A successful CalendarList reconciliation stores a cursor on the connection.
-A successful event synchronization stores a cursor on the source calendar mapping.
+A successful event synchronization stores a cursor on the provider calendar sync state.
 A later scheduled run reconciles the CalendarList before it synchronizes events.
 
 Confirm that a complete CalendarList request includes hidden entries.
-Confirm that each readable entry has one general source mapping and one RSVP calendar.
-Confirm that the primary Google calendar has a separate `Birthdays` mapping.
-Confirm that the general and birthday mappings have separate event sync cursors.
+Confirm that connection creation stores the browser IANA timezone for a new organizer.
+Confirm that an absent or invalid browser timezone stores `UTC`.
+Confirm that each readable general entry has one RSVP calendar.
+Confirm that the Contacts birthday entry creates no visible RSVP calendar.
+Confirm that each provider calendar has one event sync cursor.
+Confirm that each provider calendar request uses one unfiltered event feed.
 Confirm that an unknown Google event type stays in its general calendar group.
+Confirm that its external event link stores a provider-safe diagnostic code.
 Confirm that an explicit birthday title stays in the `Birthdays` calendar when Google returns `eventType=default`.
 Confirm that a changed event moves between semantic groups without a duplicate.
+Confirm that a recurring exception does not split its provider series lane.
 Confirm that the first complete import removes prior unmapped calendars.
 Confirm that a CalendarList cursor advances only after all mapping changes commit.
+Confirm that the organizer can show at most eight calendars.
 
 A rejected CalendarList cursor starts one complete CalendarList reconciliation.
 A rejected event cursor starts one complete event reconciliation.
@@ -110,6 +143,7 @@ Treat each stage as a different result.
 The production service stores SQLite data in the retained `rsvp-data` volume.
 Preserve that volume during a service replacement.
 
-Use the I006 startup migrations only for accepted predecessor databases.
+Use the B047 and B048 startup migrations only for their accepted predecessor databases.
+Both migrations remove the predecessor calendar symbol while they create the current task contract.
 For each other database schema, complete an approved one-time migration before the new runtime starts.
-Remove the I006 migrations after all database files use the canonical schema.
+Remove the startup migrations after all database files use the canonical schema.
