@@ -9,14 +9,12 @@
     <section class="horizon-view horizon-setup" aria-labelledby="horizon-title" data-horizon-setup tabindex="-1">
         <header class="horizon-heading">
             <div>
-                <p class="horizon-eyebrow">Your time, in motion</p>
                 <h1 id="horizon-title">Set up Horizon</h1>
                 <p class="horizon-window">Create your first calendar to use your local timezone and open the 90-day Horizon.</p>
             </div>
         </header>
         <form class="horizon-resource-form horizon-setup-form" data-horizon-setup-form data-resource-url="{{ .CalendarCreateURL }}">
             <label>Calendar name <input name="name" value="Personal" required></label>
-            <label>Symbol <input name="symbol" value="R" required></label>
             <input name="color_token" type="hidden" value="personal">
             <input name="timezone" type="hidden" data-client-timezone>
             <button type="submit">Start Horizon</button>
@@ -28,26 +26,11 @@
         class="horizon-view"
         aria-labelledby="horizon-title"
         data-horizon-view
-        data-window-days="{{ .WindowDays }}"
+        data-horizon-scale="{{ .Scale }}"
         tabindex="-1"
     >
         <header class="horizon-heading">
-            <div>
-                <p class="horizon-eyebrow">Your time, in motion</p>
-                <h1 id="horizon-title">Horizon</h1>
-                <p class="horizon-window">
-                    <time datetime="{{ .Window.Start }}">{{ .Window.Start }}</time>
-                    <span aria-hidden="true">→</span>
-                    <time datetime="{{ .Window.End }}">{{ .Window.End }}</time>
-                    <span>{{ .Window.Timezone }}</span>
-                </p>
-            </div>
-            <div class="horizon-view-controls" aria-label="Horizon view controls">
-                <button type="button" data-pan="backward" aria-label="Pan backward">←</button>
-                <button type="button" data-scale="out" aria-label="Scale out">−</button>
-                <button type="button" data-scale="in" aria-label="Scale in">+</button>
-                <button type="button" data-pan="forward" aria-label="Pan forward">→</button>
-            </div>
+            <h1 id="horizon-title">Horizon</h1>
         </header>
 
         <div class="horizon-calendar-controls" role="group" aria-label="Calendar visibility">
@@ -64,7 +47,6 @@
                         data-shortcut="{{ $calendarIndex }}"
                         {{ if $calendar.Visible }}checked{{ end }}
                     >
-                    <span class="horizon-calendar-symbol" aria-hidden="true">{{ $calendar.Symbol }}</span>
                     <span>{{ $calendar.Name }}</span>
                     {{ if lt $calendarIndex 9 }}<kbd>{{ addOne $calendarIndex }}</kbd>{{ end }}
                 </label>
@@ -79,7 +61,7 @@
                 <h2>Natural-language draft</h2>
                 <input name="source" type="hidden" value="natural_language">
                 <label>Request <textarea name="input_text" required></textarea></label>
-                <label>Calendar <select name="calendar_id" required>{{ range .Calendars }}<option value="{{ .ID }}">{{ .Symbol }} {{ .Name }}</option>{{ end }}</select></label>
+                <label>Calendar <select name="calendar_id" required>{{ range .Calendars }}<option value="{{ .ID }}">{{ .Name }}</option>{{ end }}</select></label>
                 <input name="reference_time" type="hidden" data-reference-time>
                 <input name="timezone" type="hidden" data-client-timezone>
                 <button type="submit">Parse into draft</button>
@@ -87,7 +69,7 @@
             <form class="horizon-resource-form" data-resource-form data-ingestion-draft-form data-quick-add-form data-method="POST" data-resource-url="{{ .IngestionDraftCreateURL }}">
                 <input name="source" type="hidden" value="quick">
                 <label>Mode <select name="mode" data-quick-mode><option value="dated_event">Dated event</option><option value="open_lane">Open lane</option></select></label>
-                <label>Calendar <select name="calendar_id" required>{{ range .Calendars }}<option value="{{ .ID }}">{{ .Symbol }} {{ .Name }}</option>{{ end }}</select></label>
+                <label>Calendar <select name="calendar_id" required>{{ range .Calendars }}<option value="{{ .ID }}">{{ .Name }}</option>{{ end }}</select></label>
                 <label>Title <input name="title" required></label>
                 <label data-event-field>Anchor event <select name="anchor_event_id"><option value="">Independent event</option>{{ range .AnchorEvents }}<option value="{{ .ID }}">{{ .Title }}</option>{{ end }}</select></label>
                 <label data-event-field>Start <input name="starts_at" type="datetime-local" required></label>
@@ -135,10 +117,24 @@
             {{ end }}
         </details>
 
-        <p class="horizon-shortcuts">
-            Keyboard: H/L pan, −/+ scale, J/K select markers, and 1–9 toggle calendars.
-        </p>
         <p class="visually-hidden" aria-live="polite" data-horizon-status></p>
+
+        <div class="horizon-window-row" data-horizon-window-row>
+            <p class="horizon-window">
+                <time datetime="{{ .Window.Start }}">{{ .Window.Start }}</time>
+                <span aria-hidden="true">→</span>
+                <time datetime="{{ .Window.End }}">{{ .Window.End }}</time>
+                <span>{{ .Window.Timezone }}</span>
+            </p>
+            <div class="horizon-view-controls" aria-label="Horizon view controls">
+                <button type="button" data-pan="backward" data-navigation-url="{{ .BackwardWindowURL }}" aria-label="Pan backward">←</button>
+                <button type="button" data-scale-preset="day" data-navigation-url="{{ .DayScaleURL }}" aria-label="Day scale" aria-pressed="{{ eq .Scale "day" }}">D</button>
+                <button type="button" data-scale-preset="week" data-navigation-url="{{ .WeekScaleURL }}" aria-label="Week scale" aria-pressed="{{ eq .Scale "week" }}">W</button>
+                <button type="button" data-scale-preset="month" data-navigation-url="{{ .MonthScaleURL }}" aria-label="Month scale" aria-pressed="{{ eq .Scale "month" }}">M</button>
+                <button type="button" data-scale-preset="year" data-navigation-url="{{ .YearScaleURL }}" aria-label="Year scale" aria-pressed="{{ eq .Scale "year" }}">Y</button>
+                <button type="button" data-pan="forward" data-navigation-url="{{ .ForwardWindowURL }}" aria-label="Pan forward">→</button>
+            </div>
+        </div>
 
         <div class="horizon-viewport" data-horizon-viewport tabindex="0" aria-label="Scrollable horizon timeline">
             <div class="horizon-board" data-horizon-board>
@@ -146,10 +142,11 @@
                     <div class="horizon-lane-label horizon-scale-label">Lane</div>
                     <div class="horizon-scale-track">
                         {{ range .TimeScaleTicks }}
+                            <span class="horizon-grid-line" style="--tick-position: {{ .Position }}"></span>
                             <time class="horizon-scale-tick" datetime="{{ .DateTime }}" style="--tick-position: {{ .Position }}">{{ .Label }}</time>
                         {{ end }}
-                        {{ if .TodayPosition }}
-                            <span class="horizon-today-label" style="--today-position: {{ . }}">Today</span>
+                        {{ if .TodayStyle }}
+                            <span class="horizon-today-label" {{ .TodayStyle }}>Today</span>
                         {{ end }}
                     </div>
                 </div>
@@ -165,8 +162,7 @@
                         {{ range $calendar.Lanes }}
                             <div class="horizon-lane-row" data-lane-id="{{ .ID }}" data-lane-open="{{ .IsOpen }}">
                                 <div class="horizon-lane-label">
-                                    <span class="horizon-lane-symbol" aria-hidden="true">{{ $calendar.Symbol }}</span>
-                                    <span>{{ .Title }}</span>
+                                    <span class="horizon-lane-title">{{ .Title }}</span>
                                     <details class="horizon-lane-controls">
                                         <summary aria-label="Manage {{ .Title }}">•••</summary>
                                         <form data-resource-form data-method="PATCH" data-resource-url="{{ .ManagementURL }}">
@@ -202,8 +198,11 @@
                                     </details>
                                 </div>
                                 <div class="horizon-lane-track">
-                                    {{ if $.TodayPosition }}
-                                        <span class="horizon-today-line" style="--today-position: {{ $.TodayPosition }}" aria-hidden="true"></span>
+                                    {{ range $.TimeScaleTicks }}
+                                        <span class="horizon-grid-line" style="--tick-position: {{ .Position }}" aria-hidden="true"></span>
+                                    {{ end }}
+                                    {{ if $.TodayStyle }}
+                                        <span class="horizon-today-line" {{ $.TodayStyle }} aria-hidden="true"></span>
                                     {{ end }}
                                     <span
                                         class="horizon-lane-line {{ .EndStyle }}"
@@ -213,7 +212,7 @@
                                     {{ range .Markers }}
                                         <button
                                             type="button"
-                                            class="horizon-marker-target"
+                                            class="horizon-marker-target{{ if .IsLaneTerminal }} is-lane-terminal{{ end }}"
                                             style="--marker-position: {{ .Position }}"
                                             data-marker-id="{{ .ID }}"
                                             data-marker-type="{{ .Type }}"
@@ -221,7 +220,7 @@
                                             aria-label="{{ .Title }}. {{ .Type }} marker."
                                             aria-describedby="marker-details-{{ .ID }}"
                                         >
-                                            <span class="horizon-marker-dot" aria-hidden="true"></span>
+                                            {{ if not .IsLaneTerminal }}<span class="horizon-marker-dot" aria-hidden="true"></span>{{ end }}
                                         </button>
                                         <aside class="horizon-marker-details" id="marker-details-{{ .ID }}" data-marker-details="{{ .ID }}" hidden>
                                             <strong>{{ .Title }}</strong>

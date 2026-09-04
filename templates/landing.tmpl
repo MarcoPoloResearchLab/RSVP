@@ -165,5 +165,17 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"
         integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz"
         crossorigin="anonymous"></script>
+<script>
+    window.addEventListener("load", function () {
+        [
+            "https://loopaware.mprlab.com/widget.js?site_id=50bc3012-27c7-4fbd-8307-81dee1da50f7",
+            "https://loopaware.mprlab.com/pixel.js?site_id=50bc3012-27c7-4fbd-8307-81dee1da50f7"
+        ].forEach(function (source) {
+            const scriptElement = document.createElement("script");
+            scriptElement.src = source;
+            document.head.appendChild(scriptElement);
+        });
+    });
+</script>
 </body>
 </html>
