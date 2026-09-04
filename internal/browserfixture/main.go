@@ -262,6 +262,11 @@ func seedBrowserFixture(database *gorm.DB) error {
 		if calendarError != nil {
 			return calendarError
 		}
+		for index, calendarID := range []string{"CALAAAOX", "CALAAB0X"} {
+			if _, calendarError := createBrowserCalendar(transaction, organizer.ID, calendarID, "Color collision "+calendarID, "google-default", 5+index); calendarError != nil {
+				return calendarError
+			}
+		}
 
 		for index, title := range []string{"Ada's birthday", "Lin's birthday", "Maya's birthday"} {
 			markerTime := browserReferenceTime.AddDate(0, 0, 12+index*8)
