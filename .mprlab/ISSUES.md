@@ -8,6 +8,42 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 ## BugFixes
 
+- [x] [B054] (P2) {B051} Correct Horizon dates at month ends
+  Goal:
+  A month window that starts on January 31 ends in March instead of February.
+  Requirements:
+  - Use the last day of the target month when the original day does not exist.
+  - Use the same date calculation for the window end and each navigation direction.
+  - Preserve the local wall time and organizer timezone.
+  Validation:
+  - Verify month ends, leap years, and year changes through browser navigation.
+  - Run `make ci` and `make browser-test`.
+
+- [x] [B053] (P2) {B047} Correct calendar color collisions
+  Goal:
+  Calendars `CALAAAOX` and `CALAAB0X` with color token `google-default` have the same presentation color.
+  Requirements:
+  - Derive color components from a 64-bit hash of the calendar identifier and color token.
+  - Keep each presentation color when visibility or the calendar set changes.
+  Validation:
+  - Confirm different rendered colors for the reported calendar pair.
+  - Confirm different rendered colors with eight visible calendars and one hidden calendar.
+  - Run `make ci` and `make browser-test`.
+
+- [x] [B052] (P1) {I006} Correct the migration from master
+  Goal:
+  The migration rejects the database schema from `master`.
+  Requirements:
+  - Accept the schema from merge base `881c0bc` as the migration input.
+  - Move persisted data directly into the canonical schema.
+  - Preserve credentials, source mappings, events, series links, and synchronization records.
+  - Remove obsolete columns and temporary tables during the migration transaction.
+  Validation:
+  - Open a populated database with the master schema through `OpenDatabase`.
+  - Confirm that the imported records remain in the canonical schema.
+  - Open the migrated database again and confirm that its new sync cursor remains unchanged.
+  - Run `make ci`.
+
 - [x] [B051] (P1) {I013,F002} Make the Horizon window match the selected scale
   Goal:
   The scale controls change the day width but keep the 90-day Horizon window.
