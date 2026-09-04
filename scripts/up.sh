@@ -73,6 +73,7 @@ export RSVP_RUNTIME_ENV_FILE="${source_environment}"
 export RSVP_PUBLIC_ORIGIN="${public_origin}"
 export RSVP_CALENDAR_CREDENTIAL_ENCRYPTION_KEY="$(<"${calendar_key_file}")"
 export RSVP_HOST_PORT=8080
+docker compose --project-name "${compose_project}" --env-file "${source_environment}" down --remove-orphans --volumes
 docker compose --project-name "${compose_project}" --env-file "${source_environment}" up --build --detach --remove-orphans
 
 ready=0
