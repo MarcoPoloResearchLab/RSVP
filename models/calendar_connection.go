@@ -92,8 +92,8 @@ type CalendarConnection struct {
 	Status                  CalendarConnectionStatus `gorm:"type:text;not null;check:calendar_connection_status,status = 'connected'"`
 	CalendarListSyncCursor  *string
 	CalendarImportCutoverAt *time.Time
-	Organizer               User                    `gorm:"foreignKey:OrganizerID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
-	Mappings                []SourceCalendarMapping `gorm:"foreignKey:ConnectionID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
+	Organizer               User                        `gorm:"foreignKey:OrganizerID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
+	SyncStates              []ProviderCalendarSyncState `gorm:"foreignKey:ConnectionID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
 }
 
 // NewCalendarConnection constructs one encrypted Google Calendar connection.
@@ -127,18 +127,16 @@ func (connection *CalendarConnection) GetIDGeneratorFunc() func(int) (string, er
 // SourceCalendarMapping connects one semantic calendar group to one RSVP calendar.
 type SourceCalendarMapping struct {
 	BaseModel
-	ConnectionID       string              `gorm:"type:varchar(8);not null;uniqueIndex:source_provider_calendar,priority:1"`
-	CalendarID         string              `gorm:"type:varchar(8);not null;uniqueIndex"`
-	ProviderCalendarID string              `gorm:"not null;uniqueIndex:source_provider_calendar,priority:2"`
-	SemanticGroup      SourceCalendarGroup `gorm:"column:semantic_group;type:text;not null;default:calendar;uniqueIndex:source_provider_calendar,priority:3;check:source_calendar_group,semantic_group IN ('calendar','birthdays')"`
-	SyncCursor         *string
-	Connection         CalendarConnection `gorm:"foreignKey:ConnectionID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
-	Calendar           Calendar           `gorm:"foreignKey:CalendarID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT"`
+	SyncStateID   string                    `gorm:"type:varchar(8);not null;uniqueIndex:source_semantic_group,priority:1"`
+	CalendarID    string                    `gorm:"type:varchar(8);not null;index"`
+	SemanticGroup SourceCalendarGroup       `gorm:"column:semantic_group;type:text;not null;uniqueIndex:source_semantic_group,priority:2;check:source_calendar_group,semantic_group IN ('calendar','birthdays')"`
+	SyncState     ProviderCalendarSyncState `gorm:"foreignKey:SyncStateID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
+	Calendar      Calendar                  `gorm:"foreignKey:CalendarID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT"`
 }
 
 // NewSourceCalendarMapping constructs one source calendar mapping.
-func NewSourceCalendarMapping(connectionID string, calendarID string, providerCalendarID string, providerGroup SourceCalendarGroup) (*SourceCalendarMapping, error) {
-	mapping := &SourceCalendarMapping{ConnectionID: connectionID, CalendarID: calendarID, ProviderCalendarID: providerCalendarID, SemanticGroup: providerGroup}
+func NewSourceCalendarMapping(syncStateID string, calendarID string, semanticGroup SourceCalendarGroup) (*SourceCalendarMapping, error) {
+	mapping := &SourceCalendarMapping{SyncStateID: syncStateID, CalendarID: calendarID, SemanticGroup: semanticGroup}
 	if validationError := mapping.Validate(); validationError != nil {
 		return nil, validationError
 	}
@@ -146,7 +144,7 @@ func NewSourceCalendarMapping(connectionID string, calendarID string, providerCa
 }
 
 func (mapping *SourceCalendarMapping) Validate() error {
-	if mapping.ConnectionID == "" || mapping.CalendarID == "" || mapping.ProviderCalendarID == "" ||
+	if mapping.SyncStateID == "" || mapping.CalendarID == "" ||
 		(mapping.SemanticGroup != SourceCalendarGroupCalendar && mapping.SemanticGroup != SourceCalendarGroupBirthdays) {
 		return ErrSourceCalendarMappingInvalid
 	}

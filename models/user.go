@@ -22,7 +22,7 @@ type User struct {
 	Name string `gorm:"size:255"`
 	// Picture is the URL to the user's profile picture, provided by the authentication provider.
 	Picture string `gorm:"size:512"`
-	// Timezone is absent until the client confirms an IANA timezone for the first temporal write.
+	// Timezone is absent until the client confirms an IANA timezone.
 	Timezone *string `gorm:"type:text"`
 	// Calendars contain all temporal resources that this organizer owns.
 	Calendars []Calendar `gorm:"foreignKey:OrganizerID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
@@ -39,6 +39,23 @@ func (userRecord *User) ConfirmTimezone(databaseConnection *gorm.DB, timezone Ti
 	timezoneName := timezone.String()
 	if updateError := databaseConnection.Model(userRecord).Update("timezone", timezoneName).Error; updateError != nil {
 		return fmt.Errorf("confirm timezone for organizer %s: %w", userRecord.ID, updateError)
+	}
+	userRecord.Timezone = &timezoneName
+	return nil
+}
+
+// UpdateTimezone stores an explicit organizer timezone change.
+func (userRecord *User) UpdateTimezone(databaseConnection *gorm.DB, timezone Timezone) error {
+	if userRecord.ID == "" {
+		return ErrOrganizerIDRequired
+	}
+	validatedTimezone, timezoneError := NewTimezone(timezone.String())
+	if timezoneError != nil {
+		return timezoneError
+	}
+	timezoneName := validatedTimezone.String()
+	if updateError := databaseConnection.Model(userRecord).Update("timezone", timezoneName).Error; updateError != nil {
+		return fmt.Errorf("update timezone for organizer %s: %w", userRecord.ID, updateError)
 	}
 	userRecord.Timezone = &timezoneName
 	return nil
@@ -65,7 +82,7 @@ func (userRecord *User) BeforeUpdate(*gorm.DB) error {
 	return userRecord.Validate()
 }
 
-// Validate checks the optional pre-temporal organizer timezone.
+// Validate checks the optional organizer timezone.
 func (userRecord *User) Validate() error {
 	if userRecord.Timezone == nil {
 		return nil

@@ -12,7 +12,6 @@ import (
 const (
 	// DefaultCalendarName is the semantic calendar name for local events.
 	DefaultCalendarName       = "Personal"
-	defaultCalendarSymbol     = "calendar"
 	defaultCalendarColorToken = "personal"
 )
 
@@ -25,8 +24,8 @@ var (
 	ErrCalendarIDRequired = errors.New("calendar ID is required")
 	// ErrCalendarNameRequired indicates that a calendar has no name.
 	ErrCalendarNameRequired = errors.New("calendar name is required")
-	// ErrCalendarPresentationRequired indicates that a calendar has no symbol or color token.
-	ErrCalendarPresentationRequired = errors.New("calendar symbol and color token are required")
+	// ErrCalendarColorTokenRequired indicates that a calendar has no color token.
+	ErrCalendarColorTokenRequired = errors.New("calendar color token is required")
 	// ErrDisplayOrderInvalid indicates that a display order is negative.
 	ErrDisplayOrderInvalid = errors.New("display order must not be negative")
 )
@@ -36,7 +35,6 @@ type Calendar struct {
 	BaseModel
 	OrganizerID  string `gorm:"type:varchar(8);not null;uniqueIndex:calendar_organizer_order,priority:1"`
 	Name         string `gorm:"not null"`
-	Symbol       string `gorm:"not null"`
 	ColorToken   string `gorm:"not null"`
 	DisplayOrder int    `gorm:"not null;uniqueIndex:calendar_organizer_order,priority:2;check:calendar_display_order,display_order >= 0"`
 	Visible      bool   `gorm:"not null;default:true"`
@@ -45,11 +43,10 @@ type Calendar struct {
 }
 
 // NewCalendar constructs one valid calendar.
-func NewCalendar(organizerID string, name string, symbol string, colorToken string, displayOrder int) (*Calendar, error) {
+func NewCalendar(organizerID string, name string, colorToken string, displayOrder int) (*Calendar, error) {
 	calendar := &Calendar{
 		OrganizerID:  organizerID,
 		Name:         strings.TrimSpace(name),
-		Symbol:       strings.TrimSpace(symbol),
 		ColorToken:   strings.TrimSpace(colorToken),
 		DisplayOrder: displayOrder,
 		Visible:      true,
@@ -91,8 +88,8 @@ func (calendar *Calendar) Validate() error {
 	if calendar.Name == "" {
 		return ErrCalendarNameRequired
 	}
-	if calendar.Symbol == "" || calendar.ColorToken == "" {
-		return ErrCalendarPresentationRequired
+	if calendar.ColorToken == "" {
+		return ErrCalendarColorTokenRequired
 	}
 	if calendar.DisplayOrder < 0 {
 		return ErrDisplayOrderInvalid
@@ -143,7 +140,7 @@ func EnsureDefaultCalendar(databaseConnection *gorm.DB, organizerID string) (*Ca
 	if !errors.Is(findError, gorm.ErrRecordNotFound) {
 		return nil, fmt.Errorf("find default calendar for organizer %s: %w", organizerID, findError)
 	}
-	newCalendar, constructionError := NewCalendar(organizerID, DefaultCalendarName, defaultCalendarSymbol, defaultCalendarColorToken, 0)
+	newCalendar, constructionError := NewCalendar(organizerID, DefaultCalendarName, defaultCalendarColorToken, 0)
 	if constructionError != nil {
 		return nil, constructionError
 	}
