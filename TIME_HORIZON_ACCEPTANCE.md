@@ -49,6 +49,13 @@ The issue identifiers refer to [.mprlab/ISSUES.md](.mprlab/ISSUES.md).
 | TH-035 | The browser renders the horizon view at mobile width. | Real-browser responsive test. | F002 |
 | TH-036 | Authenticated home opens the horizon view. | Registered-route browser test. | F002 |
 | TH-037 | A future marker has a visible lane before its marker time. | Empty-section browser geometry test. | F001, F002 |
+| TH-102 | The heading has no tagline. | HTML and browser presentation tests. | I008 |
+| TH-103 | The time window row contains the range and view controls. | Desktop and mobile browser geometry tests. | I009 |
+| TH-104 | The time window row is directly above the timeline. | HTML order and browser position tests. | I010 |
+| TH-105 | Help contains the keyboard instructions. | Settings location and keyboard navigation tests. | I011 |
+| TH-106 | Calendar resources and views contain no symbol. | Schema, HTTP, projection, import, and browser tests. | I012 |
+| TH-107 | Direct controls select the day, week, month, and year scales. | HTML and browser interaction tests. | I013 |
+| TH-108 | Each scale controls the visible window and stays selected after a later load. | HTTP and browser window tests. | B051 |
 
 ## Management And Attention
 
@@ -73,8 +80,8 @@ The issue identifiers refer to [.mprlab/ISSUES.md](.mprlab/ISSUES.md).
 | TH-051 | The connection requests the two approved read-only scopes. | Authorization request contract test. | F005 |
 | TH-052 | RSVP encrypts stored refresh credentials. | Storage and key failure tests. | F005 |
 | TH-053 | Logs contain no authorization secrets. | Captured log test. | F005 |
-| TH-054 | One provider calendar and semantic calendar group connect to one RSVP calendar. | Mapping constraint and automatic reconciliation tests. | F005, I006, B045 |
-| TH-055 | Each successful mapping synchronization stores its last-page sync cursor. | Pagination and transaction tests. | F006 |
+| TH-054 | One provider calendar semantic group connects to one RSVP calendar. | Mapping constraint and automatic reconciliation tests. | F005, I006, B045, B047 |
+| TH-055 | Each successful provider calendar synchronization stores its last-page sync cursor. | Pagination and transaction tests. | F006, B047 |
 | TH-056 | Initial synchronization creates no duplicate marker. | Repeated initial synchronization test. | F006 |
 | TH-057 | Incremental synchronization uses the sync cursor. | Deterministic provider update test. | F006 |
 | TH-058 | Provider updates change source-owned fields. | Imported marker update test. | F006 |
@@ -84,7 +91,7 @@ The issue identifiers refer to [.mprlab/ISSUES.md](.mprlab/ISSUES.md).
 | TH-062 | Imported event occurrences use one event series lane. | Multiple occurrence projection test. | F006 |
 | TH-063 | Connection deletion removes eligible provider resources. | Database deletion, conflict, and log tests. | F005, F006 |
 | TH-064 | A rejected sync cursor starts one complete source reconciliation. | Provider error and stable-identifier tests. | F006 |
-| TH-065 | Authorization callbacks are safe and have no stored code. | Database snapshot, header, and storage tests. | F005 |
+| TH-065 | Authorization callbacks are safe and have no stored code. Connection creation confirms the browser timezone or uses `UTC`. | Database snapshot, header, timezone, and storage tests. | F005, B047 |
 | TH-066 | Connection completion imports all readable CalendarList entries, including hidden entries. | HTTP and browser connection tests with Holidays and Family calendars. | I006 |
 | TH-067 | Each successful CalendarList reconciliation stores its last-page cursor after all mapping changes commit. | Adapter pagination and transaction tests. | I006 |
 | TH-068 | A source rename keeps the mapping identifier and changes only the RSVP calendar name. | Incremental reconciliation and stable-identifier tests. | I006 |
@@ -94,11 +101,21 @@ The issue identifiers refer to [.mprlab/ISSUES.md](.mprlab/ISSUES.md).
 | TH-072 | A rejected CalendarList cursor starts one complete CalendarList reconciliation. | Provider rejection and full reconciliation tests. | I006 |
 | TH-073 | The first complete import removes prior unmapped calendar groupings. | Service and browser cutover tests. | B045 |
 | TH-074 | Primary-calendar birthday events appear only in the `Birthdays` calendar. | Provider normalization, service, and browser event tests. | B045 |
-| TH-075 | Each displayed calendar has a distinct color. The four-calendar browser fixture has at least 45 degrees of hue separation. | Browser presentation test. | B045 |
+| TH-075 | At most eight calendars are visible. Visibility and calendar additions do not change an assigned presentation color. | High-cardinality browser presentation and stability tests. | B045, B047 |
 | TH-076 | Raw and unknown Google event types do not create RSVP group names. | Provider normalization test with a future event type. | B045 |
 | TH-077 | An explicit birthday title maps to `Birthdays` when Google supplies no birthday metadata. | Provider and browser event tests. | B045 |
 | TH-078 | A provider event moves between semantic groups when its meaning changes. | Incremental provider and browser event tests. | B045 |
-| TH-079 | The previous I006 schema migrates from `provider_group` to `semantic_group` and clears event cursors. | Database migration test. | B045 |
+| TH-079 | The immediate predecessor schema migrates provider identity to the sync state and clears both cursor types. | Database migration test. | B047 |
+| TH-080 | One provider calendar synchronization requests one unfiltered event feed. | Adapter and synchronization request-count tests. | B047 |
+| TH-081 | The Contacts semantic source creates no visible source calendar. | Reconciliation and browser tests. | B047 |
+| TH-082 | Birthday metadata and complete birthday title words map only to `Birthdays`. | Classification matrix and browser tests. | B047 |
+| TH-083 | Anniversary, general, known, and unknown event types stay in the source calendar. | Classification matrix and browser tests. | B047 |
+| TH-084 | A semantic group change keeps one RSVP event and one external event link. A recurring exception keeps the provider series on one lane. | Forward, reverse, and mixed-series move tests. | B047 |
+| TH-085 | A sparse cancellation deletes the event from all semantic group mappings. | Cancellation transaction test. | B047 |
+| TH-086 | A rejected event cursor starts one complete provider calendar reconciliation. | Cursor rejection and absent-event tests. | B047 |
+| TH-087 | Each local startup deletes and creates the `rsvp-data` volume before service startup. | Local startup reset and health validation. | B047 |
+| TH-088 | Connection creation returns an active task before source or event import completes. | HTTP task response and separate scheduler-cycle tests. | B048 |
+| TH-089 | The callback and Integrations rubric show the initial import task without an operating-system wait cursor. | HTML and browser task-state tests. | B048 |
 
 ## Derived Markers And Ingestion
 
@@ -136,6 +153,8 @@ The issue identifiers refer to [.mprlab/ISSUES.md](.mprlab/ISSUES.md).
 | TH-097 | Desktop and mobile browsers render the complete horizon. | Deterministic end-to-end suite. | I003 |
 | TH-098 | A new organizer gets Horizon setup before the default window. | HTML setup, typed JSON error, and browser tests. | B043 |
 | TH-099 | Horizon uses one REST interface for methods, errors, and draft creation. | Registered HTTP and browser contract tests. | B044 |
+| TH-100 | Account settings change the organizer timezone without a change to stored marker timezones. | Organizer resource, HTML, and browser tests. | F011 |
+| TH-101 | A finite lane uses the same height for its body and circular end. | Browser geometry test. | B049 |
 
 ## Completion Rule
 
@@ -149,6 +168,7 @@ The deterministic browser suite is `tests/browser/horizon.spec.js`.
 It uses the production-like fixture in `internal/browserfixture/main.go`.
 
 The suite verifies desktop and mobile presentation.
+It verifies the time window row position and the Help keyboard instructions.
 It also verifies keyboard access, labels, focus order, and color-independent meaning.
 
 The suite verifies initial and incremental Google Calendar synchronization.
