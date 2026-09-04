@@ -24,6 +24,7 @@ Give each term one meaning. Use the same term for the same concept in all docume
 - `backlog`: The set of unresolved issues in the active issue tracker.
 - `backend client`: A code unit that sends requests to a backend.
 - `browser frontend`: A user interface that operates in a web browser.
+- `browser preference`: A browser-stored value that controls one user interface choice.
 - `build`: A process or output that converts source code into an artifact.
 - `changelog`: A file that records completed changes for releases.
 - `CI`: The repository continuous-integration system.
@@ -114,6 +115,7 @@ Add repository-specific technical nouns below this line.
 - `external event link`: A relationship between one RSVP event and one provider event.
 - `finite lane`: A lane with an end time.
 - `horizon projection`: Structured calendar, lane, and marker data for one time window.
+- `Horizon scale`: The day, week, month, or year choice that controls the visible Horizon window.
 - `horizon view`: The browser frontend that shows calendars, lanes, and markers on a time axis.
 - `idempotency record`: A temporary record that connects one request key to one operation result.
 - `ingestion draft`: Validated proposed temporal data that has not changed persisted data.
@@ -131,10 +133,11 @@ Add repository-specific technical nouns below this line.
 - `point marker`: A timed marker with a start time and no end time.
 - `probe`: A dated review action for a lane.
 - `provider event`: An event that a calendar provider owns.
+- `provider calendar sync state`: A resource that stores one event sync cursor for one provider calendar.
 - `resolved lane`: A lane with a recorded resolution time and no future probe.
 - `semantic calendar group`: An event grouping that RSVP derives from provider calendar and event meaning.
-- `source calendar`: A provider calendar and semantic calendar group that give RSVP event read access.
-- `source calendar mapping`: A relationship between one source calendar and one RSVP calendar.
+- `source calendar`: A provider calendar that gives RSVP event read access.
+- `source calendar mapping`: A relationship between one source calendar semantic group and one RSVP calendar.
 - `calendar import cutover`: The first complete source reconciliation that replaces prior local calendar groupings.
 - `source reconciliation`: A synchronization that compares provider changes with source-owned RSVP resources.
 - `source-owned marker`: An imported marker with fields that a calendar provider owns.
@@ -142,6 +145,8 @@ Add repository-specific technical nouns below this line.
 - `state interval`: One generated half-open local date range with one cycle state.
 - `state transition`: The boundary where one state interval ends and the next state interval starts.
 - `sync cursor`: Provider data that identifies the next incremental calendar synchronization position.
+- `task`: A durable record for one background operation and its attempt state.
+- `task worker`: A runtime component that claims and executes tasks.
 - `temporal resource`: A calendar, lane, event, state cycle, probe, attention policy, or derived marker.
 - `time horizon`: The product contract that represents dated events and unresolved temporal subjects.
 - `time shape`: One closed marker time representation for a point, interval, or all-day date range.
