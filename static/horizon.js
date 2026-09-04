@@ -59,18 +59,14 @@ const horizonView = document.querySelector('[data-horizon-view]');
 if (horizonView instanceof HTMLElement) {
     const resourceRoot = horizonView;
     const viewport = horizonView.querySelector('[data-horizon-viewport]');
-    const board = horizonView.querySelector('[data-horizon-board]');
     const status = horizonView.querySelector('[data-horizon-status]');
     const calendarToggles = Array.from(horizonView.querySelectorAll('[data-calendar-toggle]'));
     const markerTargets = Array.from(horizonView.querySelectorAll('[data-marker-id]'));
-    const scaleSteps = [6, 10, 16, 24];
-    let scaleIndex = 1;
+    const scaleButtons = Array.from(horizonView.querySelectorAll('[data-scale-preset]'));
 
-    if (!(viewport instanceof HTMLElement) || !(board instanceof HTMLElement) || !(status instanceof HTMLElement)) {
+    if (!(viewport instanceof HTMLElement) || !(status instanceof HTMLElement)) {
         throw new Error('The horizon view contract is incomplete.');
     }
-
-    board.style.setProperty('--window-days', horizonView.dataset.windowDays || '90');
 
     const browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
     if (!browserTimezone) {
@@ -265,31 +261,30 @@ if (horizonView instanceof HTMLElement) {
     };
 
     const calendarControls = [...horizonView.querySelectorAll('[data-calendar-control]')];
-    const rankedCalendars = calendarControls.map((control) => {
-        if (!(control instanceof HTMLElement) || !control.dataset.calendarControl || !control.dataset.colorToken) {
-            throw new Error('A horizon calendar control has incomplete presentation data.');
+    const assignCalendarPresentationColors = () => {
+        const colorByCalendarID = new Map(calendarControls.map((control) => {
+            if (!(control instanceof HTMLElement) || !control.dataset.calendarControl || !control.dataset.colorToken) {
+                throw new Error('A horizon calendar control has incomplete presentation data.');
+            }
+            const toggle = control.querySelector('[data-calendar-toggle]');
+            if (!(toggle instanceof HTMLInputElement)) {
+                throw new Error(`Calendar ${control.dataset.calendarControl} has no visibility toggle.`);
+            }
+            const rank = stableHash(`${control.dataset.colorToken}\u0000${control.dataset.calendarControl}`);
+            return [control.dataset.calendarControl, `hsl(${rank % 360} 64% 34%)`];
+        }));
+        for (const colorElement of horizonView.querySelectorAll('[data-color-token]')) {
+            if (!(colorElement instanceof HTMLElement) || !colorElement.dataset.colorToken) {
+                throw new Error('A horizon calendar has no color token.');
+            }
+            const calendarID = colorElement.dataset.calendarControl || colorElement.dataset.calendarId;
+            const color = calendarID ? colorByCalendarID.get(calendarID) : undefined;
+            if (!color) {
+                throw new Error('A horizon calendar has no presentation color.');
+            }
+            colorElement.style.setProperty('--calendar-color', color);
         }
-        return {
-            id: control.dataset.calendarControl,
-            rank: stableHash(`${control.dataset.colorToken}\u0000${control.dataset.calendarControl}`),
-        };
-    }).sort((left, right) => left.rank - right.rank || left.id.localeCompare(right.id));
-    const colorByCalendarID = new Map();
-    for (const [calendarIndex, calendar] of rankedCalendars.entries()) {
-        const hue = rankedCalendars.length === 1 ? calendar.rank % 360 : Math.round(calendarIndex * 360 / rankedCalendars.length);
-        colorByCalendarID.set(calendar.id, `hsl(${hue} 64% 34%)`);
-    }
-    for (const colorElement of horizonView.querySelectorAll('[data-color-token]')) {
-        if (!(colorElement instanceof HTMLElement) || !colorElement.dataset.colorToken) {
-            throw new Error('A horizon calendar has no color token.');
-        }
-        const calendarID = colorElement.dataset.calendarControl || colorElement.dataset.calendarId;
-        const color = calendarID ? colorByCalendarID.get(calendarID) : undefined;
-        if (!color) {
-            throw new Error('A horizon calendar has no distinct presentation color.');
-        }
-        colorElement.style.setProperty('--calendar-color', color);
-    }
+    };
 
     /** @param {HTMLInputElement} toggle @param {boolean} visible */
     const applyCalendarVisibility = (toggle, visible) => {
@@ -329,7 +324,7 @@ if (horizonView instanceof HTMLElement) {
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({visible: requestedVisibility}),
                 });
-				await requireResourceResponse(response);
+                await requireResourceResponse(response);
                 applyCalendarVisibility(toggleElement, requestedVisibility);
                 status.textContent = `${requestedVisibility ? 'Showed' : 'Hid'} calendar ${calendarID}.`;
             } catch (error) {
@@ -341,39 +336,44 @@ if (horizonView instanceof HTMLElement) {
             }
         });
     }
+    assignCalendarPresentationColors();
 
     /** @param {number} direction */
     const pan = (direction) => {
-        viewport.scrollBy({left: direction * viewport.clientWidth * 0.6, behavior: 'smooth'});
-        status.textContent = direction < 0 ? 'Panned backward.' : 'Panned forward.';
+        const panButton = horizonView.querySelector(`[data-pan="${direction < 0 ? 'backward' : 'forward'}"]`);
+        if (!(panButton instanceof HTMLButtonElement) || !panButton.dataset.navigationUrl) {
+            throw new Error('A Horizon pan URL is absent.');
+        }
+        window.location.assign(panButton.dataset.navigationUrl);
     };
 
-    /** @param {number} direction */
-    const scale = (direction) => {
-        const previousWidth = board.scrollWidth;
-        const viewportCenter = viewport.scrollLeft + viewport.clientWidth / 2;
-        const centerRatio = previousWidth === 0 ? 0 : viewportCenter / previousWidth;
-        scaleIndex = Math.max(0, Math.min(scaleSteps.length - 1, scaleIndex + direction));
-        board.style.setProperty('--day-width', `${scaleSteps[scaleIndex]}px`);
-        const nextCenter = centerRatio * board.scrollWidth;
-        viewport.scrollLeft = Math.max(0, nextCenter - viewport.clientWidth / 2);
-        status.textContent = direction < 0 ? 'Scaled out.' : 'Scaled in.';
+    /** @param {'day'|'week'|'month'|'year'} preset */
+    const selectScale = (preset) => {
+        const scaleButton = scaleButtons.find((candidate) => candidate instanceof HTMLButtonElement && candidate.dataset.scalePreset === preset);
+        if (!(scaleButton instanceof HTMLButtonElement) || !scaleButton.dataset.navigationUrl) {
+            throw new Error('A Horizon scale URL is absent.');
+        }
+        window.location.assign(scaleButton.dataset.navigationUrl);
     };
 
     for (const panButton of horizonView.querySelectorAll('[data-pan]')) {
         panButton.addEventListener('click', () => {
-            if (!(panButton instanceof HTMLElement)) {
-                return;
+            if (!(panButton instanceof HTMLButtonElement)) {
+                throw new TypeError('A Horizon pan control is invalid.');
             }
             pan(panButton.dataset.pan === 'backward' ? -1 : 1);
         });
     }
-    for (const scaleButton of horizonView.querySelectorAll('[data-scale]')) {
+    for (const scaleButton of scaleButtons) {
         scaleButton.addEventListener('click', () => {
-            if (!(scaleButton instanceof HTMLElement)) {
-                return;
+            if (!(scaleButton instanceof HTMLButtonElement)) {
+                throw new TypeError('A Horizon scale control is invalid.');
             }
-            scale(scaleButton.dataset.scale === 'out' ? -1 : 1);
+            const preset = scaleButton.dataset.scalePreset;
+            if (preset !== 'day' && preset !== 'week' && preset !== 'month' && preset !== 'year') {
+                throw new Error('A Horizon scale value is invalid.');
+            }
+            selectScale(preset);
         });
     }
 
@@ -432,12 +432,10 @@ if (horizonView instanceof HTMLElement) {
         } else if (key === 'l') {
             event.preventDefault();
             pan(1);
-        } else if (key === '-' || key === '_') {
+        } else if (key === 'd' || key === 'w' || key === 'm' || key === 'y') {
             event.preventDefault();
-            scale(-1);
-        } else if (key === '+' || key === '=') {
-            event.preventDefault();
-            scale(1);
+            const preset = key === 'd' ? 'day' : key === 'w' ? 'week' : key === 'm' ? 'month' : 'year';
+            selectScale(preset);
         } else if (key === 'j') {
             event.preventDefault();
             selectRelativeMarker(1);
