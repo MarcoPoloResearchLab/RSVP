@@ -253,11 +253,11 @@ if (horizonView instanceof HTMLElement) {
 
     /** @param {string} value */
     const stableHash = (value) => {
-        let hash = 0;
-        for (const character of value) {
-            hash = ((hash << 5) - hash + character.charCodeAt(0)) | 0;
+        let hash = 14695981039346656037n;
+        for (const byte of new TextEncoder().encode(value)) {
+            hash = BigInt.asUintN(64, (hash ^ BigInt(byte)) * 1099511628211n);
         }
-        return hash >>> 0;
+        return hash;
     };
 
     const calendarControls = [...horizonView.querySelectorAll('[data-calendar-control]')];
@@ -271,7 +271,10 @@ if (horizonView instanceof HTMLElement) {
                 throw new Error(`Calendar ${control.dataset.calendarControl} has no visibility toggle.`);
             }
             const rank = stableHash(`${control.dataset.colorToken}\u0000${control.dataset.calendarControl}`);
-            return [control.dataset.calendarControl, `hsl(${rank % 360} 64% 34%)`];
+            const hue = Number(rank & 0xffffffn) * 360 / 16777216;
+            const saturation = 55 + Number((rank >> 24n) & 0xfffffn) * 20 / 1048575;
+            const lightness = 30 + Number(rank >> 44n) * 10 / 1048575;
+            return [control.dataset.calendarControl, `hsl(${hue} ${saturation}% ${lightness}%)`];
         }));
         for (const colorElement of horizonView.querySelectorAll('[data-color-token]')) {
             if (!(colorElement instanceof HTMLElement) || !colorElement.dataset.colorToken) {
