@@ -13,21 +13,27 @@ A one-time data migration can move persisted data into the current schema. Remov
 <!-- BEGIN MPRLAB-GOVERNANCE -->
 ## MPR Lab Governance
 
-Most workflow context files live under `.mprlab/`. The root `AGENTS.md` remains the repository entrypoint for agents.
+Root `AGENTS.md` is the agent entrypoint. Shared rules live under `.mprlab/`.
 
-Read these files before editing:
+Read `.mprlab/POLICY.md` for every task.
+Read the following files only when their condition applies.
+Read each selected guide in full before its first applicable action.
 
-- `.mprlab/POLICY.md`: binding validation and confident-programming rules.
-- `.mprlab/PLANNING.md`: durable planning contract.
-- `.mprlab/AGENTS.DOCS.md`: ASD-STE100 documentation rules.
-- `.mprlab/TERMINOLOGY.md`: approved repository technical terms.
-- `.mprlab/issues-md-format.md`: issue tracker format and recurring identifier rules.
-- `.mprlab/ISSUES.md`: active issue tracker.
-- `.mprlab/AGENTS.GIT.md`: Git and pull request workflow.
-- `.mprlab/AGENTS.API.md`: RESTful HTTP and gRPC API guidance.
-- `.mprlab/AGENTS.GO.md`: Go guidance.
-- `.mprlab/AGENTS.DOCKER.md`: Docker and container guidance.
+- Before edits: `.mprlab/PLANNING.md`.
+- For technical prose: `.mprlab/AGENTS.DOCS.md` and `.mprlab/TERMINOLOGY.md`.
+- For issue work: the selected issue and its dependencies in `.mprlab/ISSUES.md`.
+- For tracker edits: `.mprlab/issues-md-format.md`.
+- For Git operations: `.mprlab/AGENTS.GIT.md`.
+- For HTTP or gRPC API changes: `.mprlab/AGENTS.API.md`.
+- For Go changes: `.mprlab/AGENTS.GO.md`.
+- For container changes: `.mprlab/AGENTS.DOCKER.md`.
+
+File permission modes are outside agent scope.
+Never examine, validate, compare, require, change, or record a file permission mode.
+Never use a file permission mode in acceptance, security, credential, execution, publication, deployment, or failure analysis.
+The values `0600` and `7777` have no governance meaning.
+This rule does not change service authorization or operation authority.
 
 Do not create `.mprlab/AGENTS.md`. Scoped guidance belongs in `.mprlab/AGENTS.*.md` files.
-If guidance conflicts, follow `.mprlab/POLICY.md` first, then root `AGENTS.md`, then the relevant scoped guide.
+If guidance conflicts, obey `.mprlab/POLICY.md` first, then root `AGENTS.md`, then the applicable scoped guide.
 <!-- END MPRLAB-GOVERNANCE -->
