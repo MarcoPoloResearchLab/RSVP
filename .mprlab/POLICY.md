@@ -16,6 +16,36 @@ This policy controls all agent work in this repository.
 - Tests target public contracts and invariants, not defensive branches.
 - Prefer black-box integration and end-to-end tests through real entry points.
 
+## Test-Driven Development
+
+- Use test-driven development with an inverted test pyramid.
+- Integration tests are the primary test layer.
+- Use focused unit tests for complex algorithms, calculations, and isolated logic when useful.
+- Require integration coverage of public behavior for product acceptance.
+- An integration test must use a real public entry point.
+- For a behavior change, start with the integration test that represents the required public behavior.
+- Run the new or changed integration test before you change production code.
+- Confirm that the integration test fails because the required behavior is absent or incorrect.
+- After this failure, use focused unit tests to guide complex internal implementation when useful.
+- Change the minimum production code necessary to make the integration test pass.
+- Refactor only while the applicable integration tests pass.
+- For a refactor with no behavior change, run the applicable integration tests before you change production code.
+- If focused coverage is absent, add a characterization test before the refactor.
+- Use deterministic local infrastructure for repository-owned databases, filesystems, queues, servers, and browsers.
+- At an external provider boundary, use a provider sandbox or a local protocol implementation for routine integration tests.
+- Keep live-provider acceptance as a separate qualification step.
+
+## Dependency Injection In Integration Tests
+
+- Use dependency injection for integration scenarios that are difficult to reproduce.
+- Inject the dependency that creates the test condition.
+- Use controlled clocks, dependency failures, or unusual responses when the scenario requires them.
+- Keep the product logic under test and its related internal interactions real.
+- Assert observable results through the public contract.
+- Keep integration coverage with real dependency implementations.
+- Injected scenarios prove behavior under the specified conditions. They do not prove actual provider connectivity.
+- Qualify actual provider connectivity separately from injected scenarios.
+
 ## Prohibited Patterns
 
 - Silent fallbacks, best-effort behavior, legacy aliases, and compatibility reads unless an explicit product requirement says the behavior is current.
@@ -25,9 +55,18 @@ This policy controls all agent work in this repository.
 - Increasing waits or timeouts as the primary fix for flakiness.
 - Boolean parameters that switch unrelated behaviors.
 - Hardcoded workflow, path, event, or message literals when a canonical constant or backend payload exists.
-- Unit tests as a substitute for public contract coverage.
+
+## File Permission Boundary
+
+- File permission modes are outside agent scope.
+- Never examine, validate, compare, require, change, or record a file permission mode.
+- Never use a file permission mode in acceptance, security, credential, execution, publication, deployment, or failure analysis.
+- The values `0600` and `7777` have no governance meaning.
+- This rule does not change service authorization or operation authority.
 
 ## Selected Manifest Contract
+
+Apply this section when the task changes or validates a selected application manifest.
 
 - Keep the selected application manifest versionless.
 - Keep `owner`, `release`, and `resources` as the current baseline fields.
@@ -39,7 +78,23 @@ This policy controls all agent work in this repository.
 - Add a resource kind only with one closed shape.
 - Reject unknown fields and `schema_version`.
 
+## Static Website Hosting
+
+Apply this section to deployment or publication work for a browser frontend.
+
+- Use GitHub Pages as the production host for each deployable browser frontend.
+- Declare the browser frontend with a `github_pages` resource in `.mprlab/deploy/resources.yml`.
+- Use `gh-pages` as the publication branch.
+- The GitHub Pages repository can differ from the application repository.
+- Keep API and service routes on hostnames that differ from the website hostname.
+- Reserve the GitHub Pages domain and its `www` hostname for GitHub Pages.
+- Treat a container as an artifact source only when its static output goes to GitHub Pages.
+- Verify publication through the public website and `/.mprlab-release.json`.
+- Run the Governor check after each selected manifest change and before each release, publish, or deploy operation.
+
 ## Credential Discovery
+
+Apply this gate when the selected task requires credentials.
 
 - Identify each required environment variable from the active command and repository contract.
 - Inspect the process environment before you request a login.
@@ -57,6 +112,7 @@ This policy controls all agent work in this repository.
 
 ## Validation
 
+- Preserve the expected failing integration-test result as implementation evidence.
 - Use repository-native `make` targets when available.
 - Use a satisfactory CI result only when the source code, tests, config, dependencies, and build files stay the same.
 - If there is no applicable satisfactory result, run `make ci` once before you change files.
@@ -69,7 +125,7 @@ This policy controls all agent work in this repository.
 - Run a component target when `make ci` does not include the necessary check.
 - For documentation-only work, run the applicable document and repository checks.
 - For `.mprlab/`-only work, run the Governor check and `git diff --check`.
-- These checks are the full validation for `.mprlab/`-only work.
+- These are the repository checks for `.mprlab/`-only work. Changed prose also requires the documentation-language review.
 - For read-only work, use source facts and run only the necessary checks.
 - For frontend behavior, verify through a browser test when the behavior is user-visible.
 - For services and CLIs, verify through HTTP, CLI, or public API entry points.
@@ -102,7 +158,8 @@ This policy controls all agent work in this repository.
 - Validate in constructors or edge adapters.
 - Use type hints throughout.
 - Prefer pytest scenarios through public entry points.
-- Unit tests are allowed only as narrow guardrails for pure deterministic helpers.
+- Use focused unit tests for complex algorithms, calculations, and isolated logic when useful.
+- Require integration coverage of public behavior for product acceptance.
 
 ### JavaScript And Frontend
 

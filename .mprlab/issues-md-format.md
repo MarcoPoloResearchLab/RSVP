@@ -68,7 +68,13 @@ Section letters:
 - `F` = Features
 - `P` = Planning
 
-Numbers increment independently per section and use three digits. A capital `R` suffix marks a recurring issue, for example `[M400R]`. A separate `R` token after the identifier is invalid.
+Numbers increment independently per section and use three digits.
+
+- After sequence number `999`, continue the identifier search at `001`.
+- Select an identifier absent from both the active tracker and its archive.
+- If all identifiers in the section are occupied, stop and request an identifier decision.
+
+ A capital `R` suffix marks a recurring issue, for example `[M400R]`. A separate `R` token after the identifier is invalid.
 
 Recurring entries represent standing or repeated work. Scheduling, timers, and job IDs are outside the ISSUES.md format.
 

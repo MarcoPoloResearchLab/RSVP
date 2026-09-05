@@ -8,6 +8,26 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 ## BugFixes
 
+- [!] [B055] (P1) Supply the required production deployment input
+  Goal:
+  The production deployment has the private values that its manifest requires.
+  Evidence:
+  - Release and publication completed for `v2.0.0` at commit `a6b6ed0`.
+  - Deployment reported `app_lifecycle.private_input_invalid` because `.mprlab/deploy/.env` is absent.
+  - The existing production environment file lacks `CALENDAR_CREDENTIAL_ENCRYPTION_KEY`.
+  - It also lacks `NATURAL_LANGUAGE_PARSER_ENDPOINT` and `NATURAL_LANGUAGE_PARSER_API_KEY`.
+  - The process environment and sibling gateway inputs do not supply these assignments.
+  Requirements:
+  - Supply the approved production values through the canonical private environment file.
+  - Preserve the key for any existing encrypted calendar credentials.
+  - Use the production parser contract that the application implements.
+  - Preserve the sealed release and publication during an exact retry.
+  Validation:
+  - Run `make release && make publish && make deploy`.
+  - Verify the declared runtime and public health checks.
+  Blocked:
+  The approved production parser configuration and calendar encryption key location are unknown.
+
 - [x] [B054] (P2) {B051} Correct Horizon dates at month ends
   Goal:
   A month window that starts on January 31 ends in March instead of February.
@@ -797,12 +817,13 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Cadence: run weekly during active development and before each release cut.
   - Validate section names, identifier prefixes, recurrence suffixes, priority markers, dependencies, and duplicate IDs against the current `issues-md-format.md`.
   - Reconcile stale statuses, duplicate issues, broken references, obsolete instructions, and entries filed in the incorrect section.
-  - Move completed non-recurring history to the repository issue archive or durable documentation when the active tracker becomes noisy.
+  - Before archival, update source documents with durable results from each resolved non-recurring issue.
+  - Preserve the complete issue entry and its ID in the repository archive.
   - Keep active, blocked, planning, and recurring entries visible in `ISSUES.md`.
 
   Deliverables:
   - Normalized `ISSUES.md` structure and statuses.
-  - Updated issue archive or docs when completed entries are removed from the active tracker.
+  - Updated archive with complete entries removed from the active tracker.
   - A short `Last run:` note summarizing the cleanup and any follow-up issues filed.
 
   Validation:
@@ -840,11 +861,11 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Cadence: run monthly, before large refactors, and after major framework or runtime changes.
   - Review the codebase, docs, and workflow against `AGENTS.md`, `POLICY.md`, stack guides, and the current architecture notes.
   - Look for drift from forward-only contracts, edge-validation boundaries, smart-constructor usage, testing policy, and module ownership.
-  - Record findings as new Maintenance issues with concrete scope, priority, and validation.
+  - Classify each finding by its requested outcome. Record concrete scope, priority, and validation.
   - Close the pass with a no-action note only when the review finds no actionable drift.
 
   Deliverables:
-  - New Maintenance issues for each actionable architecture or policy drift finding.
+  - Correctly classified issues for each actionable architecture or policy drift finding.
   - Updated notes on areas reviewed and areas intentionally left unchanged.
   - A short `Last run:` note with the review scope and outcome.
 
@@ -860,10 +881,10 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   Requirements:
   - Cadence: run weekly for active apps and before each release cut.
   - Inspect package managers, lockfiles, language toolchains, container bases, and generated clients for known vulnerabilities or stale direct dependencies.
-  - Review auth, secret, CORS, CSP, SQL, network, and permission-sensitive configuration for drift from the current contract.
+  - Review auth, secret, CORS, CSP, SQL, network, and service-authorization configuration for drift from the current contract.
   - Prefer current supported dependencies.
   - Do not add compatibility shims for obsolete dependency behavior.
-  - File separate Maintenance or BugFix issues for each actionable vulnerability, unsupported runtime, or security-contract gap.
+  - File each actionable vulnerability, unsupported runtime, or security-contract gap under its outcome-based issue section.
 
   Deliverables:
   - Documented audit commands or data sources used for the pass.
@@ -904,7 +925,7 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Cadence: run monthly and before large refactors.
   - Scan for dead code, unused exports, duplicated literals, silent fallbacks, legacy aliases, compatibility reads, and zero-but-invalid domain states.
   - Do a check of static analysis, coverage, schema, and contract guards that prevent drift.
-  - File focused Maintenance issues for each concrete violation instead of broad cleanup placeholders.
+  - File each concrete violation under its outcome-based issue section.
   - Keep only the current canonical contract.
   - Preserve obsolete behavior only when a current product requirement explicitly specifies it.
 
@@ -1459,6 +1480,23 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Run the Governor check and the language checker for each changed technical document.
 
 ## Planning
+
+- [!] [P002] (P1) Decide the retained production data cutover
+  Goal:
+  The production cutover has an explicit decision for the retained event-only database.
+  Evidence:
+  - Volume `rsvp_rsvp-data` contains one user, two events, and twenty RSVPs.
+  - The current manifest names a separate retained volume, `rsvp-data`.
+  - I002 requires startup to reject an event-only database.
+  - I002 requires the client to supply each timezone default.
+  Requirements:
+  - Decide whether to use an empty canonical database or a separate one-time data migration.
+  - Preserve the old volume in either case.
+  - For migration, specify the organizer timezone and the calendar and lane mapping.
+  - Keep schema conversion outside the production startup path.
+  - File an implementation issue if the decision requires a migration.
+  Blocked:
+  The production data cutover decision and migration timezone are not supplied.
 
 - [x] [P001] (P0) Specify the time horizon contract
   Goal:
