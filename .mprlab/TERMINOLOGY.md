@@ -167,6 +167,13 @@ Add repository-specific technical nouns below this line.
 - `time window`: A bounded interval for one horizon projection.
 - `timezone`: A named IANA rule set for local time interpretation.
 
+- `date picker`: A browser control that lets the organizer select a local date.
+- `time picker`: A browser control that lets the organizer select a local time of day.
+- `recipient`: The person to whom an organizer sends an event invitation or notification.
+- `notification service`: An external provider that sends a message to a recipient.
+- `SMS notification`: An event message that a notification service sends to a recipient phone number.
+- `email notification`: An event message that a notification service sends to a recipient email address.
+
 ## MPR Lab Technical Verbs
 
 - `archive`: Move completed history from the active issue tracker to durable storage.

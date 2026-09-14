@@ -807,6 +807,31 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Run `make ci` and `make browser-test`.
   - Run the Governor check and the language checker for each changed technical document.
 
+- [ ] [I014] (P2) Make date and time controls usable across browsers
+  Goal:
+  The organizer can select both a date and a time in each supported browser.
+  Source: https://github.com/MarcoPoloResearchLab/RSVP/issues/16
+  Evidence:
+  - The original report describes a date picker without a time picker in Firefox during event creation.
+  - Event forms still use native `datetime-local` inputs.
+  - `playwright.config.js` selects only Chromium.
+  - This review did not reproduce the original Firefox behavior.
+  Requirements:
+  - Verify the date picker and time picker in Firefox, Chromium, and WebKit.
+  - Make both controls available in the event creation and update forms.
+  - Apply the same date and time control contract to Horizon forms.
+  - Preserve the selected local wall time and explicit IANA timezone.
+  - Keep the controls accessible through the keyboard.
+  - Record each reproduced violation of the current contract as a separate BugFix issue.
+  Deliverables:
+  - Add browser coverage for date and time selection.
+  - Correct each confirmed control gap through its BugFix issue.
+  Validation:
+  - Create an event with a selected date and time in each browser.
+  - Update the event time and confirm that the stored value matches the selection.
+  - Verify each Horizon date and time control in the same browsers.
+  - Run the browser tests for Firefox, Chromium, and WebKit.
+
 ## Maintenance
 
 - [ ] [M400R] (P2) Backlog hygiene and archive
@@ -1478,6 +1503,61 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Confirm that an existing event keeps its marker timezone.
   - Run `make ci` and `make browser-test`.
   - Run the Governor check and the language checker for each changed technical document.
+
+- [ ] [F013] (P2) Add SMS notifications for event recipients
+  Goal:
+  The organizer can review an SMS notification and control when RSVP sends it.
+  Source: https://github.com/MarcoPoloResearchLab/RSVP/issues/9
+  Evidence:
+  - `models/rsvp.go` has no recipient phone field.
+  - The application has no SMS notification service integration.
+  Requirements:
+  - Add a field for the recipient phone number.
+  - Validate the phone number at the input boundary.
+  - Show the recipient and complete message before the organizer sends the SMS notification.
+  - Add a button that sends the SMS notification after the organizer selects it.
+  - Integrate one notification service through a provider adapter.
+  - Show the result of the send operation and any provider error.
+  Deliverables:
+  - Add recipient phone storage, the message review interface, and the send control.
+  - Add the notification service adapter and deterministic integration tests.
+  Open Decisions:
+  - Select the notification service and message content before implementation.
+  Validation:
+  - Store a recipient phone number and confirm that it persists after a page refresh.
+  - Confirm that message review sends no notification.
+  - Select the send button and verify the recipient and message through a local provider fixture.
+  - Confirm that an invalid phone number prevents the send operation.
+  - Confirm that the interface shows a provider failure.
+  - Run `make ci` and the applicable browser tests.
+
+- [ ] [F014] (P2) Add email notifications for event recipients
+  Goal:
+  The organizer can send an email notification to an event recipient through one notification service.
+  Source: https://github.com/MarcoPoloResearchLab/RSVP/issues/7
+  Evidence:
+  - `models/rsvp.go` has no recipient email field.
+  - The application has no email notification service integration.
+  Requirements:
+  - Add a field for the recipient email address.
+  - Validate the email address at the input boundary.
+  - Integrate one notification service through a provider adapter.
+  - Use one approved rule for when RSVP sends an email notification.
+  - Show the result of the send operation and any provider error.
+  Deliverables:
+  - Add recipient email storage and the approved send controls.
+  - Add the notification service adapter and deterministic integration tests.
+  Open Decisions:
+  - Select the notification service and message content before implementation.
+  - Select immediate delivery, an explicit send button, or a delay that permits message changes.
+  - The original report proposes five minutes as an example delay.
+  Validation:
+  - Store a recipient email address and confirm that it persists after a page refresh.
+  - Verify the approved send rule through a local provider fixture and a controlled clock when necessary.
+  - Confirm that the provider receives the intended recipient and message.
+  - Confirm that an invalid email address prevents the send operation.
+  - Confirm that the interface shows a provider failure.
+  - Run `make ci` and the applicable browser tests.
 
 ## Planning
 
