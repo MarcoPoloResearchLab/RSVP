@@ -1,70 +1,28 @@
-# RSVP 
+# RSVP
 
-RSVP is an events invitation platform that relies on physical QR Codes and allows printing, sending and tracking invitations to events.
+RSVP shows events, calendar lanes, attention probes, and invitations in the Horizon view.
+The Go backend uses SQLite.
+TAuth owns browser authentication.
+The backend uses the official LLM Proxy client for natural-language drafts.
 
-## SSL Certificate Setup
-This app supports HTTPS (TLS) with certificates for both local development and production.
+## Local Application
 
-### Local Development (localhost)
-For local testing with trusted certificates, use mkcert.
+1. Supply `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in the private `.env.docker` file.
+2. Add `http://localhost:8080` to the Google client origins.
+3. Run `make up`.
+4. Open `http://localhost:8080/`.
+5. Use the shared Google sign-in control.
+6. Run `make down` to stop the services.
 
-Install mkcert:
-```shell
-brew install mkcert
-mkcert -install
-```
+The local stack preserves its database volumes and private keys between starts.
+The local LLM Proxy fixture creates deterministic open-lane proposals.
+It does not use a live language model.
 
-Generate certificates:
+## Validation
 
-```shell
-mkcert localhost 127.0.0.1 ::1
-```
+Run `make ci` for Go validation.
+Run `make browser-test` for desktop and mobile browser validation.
 
-```shell
-certs/localhost.pem
-certs/localhost-key.pem
-```
-
-Set environment variables:
-
-```shell
-export TLS_CERT_PATH=certs/localhost.pem
-export TLS_KEY_PATH=certs/localhost-key.pem
-```
-
-Production (public domain)
-For production deployments using a real domain (rsvp.mprlab.com), use Let's Encrypt.
-
-Steps:
-On your Mac, install Certbot:
-
-```shell
-brew install certbot
-```
-
-Obtain a certificate via DNS challenge:
-
-```shell
-sudo certbot certonly --manual --preferred-challenges dns -d rsvp.mprlab.com
-```
-
-After success, certificates are stored in:
-
-```shell
-/etc/letsencrypt/live/mywebsite.com/fullchain.pem
-/etc/letsencrypt/live/mywebsite.com/privkey.pem
-```
-
-Copy the certificates to the production server:
-
-```shell
-scp /etc/letsencrypt/live/mywebsite.com/fullchain.pem user@server:/opt/myapp/certs/fullchain.pem
-scp /etc/letsencrypt/live/mywebsite.com/privkey.pem user@server:/opt/myapp/certs/privkey.pem
-```
-
-On the production server, set environment variables:
-
-```shell
-export TLS_CERT_PATH=/opt/myapp/certs/fullchain.pem
-export TLS_KEY_PATH=/opt/myapp/certs/privkey.pem
-```
+Use the [operator runbook](OPERATOR_RUNBOOK.md) for configuration and production operations.
+Use the [user guide](USER_GUIDE.md) for organizer tasks.
+Use the [architecture](ARCHITECTURE.md) for resource and provider contracts.
