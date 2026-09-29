@@ -16,6 +16,7 @@ import (
 	"github.com/tyemirov/GAuss/pkg/session"
 	"github.com/tyemirov/RSVP/pkg/config"
 	"github.com/tyemirov/RSVP/pkg/routes"
+	"github.com/tyemirov/RSVP/pkg/server"
 	"github.com/tyemirov/RSVP/pkg/services"
 	"github.com/tyemirov/RSVP/pkg/templates"
 	"github.com/tyemirov/RSVP/pkg/utils"
@@ -70,10 +71,7 @@ func main() {
 
 	// Configure the HTTP server details.
 	serverAddress := fmt.Sprintf("%s:%d", config.ServerHTTPAddress, config.ServerHTTPPort)
-	httpServerInstance := &http.Server{
-		Addr:    serverAddress,
-		Handler: httpServeMuxRouter, // Use the configured mux as the handler
-	}
+	httpServerInstance := server.NewHTTPServer(serverAddress, httpServeMuxRouter)
 
 	// Start the server in a goroutine. Choose between HTTP and HTTPS based on certificate configuration.
 	if environmentConfiguration.CertificateFilePath == "" || environmentConfiguration.KeyFilePath == "" {

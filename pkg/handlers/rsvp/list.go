@@ -83,7 +83,6 @@ func ListHandler(applicationContext *config.ApplicationContext) http.HandlerFunc
 
 			selectedRsvpForEdit = &rsvpToEdit
 			eventID = parentEvent.ID
-
 		} else if eventID != "" {
 			eventFindError := applicationContext.Database.First(&parentEvent, "id = ?", eventID).Error
 			if eventFindError != nil {
@@ -99,7 +98,6 @@ func ListHandler(applicationContext *config.ApplicationContext) http.HandlerFunc
 				return
 			}
 			selectedRsvpForEdit = nil
-
 		} else {
 			baseHandler.HandleError(httpResponseWriter, nil, utils.ValidationError, "An event ID or RSVP ID must be specified to view RSVPs.")
 			return

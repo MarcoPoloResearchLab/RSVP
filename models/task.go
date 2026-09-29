@@ -99,7 +99,7 @@ func (task *Task) BeforeCreate(database *gorm.DB) error {
 	if validationError := task.Validate(); validationError != nil {
 		return validationError
 	}
-	return task.BaseModel.GenerateID(database, task)
+	return task.GenerateID(database, task)
 }
 
 func (task *Task) GetTableName() string { return config.TableTasks }

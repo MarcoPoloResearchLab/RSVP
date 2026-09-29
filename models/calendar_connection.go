@@ -70,7 +70,7 @@ func (request *CalendarAuthorizationRequest) BeforeCreate(database *gorm.DB) err
 	if validationError := request.Validate(); validationError != nil {
 		return validationError
 	}
-	return request.BaseModel.GenerateID(database, request)
+	return request.GenerateID(database, request)
 }
 func (request *CalendarAuthorizationRequest) BeforeUpdate(*gorm.DB) error {
 	return request.Validate()
@@ -116,7 +116,7 @@ func (connection *CalendarConnection) BeforeCreate(database *gorm.DB) error {
 	if validationError := connection.Validate(); validationError != nil {
 		return validationError
 	}
-	return connection.BaseModel.GenerateID(database, connection)
+	return connection.GenerateID(database, connection)
 }
 func (connection *CalendarConnection) BeforeUpdate(*gorm.DB) error { return connection.Validate() }
 func (connection *CalendarConnection) GetTableName() string        { return config.TableCalendarConnections }
@@ -155,7 +155,7 @@ func (mapping *SourceCalendarMapping) BeforeCreate(database *gorm.DB) error {
 	if validationError := mapping.Validate(); validationError != nil {
 		return validationError
 	}
-	return mapping.BaseModel.GenerateID(database, mapping)
+	return mapping.GenerateID(database, mapping)
 }
 func (mapping *SourceCalendarMapping) BeforeUpdate(*gorm.DB) error { return mapping.Validate() }
 func (mapping *SourceCalendarMapping) GetTableName() string {

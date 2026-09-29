@@ -249,7 +249,6 @@ func (handler *BaseHttpHandler) RenderView(
 		handler.ApplicationContext.Logger.Printf("CRITICAL: Template set for view '%s' not found in PrecompiledTemplatesMap.", viewName)
 		handler.HandleError(httpResponseWriter, nil, utils.ServerError, utils.ErrMsgInternalServer)
 		return
-
 	}
 	executionError := templateSet.ExecuteTemplate(httpResponseWriter, config.TemplateLayout, pageData)
 	if executionError != nil {

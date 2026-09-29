@@ -115,16 +115,15 @@ func Handler(applicationContext *config.ApplicationContext) http.HandlerFunc {
 
 			responseStatus := httpRequest.FormValue(config.ResponseParam)
 			extraGuestsStr := httpRequest.FormValue(config.ExtraGuestsParam)
-			var extraGuests int = 0
 
 			if validationError := utils.ValidateRSVPResponseStatus(responseStatus); validationError != nil {
 				baseHandler.HandleError(httpResponseWriter, validationError, utils.ValidationError, validationError.Error())
 				return
 			}
 
-			if responseStatus == config.RSVPResponseYesPrefix {
-				var parseErr error
-				extraGuests, parseErr = strconv.Atoi(extraGuestsStr)
+			switch responseStatus {
+			case config.RSVPResponseYesPrefix:
+				extraGuests, parseErr := strconv.Atoi(extraGuestsStr)
 				if parseErr != nil {
 					baseHandler.HandleError(httpResponseWriter, parseErr, utils.ValidationError, "Invalid value provided for extra guests.")
 					return
@@ -135,10 +134,10 @@ func Handler(applicationContext *config.ApplicationContext) http.HandlerFunc {
 				}
 				rsvpRecord.Response = config.RSVPResponseYesPrefix
 				rsvpRecord.ExtraGuests = extraGuests
-			} else if responseStatus == config.RSVPResponseNo {
+			case config.RSVPResponseNo:
 				rsvpRecord.Response = config.RSVPResponseNoCommaZero
 				rsvpRecord.ExtraGuests = 0
-			} else {
+			default:
 				baseHandler.HandleError(httpResponseWriter, nil, utils.ValidationError, "Invalid response status submitted.")
 				return
 			}
@@ -191,11 +190,12 @@ func ThankYouHandler(applicationContext *config.ApplicationContext) http.Handler
 		var thankYouMessageText string
 		if rsvpRecord.Response == config.RSVPResponseYesPrefix {
 			guests := rsvpRecord.ExtraGuests
-			if guests == 0 {
+			switch guests {
+			case 0:
 				thankYouMessageText = "Your response is confirmed. We look forward to seeing you!"
-			} else if guests == 1 {
+			case 1:
 				thankYouMessageText = "Your response is confirmed. We look forward to seeing you and your guest!"
-			} else {
+			default:
 				thankYouMessageText = fmt.Sprintf("Your response is confirmed. We look forward to seeing you and your %d guests!", guests)
 			}
 		} else {

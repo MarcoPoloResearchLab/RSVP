@@ -832,7 +832,7 @@ func createCalendar(testingContext *testing.T, database *gorm.DB, ownerID string
 	if calendarError != nil {
 		testingContext.Fatalf("construct calendar %s: %v", identifier, calendarError)
 	}
-	calendar.BaseModel.ID = identifier
+	calendar.ID = identifier
 	if createError := database.Create(calendar).Error; createError != nil {
 		testingContext.Fatalf("create calendar %s: %v", identifier, createError)
 	}
@@ -851,7 +851,7 @@ func createFiniteLane(testingContext *testing.T, database *gorm.DB, calendarID s
 	if laneError != nil {
 		testingContext.Fatalf("construct finite lane %s: %v", identifier, laneError)
 	}
-	lane.BaseModel.ID = identifier
+	lane.ID = identifier
 	if createError := database.Create(lane).Error; createError != nil {
 		testingContext.Fatalf("create finite lane %s: %v", identifier, createError)
 	}
@@ -864,7 +864,7 @@ func createOpenLane(testingContext *testing.T, database *gorm.DB, calendarID str
 	if laneError != nil {
 		testingContext.Fatalf("construct open lane %s: %v", identifier, laneError)
 	}
-	lane.BaseModel.ID = identifier
+	lane.ID = identifier
 	if createError := database.Create(lane).Error; createError != nil {
 		testingContext.Fatalf("create open lane %s: %v", identifier, createError)
 	}
@@ -885,7 +885,7 @@ func createPointEvent(testingContext *testing.T, database *gorm.DB, laneID strin
 	if eventError != nil {
 		testingContext.Fatalf("construct point event %s: %v", identifier, eventError)
 	}
-	event.BaseModel.ID = identifier
+	event.ID = identifier
 	if createError := event.Create(database); createError != nil {
 		testingContext.Fatalf("create point event %s: %v", identifier, createError)
 	}
@@ -906,7 +906,7 @@ func createIntervalEvent(testingContext *testing.T, database *gorm.DB, laneID st
 	if eventError != nil {
 		testingContext.Fatalf("construct interval event %s: %v", identifier, eventError)
 	}
-	event.BaseModel.ID = identifier
+	event.ID = identifier
 	if createError := event.Create(database); createError != nil {
 		testingContext.Fatalf("create interval event %s: %v", identifier, createError)
 	}
@@ -935,7 +935,7 @@ func createAllDayEvent(testingContext *testing.T, database *gorm.DB, laneID stri
 	if eventError != nil {
 		testingContext.Fatalf("construct all-day event %s: %v", identifier, eventError)
 	}
-	event.BaseModel.ID = identifier
+	event.ID = identifier
 	if createError := event.Create(database); createError != nil {
 		testingContext.Fatalf("create all-day event %s: %v", identifier, createError)
 	}
@@ -948,7 +948,7 @@ func createProbe(testingContext *testing.T, database *gorm.DB, laneID string, po
 	if policyError != nil {
 		testingContext.Fatalf("construct attention policy %s: %v", policyID, policyError)
 	}
-	policy.BaseModel.ID = policyID
+	policy.ID = policyID
 	if createError := database.Create(policy).Error; createError != nil {
 		testingContext.Fatalf("create attention policy %s: %v", policyID, createError)
 	}
@@ -956,7 +956,7 @@ func createProbe(testingContext *testing.T, database *gorm.DB, laneID string, po
 	if probeError != nil {
 		testingContext.Fatalf("construct probe %s: %v", probeID, probeError)
 	}
-	probe.BaseModel.ID = probeID
+	probe.ID = probeID
 	if createError := database.Create(probe).Error; createError != nil {
 		testingContext.Fatalf("create probe %s: %v", probeID, createError)
 	}

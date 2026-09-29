@@ -313,7 +313,7 @@ func (event *Event) BeforeCreate(databaseConnection *gorm.DB) error {
 	if validationError := event.Validate(); validationError != nil {
 		return validationError
 	}
-	if idError := event.BaseModel.GenerateID(databaseConnection, event); idError != nil {
+	if idError := event.GenerateID(databaseConnection, event); idError != nil {
 		return idError
 	}
 	return event.validateRelationships(databaseConnection)

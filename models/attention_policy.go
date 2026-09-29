@@ -58,7 +58,7 @@ func (policy *AttentionPolicy) BeforeCreate(databaseConnection *gorm.DB) error {
 	if validationError := policy.Validate(); validationError != nil {
 		return validationError
 	}
-	return policy.BaseModel.GenerateID(databaseConnection, policy)
+	return policy.GenerateID(databaseConnection, policy)
 }
 func (policy *AttentionPolicy) BeforeUpdate(*gorm.DB) error { return policy.Validate() }
 func (policy *AttentionPolicy) GetTableName() string        { return config.TableAttentionPolicies }

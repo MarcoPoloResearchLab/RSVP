@@ -20,6 +20,7 @@ import (
 	"github.com/tyemirov/RSVP/models"
 	"github.com/tyemirov/RSVP/pkg/config"
 	"github.com/tyemirov/RSVP/pkg/routes"
+	"github.com/tyemirov/RSVP/pkg/server"
 	"github.com/tyemirov/RSVP/pkg/services"
 	"github.com/tyemirov/RSVP/pkg/templates"
 	"gorm.io/gorm"
@@ -203,7 +204,7 @@ func main() {
 		}
 	}()
 	logger.Printf("Listening on http://%s", browserFixtureAddress)
-	if serveError := http.ListenAndServe(browserFixtureAddress, mux); serveError != nil {
+	if serveError := server.NewHTTPServer(browserFixtureAddress, mux).ListenAndServe(); serveError != nil {
 		logger.Fatalf("Serve browser fixture: %v", serveError)
 	}
 }
@@ -327,7 +328,7 @@ func seedBrowserFixture(database *gorm.DB) error {
 		if waitingLaneError != nil {
 			return waitingLaneError
 		}
-		waitingLane.BaseModel.ID = "LANWAIT0"
+		waitingLane.ID = "LANWAIT0"
 		if createError := transaction.Create(waitingLane).Error; createError != nil {
 			return fmt.Errorf("create open waiting lane: %w", createError)
 		}
@@ -335,7 +336,7 @@ func seedBrowserFixture(database *gorm.DB) error {
 		if attentionLaneError != nil {
 			return attentionLaneError
 		}
-		attentionLane.BaseModel.ID = "LANATTN0"
+		attentionLane.ID = "LANATTN0"
 		if createError := transaction.Create(attentionLane).Error; createError != nil {
 			return fmt.Errorf("create attention lane: %w", createError)
 		}
@@ -345,7 +346,7 @@ func seedBrowserFixture(database *gorm.DB) error {
 		if policyError != nil {
 			return policyError
 		}
-		policy.BaseModel.ID = "POLWAIT0"
+		policy.ID = "POLWAIT0"
 		if createError := transaction.Create(policy).Error; createError != nil {
 			return fmt.Errorf("create waiting attention policy: %w", createError)
 		}
@@ -354,7 +355,7 @@ func seedBrowserFixture(database *gorm.DB) error {
 		if probeError != nil {
 			return probeError
 		}
-		pendingProbe.BaseModel.ID = "PRBWAIT0"
+		pendingProbe.ID = "PRBWAIT0"
 		if createError := transaction.Create(pendingProbe).Error; createError != nil {
 			return fmt.Errorf("create waiting probe: %w", createError)
 		}
@@ -370,7 +371,7 @@ func seedBrowserFixture(database *gorm.DB) error {
 		if eventSeriesError != nil {
 			return eventSeriesError
 		}
-		eventSeries.BaseModel.ID = "SERWORK0"
+		eventSeries.ID = "SERWORK0"
 		if createError := transaction.Create(eventSeries).Error; createError != nil {
 			return fmt.Errorf("create browser event series: %w", createError)
 		}
@@ -424,7 +425,7 @@ func createBrowserCalendar(database *gorm.DB, organizerID string, identifier str
 	if calendarError != nil {
 		return nil, calendarError
 	}
-	calendar.BaseModel.ID = identifier
+	calendar.ID = identifier
 	if createError := database.Create(calendar).Error; createError != nil {
 		return nil, fmt.Errorf("create calendar %s: %w", identifier, createError)
 	}
@@ -436,7 +437,7 @@ func createBrowserFiniteLane(database *gorm.DB, calendarID string, identifier st
 	if laneError != nil {
 		return nil, laneError
 	}
-	lane.BaseModel.ID = identifier
+	lane.ID = identifier
 	if createError := database.Create(lane).Error; createError != nil {
 		return nil, fmt.Errorf("create lane %s: %w", identifier, createError)
 	}
@@ -456,7 +457,7 @@ func createBrowserPointEvent(database *gorm.DB, laneID string, identifier string
 	if eventError != nil {
 		return nil, eventError
 	}
-	event.BaseModel.ID = identifier
+	event.ID = identifier
 	if createError := event.Create(database); createError != nil {
 		return nil, fmt.Errorf("create event %s: %w", identifier, createError)
 	}

@@ -169,7 +169,7 @@ func (draft *IngestionDraft) BeforeCreate(database *gorm.DB) error {
 	if err := draft.Validate(); err != nil {
 		return err
 	}
-	return draft.BaseModel.GenerateID(database, draft)
+	return draft.GenerateID(database, draft)
 }
 func (draft *IngestionDraft) BeforeUpdate(*gorm.DB) error                   { return draft.Validate() }
 func (draft *IngestionDraft) GetTableName() string                          { return config.TableIngestionDrafts }
@@ -201,7 +201,7 @@ func (rule *DraftDerivedMarkerRule) BeforeCreate(database *gorm.DB) error {
 	if validationError := rule.Validate(); validationError != nil {
 		return validationError
 	}
-	return rule.BaseModel.GenerateID(database, rule)
+	return rule.GenerateID(database, rule)
 }
 func (rule *DraftDerivedMarkerRule) BeforeUpdate(*gorm.DB) error { return rule.Validate() }
 func (rule *DraftDerivedMarkerRule) GetTableName() string        { return config.TableDraftDerivedMarkerRules }
@@ -239,7 +239,7 @@ func (confirmation *DraftConfirmation) BeforeCreate(database *gorm.DB) error {
 	if err := confirmation.Validate(); err != nil {
 		return err
 	}
-	return confirmation.BaseModel.GenerateID(database, confirmation)
+	return confirmation.GenerateID(database, confirmation)
 }
 func (confirmation *DraftConfirmation) BeforeUpdate(*gorm.DB) error { return confirmation.Validate() }
 func (confirmation *DraftConfirmation) GetTableName() string        { return config.TableDraftConfirmations }

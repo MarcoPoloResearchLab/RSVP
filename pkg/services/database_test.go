@@ -444,7 +444,7 @@ func TestCanonicalSchemaEnforcesLaneAndEventConstraints(testingContext *testing.
 	if calendarError != nil {
 		testingContext.Fatalf("construct calendar: %v", calendarError)
 	}
-	calendar.BaseModel.ID = "CAL00001"
+	calendar.ID = "CAL00001"
 	if createError := databaseConnection.Create(calendar).Error; createError != nil {
 		testingContext.Fatalf("create calendar: %v", createError)
 	}

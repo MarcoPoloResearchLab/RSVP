@@ -1,7 +1,7 @@
 SHELL := /bin/bash
 .DEFAULT_GOAL := ci
 
-.PHONY: ci fmt lint test browser-test up down logs ps release publish deploy
+.PHONY: lint-audit ci fmt lint test browser-test up down logs ps release publish deploy
 
 ci: fmt lint test
 
@@ -14,6 +14,8 @@ fmt:
 
 lint:
 	go vet ./...
+	staticcheck -checks 'SA*' ./...
+	ineffassign ./...
 
 test:
 	go test ./...
@@ -40,3 +42,6 @@ release publish deploy:
 		gateway_root="$$(dirname "$${application_root}")/mprlab-gateway"; \
 		$(MAKE) --no-print-directory -C "$${gateway_root}" "app-$@" \
 			MPRLAB_APP_ROOT="$${application_root}"
+
+lint-audit:
+	golangci-lint run
