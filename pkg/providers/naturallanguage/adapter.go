@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/tyemirov/RSVP/pkg/config"
 	"github.com/tyemirov/RSVP/pkg/services"
@@ -42,6 +43,8 @@ func New(configuration config.LLMProxyConfig, transport llmproxyclient.HTTPDoer)
 
 // Parse sends the temporal context through the official messages contract.
 func (adapter *Adapter) Parse(ctx context.Context, input services.NaturalLanguageParseRequest) (services.NaturalLanguageParseResponse, error) {
+	ctx, cancel := context.WithTimeout(ctx, time.Duration(adapter.requestTimeoutSeconds)*time.Second)
+	defer cancel()
 	payload, err := json.Marshal(input)
 	if err != nil {
 		return services.NaturalLanguageParseResponse{}, errors.New("encode natural-language temporal context")
