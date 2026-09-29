@@ -67,6 +67,10 @@ An event keeps its optional venue relationship.
 
 ## Canonical Persistence
 
+RSVP uses one database connection for the SQLite file.
+The connection serializes transactions from concurrent HTTP requests and background tasks.
+Provider HTTP requests run outside database transactions.
+
 Each persisted resource uses an opaque identifier and standard audit timestamps.
 Conditional fields use database constraints and validated domain constructors.
 An organizer can exist before timezone confirmation.
@@ -462,6 +466,26 @@ RSVP returns `409 Conflict` when an RSVP prevents lane deletion.
 Connection deletion removes credentials, sync cursors, source mappings, external event links, and eligible source-owned resources.
 RSVP returns `409 Conflict` when an RSVP or local dependency uses an imported event.
 
+## Browser And Service Configuration
+
+`config.yml` is the canonical backend configuration.
+The loader resolves environment references and validates one strict YAML document before startup.
+The static public shell uses `mpr-ui@latest` for its header, user control, and footer.
+`/config-ui.yaml` is its only browser authentication input.
+
+The shell loads the protected HTML workspace after `mpr-ui:auth:authenticated`.
+It removes that workspace after `mpr-ui:auth:unauthenticated`.
+The workspace retains the Horizon, event, venue, invitation, and settings flows.
+MPR dark tokens control the browser surfaces.
+
+TAuth owns Google login, session restore, refresh, logout, and authentication cookies.
+RSVP uses the published TAuth validator for resource authorization.
+The validator checks issuer `tauth` and the configured cookie.
+RSVP requires the exact tenant, an expiry, and a user identity before the organizer lookup.
+The verified email preserves the existing organizer record and resource ownership.
+RSVP does not create authentication sessions.
+Google Calendar consent remains a separate provider flow.
+
 ## Authorization Contract
 
 Each temporal query starts with the authenticated organizer.
@@ -651,8 +675,12 @@ An invalid parser response changes no temporal resource.
 The natural-language parser uses one explicit reference time and the organizer timezone.
 RSVP does not store the original natural-language input.
 
-The parser adapter sends the input text, reference time, and organizer timezone.
-The adapter authenticates with a key from private deployment values.
+The parser adapter uses one startup-owned official LLM Proxy client.
+It sends a system prompt and the input text, reference time, and organizer timezone through the native messages contract.
+The tenant API key comes from private deployment values.
+The `llm_proxy` block defines provider, model, reasoning effort, and the request work budget.
+Explicitly empty provider and model values select the saved tenant default.
+RSVP interprets the JSON response and applies its temporal resource policy.
 The adapter accepts only the current JSON response schema.
 RSVP calculates the missing required fields from the validated response.
 
