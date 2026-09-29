@@ -27,6 +27,8 @@ Supply these environment variables for a direct backend start:
 The LLM Proxy provider and model fields are explicitly empty.
 The tenant text default controls both values.
 The backend sends `low` reasoning effort and a 120-second work budget.
+The same budget limits each official client call, including the response body.
+An earlier caller time limit remains in effect.
 Keep private values out of tracked files and logs.
 
 ## Local Orchestration
