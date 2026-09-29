@@ -60,7 +60,7 @@ func (rule *DerivedMarkerRule) BeforeCreate(database *gorm.DB) error {
 	if err := rule.Validate(); err != nil {
 		return err
 	}
-	return rule.BaseModel.GenerateID(database, rule)
+	return rule.GenerateID(database, rule)
 }
 func (rule *DerivedMarkerRule) BeforeUpdate(*gorm.DB) error { return rule.Validate() }
 func (rule *DerivedMarkerRule) GetTableName() string        { return config.TableDerivedMarkerRules }
@@ -99,7 +99,7 @@ func (marker *DerivedMarker) BeforeCreate(database *gorm.DB) error {
 	if err := marker.Validate(); err != nil {
 		return err
 	}
-	return marker.BaseModel.GenerateID(database, marker)
+	return marker.GenerateID(database, marker)
 }
 func (*DerivedMarker) BeforeUpdate(*gorm.DB) error                          { return ErrDerivedMarkerImmutable }
 func (marker *DerivedMarker) GetTableName() string                          { return config.TableDerivedMarkers }

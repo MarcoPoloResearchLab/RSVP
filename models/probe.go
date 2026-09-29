@@ -98,7 +98,7 @@ func (probe *Probe) BeforeCreate(databaseConnection *gorm.DB) error {
 	if validationError := probe.Validate(); validationError != nil {
 		return validationError
 	}
-	if idError := probe.BaseModel.GenerateID(databaseConnection, probe); idError != nil {
+	if idError := probe.GenerateID(databaseConnection, probe); idError != nil {
 		return idError
 	}
 	return probe.validatePolicyLane(databaseConnection)

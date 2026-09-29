@@ -56,7 +56,7 @@ func (state *ProviderCalendarSyncState) BeforeCreate(database *gorm.DB) error {
 	if validationError := state.Validate(); validationError != nil {
 		return validationError
 	}
-	return state.BaseModel.GenerateID(database, state)
+	return state.GenerateID(database, state)
 }
 func (state *ProviderCalendarSyncState) BeforeUpdate(*gorm.DB) error { return state.Validate() }
 func (state *ProviderCalendarSyncState) GetTableName() string {
@@ -93,7 +93,7 @@ func (link *ExternalEventSeriesLink) BeforeCreate(database *gorm.DB) error {
 	if err := link.Validate(); err != nil {
 		return err
 	}
-	return link.BaseModel.GenerateID(database, link)
+	return link.GenerateID(database, link)
 }
 func (link *ExternalEventSeriesLink) BeforeUpdate(*gorm.DB) error { return link.Validate() }
 func (link *ExternalEventSeriesLink) GetTableName() string {
@@ -135,7 +135,7 @@ func (link *ExternalEventLink) BeforeCreate(database *gorm.DB) error {
 	if err := link.Validate(); err != nil {
 		return err
 	}
-	return link.BaseModel.GenerateID(database, link)
+	return link.GenerateID(database, link)
 }
 func (link *ExternalEventLink) BeforeUpdate(*gorm.DB) error { return link.Validate() }
 func (link *ExternalEventLink) GetTableName() string        { return config.TableExternalEventLinks }
@@ -187,7 +187,7 @@ func (sync *CalendarSync) BeforeCreate(database *gorm.DB) error {
 	if err := sync.Validate(); err != nil {
 		return err
 	}
-	return sync.BaseModel.GenerateID(database, sync)
+	return sync.GenerateID(database, sync)
 }
 func (sync *CalendarSync) BeforeUpdate(*gorm.DB) error                   { return sync.Validate() }
 func (sync *CalendarSync) GetTableName() string                          { return config.TableCalendarSyncs }

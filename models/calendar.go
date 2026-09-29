@@ -112,7 +112,7 @@ func (calendar *Calendar) BeforeCreate(databaseConnection *gorm.DB) error {
 	if _, timezoneError := NewTimezone(*organizer.Timezone); timezoneError != nil {
 		return timezoneError
 	}
-	return calendar.BaseModel.GenerateID(databaseConnection, calendar)
+	return calendar.GenerateID(databaseConnection, calendar)
 }
 
 // BeforeUpdate validates the calendar.

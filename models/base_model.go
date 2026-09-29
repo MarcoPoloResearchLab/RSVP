@@ -16,13 +16,13 @@ import (
 // within the maximum allowed attempts.
 var ErrFailedToGenerateUniqueID = errors.New("failed to generate a unique ID after maximum attempts")
 
-// IDGenerator defines the interface for models that need ID generation
+// IDGenerator defines the interface for models that need ID generation.
 type IDGenerator interface {
 	GetTableName() string
 	GetIDGeneratorFunc() func(int) (string, error)
 }
 
-// BaseModel provides common fields for database models
+// BaseModel provides common fields for database models.
 type BaseModel struct {
 	ID        string `gorm:"primaryKey;type:varchar(8);index"`
 	CreatedAt time.Time
@@ -31,7 +31,7 @@ type BaseModel struct {
 }
 
 // GenerateID is a helper method to generate a unique ID for any model
-// that implements IDGenerator
+// that implements IDGenerator.
 func (base *BaseModel) GenerateID(tx *gorm.DB, model IDGenerator) error {
 	if base.ID == "" {
 		uniqueID, err := EnsureUniqueID(

@@ -58,7 +58,7 @@ func (series *EventSeries) BeforeCreate(databaseConnection *gorm.DB) error {
 	if validationError := series.Validate(); validationError != nil {
 		return validationError
 	}
-	return series.BaseModel.GenerateID(databaseConnection, series)
+	return series.GenerateID(databaseConnection, series)
 }
 
 func (series *EventSeries) BeforeUpdate(*gorm.DB) error                   { return series.Validate() }

@@ -96,7 +96,7 @@ func (lane *Lane) BeforeCreate(databaseConnection *gorm.DB) error {
 	if validationError := lane.Validate(); validationError != nil {
 		return validationError
 	}
-	return lane.BaseModel.GenerateID(databaseConnection, lane)
+	return lane.GenerateID(databaseConnection, lane)
 }
 
 func (lane *Lane) BeforeUpdate(*gorm.DB) error {

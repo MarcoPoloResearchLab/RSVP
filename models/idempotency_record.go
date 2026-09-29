@@ -44,7 +44,7 @@ func (record *IdempotencyRecord) BeforeCreate(database *gorm.DB) error {
 	if validationError := record.Validate(); validationError != nil {
 		return validationError
 	}
-	return record.BaseModel.GenerateID(database, record)
+	return record.GenerateID(database, record)
 }
 func (record *IdempotencyRecord) BeforeUpdate(*gorm.DB) error { return record.Validate() }
 func (record *IdempotencyRecord) GetTableName() string        { return config.TableIdempotencyRecords }

@@ -28,7 +28,7 @@ func (venue *Venue) GetIDGeneratorFunc() func(int) (string, error) {
 }
 
 func (venue *Venue) BeforeCreate(tx *gorm.DB) error {
-	if err := venue.BaseModel.GenerateID(tx, venue); err != nil {
+	if err := venue.GenerateID(tx, venue); err != nil {
 		return err
 	}
 	return venue.Validate()
