@@ -24,6 +24,7 @@ test('loads and clears the protected workspace only on shared authentication eve
     await expect(frame).not.toHaveAttribute('src');
     await expect(page.locator('[data-workspace-message]')).toBeVisible();
     await page.goto('/#events');
+    await page.locator('mpr-header').getByRole('link', {name: 'Events', exact: true}).click();
     await expect(frame).not.toHaveAttribute('src');
 });
 
@@ -49,4 +50,20 @@ test('runs Calendar consent in the top window from the shared shell', async ({pa
     await expect(page).toHaveURL(/\/horizon\/#settings\/integrations$/);
     await expect(page.locator('[data-settings-dialog]')).toBeVisible();
     await expect(page.locator('[data-calendar-task-state]')).toHaveText('Complete', {timeout: 10000});
+});
+
+test('restores the shared-header workspace after iframe navigation', async ({page}) => {
+    await page.goto('/browser-login/');
+    await page.goto('/');
+    await expect(page.locator('mpr-header')).toBeVisible();
+    await page.evaluate(() => document.dispatchEvent(new CustomEvent('mpr-ui:auth:authenticated')));
+    const workspace = page.frameLocator('[data-workspace-frame]');
+    const header = page.locator('mpr-header');
+    await header.getByRole('link', {name: 'Events', exact: true}).click();
+    await expect(workspace.getByRole('heading', {name: 'All Events', exact: true})).toBeVisible();
+    await workspace.getByRole('navigation', {name: 'Workspace'}).getByRole('link', {name: 'Venues', exact: true}).click();
+    await expect(workspace.getByRole('heading', {name: 'All Venues', exact: true})).toBeVisible();
+    await expect(page).toHaveURL(/#events$/);
+    await header.getByRole('link', {name: 'Events', exact: true}).click();
+    await expect(workspace.getByRole('heading', {name: 'All Events', exact: true})).toBeVisible();
 });
