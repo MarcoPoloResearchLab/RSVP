@@ -35,3 +35,13 @@ document.addEventListener('mpr-ui:auth:unauthenticated', () => {
     workspaceMessage.hidden = false;
 });
 window.addEventListener('hashchange', showWorkspace);
+document.addEventListener('click', (event) => {
+    if (event.defaultPrevented || event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+    const link = event.composedPath().find((target) => target instanceof HTMLAnchorElement);
+    if (!(link instanceof HTMLAnchorElement)) return;
+    if (link.origin === window.location.origin && link.pathname === window.location.pathname &&
+        link.search === window.location.search && link.hash === window.location.hash &&
+        workspacePaths.has(link.hash.slice(1).split('/')[0])) {
+        showWorkspace();
+    }
+});
