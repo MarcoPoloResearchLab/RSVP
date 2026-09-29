@@ -1,26 +1,22 @@
 :root {
-    --horizon-ink: #18231f;
-    --horizon-muted: #65716c;
-    --horizon-paper: #f6f4ed;
-    --horizon-panel: #fffdf7;
-    --horizon-grid: #d9ddd7;
-    --horizon-accent: #176b52;
+    --horizon-ink: var(--mpr-text-primary);
+    --horizon-muted: var(--mpr-text-muted);
+    --horizon-paper: var(--mpr-bg-canvas);
+    --horizon-panel: var(--mpr-bg-panel);
+    --horizon-grid: var(--mpr-border-strong);
+    --horizon-accent: var(--mpr-accent-primary);
     --horizon-label-width: clamp(18rem, 30vw, 22rem);
     --horizon-lane-height: 16px;
 }
 
-body:has(.horizon-view) {
-    background:
-        radial-gradient(circle at 12% 12%, rgba(244, 184, 96, 0.22), transparent 28rem),
-        var(--horizon-paper);
-}
+body:has(.horizon-view) { background:var(--horizon-paper); }
 
 main:has(.horizon-view) {
     overflow: hidden;
 }
 
 .layout-container:has(.horizon-view) {
-    max-width: none;
+    max-width: 1180px;
     padding-inline: clamp(0.75rem, 2vw, 2rem);
 }
 
@@ -35,10 +31,10 @@ main:has(.horizon-view) {
 }
 
 .horizon-heading h1 {
-    font-size: clamp(2rem, 5vw, 4.5rem);
+    font-size: 1.1rem;
     font-weight: 500;
-    letter-spacing: -0.07em;
-    line-height: 0.9;
+    letter-spacing: 0;
+    line-height: 1.3;
     margin: 0;
 }
 
@@ -66,7 +62,7 @@ main:has(.horizon-view) {
 
 .horizon-view-controls {
     align-items: center;
-    background: rgba(255, 253, 247, 0.88);
+    background: var(--mpr-bg-panel);
     border: 1px solid var(--horizon-grid);
     border-radius: 999px;
     display: flex;
@@ -226,11 +222,11 @@ main:has(.horizon-view) {
     align-items: center;
     border-radius: 50%;
     display: flex;
-    height: 32px;
+    height: 44px;
     justify-content: center;
     line-height: 1;
     list-style: none;
-    width: 32px;
+    width: 44px;
 }
 
 .horizon-lane-controls > summary::-webkit-details-marker {

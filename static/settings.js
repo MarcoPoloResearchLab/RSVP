@@ -1,11 +1,9 @@
 // @ts-check
 
-const userMenu = document.querySelector('[data-user-menu]');
-const userMenuSummary = document.querySelector('[data-user-menu] > summary');
 const settingsDialog = document.querySelector('[data-settings-dialog]');
 const settingsOpenButton = document.querySelector('[data-settings-open]');
 
-if (!(userMenu instanceof HTMLDetailsElement) || !(userMenuSummary instanceof HTMLElement) || !(settingsDialog instanceof HTMLDialogElement) || !(settingsOpenButton instanceof HTMLButtonElement)) {
+if (!(settingsDialog instanceof HTMLDialogElement) || !(settingsOpenButton instanceof HTMLButtonElement)) {
     throw new Error('The authenticated settings contract is incomplete.');
 }
 
@@ -51,7 +49,6 @@ const rubricFromHash = () => window.location.hash.startsWith(settingsHashPrefix)
 const openSettings = (rubric) => {
     const requestedRubric = setActiveRubric(rubric) ? rubric : defaultRubric;
     setActiveRubric(requestedRubric);
-    userMenu.open = false;
     if (window.location.hash !== `${settingsHashPrefix}${requestedRubric}`) {
         window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}${settingsHashPrefix}${requestedRubric}`);
     }
@@ -82,7 +79,7 @@ settingsDialog.addEventListener('close', () => {
     if (window.location.hash.startsWith(settingsHashPrefix)) {
         window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
     }
-    userMenuSummary.focus();
+    settingsOpenButton.focus();
 });
 
 for (const [tabIndex, tab] of rubricTabs.entries()) {
@@ -111,19 +108,6 @@ for (const [tabIndex, tab] of rubricTabs.entries()) {
         }
     });
 }
-
-document.addEventListener('click', (event) => {
-    if (userMenu.open && event.target instanceof Node && !userMenu.contains(event.target)) {
-        userMenu.open = false;
-    }
-});
-
-document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape' && userMenu.open && !settingsDialog.open) {
-        userMenu.open = false;
-        userMenuSummary.focus();
-    }
-});
 
 window.addEventListener('hashchange', () => {
     const rubric = rubricFromHash();
@@ -363,7 +347,8 @@ if (authorizationButton instanceof HTMLButtonElement) {
             if (!body || typeof body.authorization_url !== 'string') {
                 throw new Error('The calendar authorization response is invalid.');
             }
-            window.location.assign(body.authorization_url);
+            if (!window.top) throw new Error("The calendar consent window is absent.");
+            window.top.location.href = body.authorization_url;
         } catch (error) {
             showSettingsError(error instanceof Error ? error.message : 'Calendar authorization failed.');
             authorizationButton.disabled = false;

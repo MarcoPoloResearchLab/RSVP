@@ -1,0 +1,49 @@
+
+:root {
+ color-scheme: dark;
+ --mpr-bg-canvas:#0f1114; --mpr-bg-overlay:#16181c; --mpr-bg-panel:#16181c; --mpr-bg-raised:#1f2126;
+ --mpr-border:#2c2f36; --mpr-border-strong:#3b3f48; --mpr-border-hover:#3b3f48;
+ --mpr-text-primary:#e3e5ec; --mpr-text-secondary:#c4c7d1; --mpr-text-muted:#727887;
+ --mpr-accent-primary:#5d93ff; --mpr-accent-success:#95c23d; --mpr-accent-danger:#cc4b4b; --mpr-accent-warning:#f2b84b; --mpr-accent-info:#b487ff;
+ --primary-color:var(--mpr-accent-primary); --secondary-color:var(--mpr-text-secondary);
+ --light-gray:var(--mpr-bg-canvas); --medium-gray:var(--mpr-border-strong); --dark-gray:var(--mpr-text-primary);
+ font:15px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+}
+* { box-sizing:border-box; }
+body { margin:0; background:var(--mpr-bg-canvas); color:var(--mpr-text-primary); font-size:.86rem; }
+a { color:var(--mpr-accent-primary); text-decoration:none; }
+a:hover { text-decoration:underline; }
+main { padding:.75rem; }
+.layout-container { width:100%; max-width:960px; margin:auto; }
+.layout-container:has(.horizon-view), .shell-workspace { max-width:1180px; margin:auto; }
+.shell-workspace iframe { border:0; width:100%; min-height:calc(100dvh - 150px); background:var(--mpr-bg-canvas); }
+.workspace-toolbar { display:flex; align-items:center; justify-content:space-between; gap:.5rem; padding:.5rem .75rem; border-bottom:1px solid var(--mpr-border-strong); max-width:1180px; margin:auto; }
+.workspace-toolbar nav { display:flex; gap:.75rem; }
+h1 { font-size:1.1rem; margin:.5rem 0; } h2,h3 { font-size:1rem; }
+button,.btn { display:inline-flex; align-items:center; justify-content:center; gap:.35rem; padding:.35rem .6rem; border:1px solid var(--mpr-border-strong); border-radius:6px; background:var(--mpr-bg-panel); color:var(--mpr-text-primary); font:inherit; cursor:pointer; min-height:32px; }
+button:hover,.btn:hover { background:var(--mpr-bg-overlay); border-color:var(--mpr-border-hover); }
+button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible { outline:2px solid var(--mpr-accent-primary); outline-offset:2px; }
+button:disabled { opacity:.5; cursor:default; }
+input,select,textarea { max-width:100%; border:1px solid var(--mpr-border-strong); border-radius:6px; padding:.4rem .5rem; background:var(--mpr-bg-overlay); color:var(--mpr-text-primary); font:inherit; }
+label { font-size:.78rem; }
+.form-control,.form-select { display:block; width:100%; }
+.form-label { display:block; margin:.35rem 0; }
+.card,.list-group-item { background:var(--mpr-bg-panel); border:1px solid var(--mpr-border-strong); border-radius:6px; padding:.65rem; margin-bottom:.5rem; }
+.card-header,.card-body,.card-footer { padding:.5rem; }
+.table { width:100%; border-collapse:collapse; font-size:.78rem; }
+.table th,.table td { border-bottom:1px solid var(--mpr-border-strong); padding:.5rem; text-align:left; }
+.table-responsive { overflow:auto; }
+.btn-primary { border-color:var(--mpr-accent-primary); color:var(--mpr-accent-primary); }
+.btn-danger,.text-danger { color:var(--mpr-accent-danger); }
+.btn-success,.text-success { color:var(--mpr-accent-success); }
+.text-muted { color:var(--mpr-text-muted); }
+.d-flex,.row { display:flex; gap:.5rem; } .row { flex-wrap:wrap; } .justify-content-between { justify-content:space-between; } .align-items-center { align-items:center; }
+.flex-column { flex-direction:column; } .flex-grow-1 { flex:1; } .col,.col-md-6 { flex:1; min-width:0; }
+.mb-0 { margin-bottom:0; } .mb-2,.mb-3,.mb-4 { margin-bottom:.5rem; } .mt-2,.mt-3,.mt-4 { margin-top:.5rem; }
+.text-center { text-align:center; } .fw-bold { font-weight:600; } .w-100 { width:100%; }
+.alert { border:1px solid var(--mpr-border-strong); border-radius:6px; padding:.6rem; }
+.alert-danger { border-color:var(--mpr-accent-danger); } .alert-warning { border-color:var(--mpr-accent-warning); }
+.visually-hidden { position:absolute!important; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
+[hidden] { display:none!important; }
+@media(max-width:600px) { .row { flex-direction:column; } main {padding:.5rem;} }
+@media(prefers-reduced-motion:no-preference) { button,.btn {transition:background 120ms,border-color 120ms;} }

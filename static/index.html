@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+ <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+ <title>RSVP</title>
+ <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/MarcoPoloResearchLab/mpr-ui@latest/mpr-ui.css">
+ <link rel="stylesheet" href="/static/app.css">
+ <script src="https://accounts.google.com/gsi/client" async defer></script>
+ <script src="https://cdn.jsdelivr.net/npm/js-yaml@5.4.1/dist/browser/js-yaml.umd.min.js"></script>
+ <script defer src="/static/shell.js"></script>
+ <script defer src="https://cdn.jsdelivr.net/gh/MarcoPoloResearchLab/mpr-ui@latest/mpr-ui-config.js"></script>
+ <script id="mpr-ui-bundle" type="application/json" data-mpr-ui-bundle-src="https://cdn.jsdelivr.net/gh/MarcoPoloResearchLab/mpr-ui@latest/mpr-ui.js"></script>
+ <script async src="https://loopaware.mprlab.com/widget.js?site_id=50bc3012-27c7-4fbd-8307-81dee1da50f7"></script>
+ <script async src="https://loopaware.mprlab.com/pixel.js?site_id=50bc3012-27c7-4fbd-8307-81dee1da50f7"></script>
+</head>
+<body>
+ <mpr-header id="rsvp-header" data-config-url="/config-ui.yaml" brand-label="RSVP" brand-href="/" horizontal-links='{"alignment":"right","links":[{"label":"Horizon","href":"#horizon"},{"label":"Events","href":"#events"},{"label":"Venues","href":"#venues"}]}'>
+  <mpr-user slot="aux" display-mode="avatar" logout-url="/" logout-label="Sign out"></mpr-user>
+ </mpr-header>
+ <main class="shell-workspace">
+  <p data-workspace-message>Sign in to manage your Horizon, events, and invitations.</p>
+  <iframe title="RSVP workspace" name="rsvp-workspace" data-workspace-frame data-workspace-origin="/" hidden></iframe>
+ </main>
+ <mpr-footer prefix-text="Marco Polo Research Lab"></mpr-footer>
+</body>
+</html>
