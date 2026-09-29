@@ -45,7 +45,6 @@ const (
 	TemplateVenues     = "venues"
 	TemplateExtension  = ".tmpl"
 	TemplateLayout     = "layout"
-	TemplateLanding    = "landing"
 	TemplatesDir       = "templates"
 	PartialsDir        = "partials"
 	HorizonStylesPath  = WebStatic + "horizon.css"

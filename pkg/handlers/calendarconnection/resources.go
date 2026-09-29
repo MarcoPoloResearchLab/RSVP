@@ -34,18 +34,12 @@ type Resources struct {
 // New constructs the Google Calendar connection resources.
 func New(applicationContext *config.ApplicationContext, environmentConfig config.EnvConfig, now func() time.Time) (*Resources, error) {
 	httpClient := &http.Client{Timeout: 15 * time.Second}
-	adapterConfig := googlecalendar.DefaultConfig(environmentConfig.GoogleClientID, environmentConfig.GoogleClientSecret)
-	if environmentConfig.GoogleCalendarAuthorizationEndpoint != "" {
-		adapterConfig.AuthorizationEndpoint = environmentConfig.GoogleCalendarAuthorizationEndpoint
-	}
-	if environmentConfig.GoogleCalendarTokenEndpoint != "" {
-		adapterConfig.TokenEndpoint = environmentConfig.GoogleCalendarTokenEndpoint
-	}
-	if environmentConfig.GoogleCalendarListEndpoint != "" {
-		adapterConfig.CalendarListEndpoint = environmentConfig.GoogleCalendarListEndpoint
-	}
-	if environmentConfig.GoogleCalendarEventsEndpoint != "" {
-		adapterConfig.EventsEndpoint = environmentConfig.GoogleCalendarEventsEndpoint
+	adapterConfig := googlecalendar.Config{
+		ClientID: environmentConfig.GoogleClientID, ClientSecret: environmentConfig.GoogleClientSecret,
+		AuthorizationEndpoint: environmentConfig.GoogleCalendarAuthorizationEndpoint,
+		TokenEndpoint:         environmentConfig.GoogleCalendarTokenEndpoint,
+		CalendarListEndpoint:  environmentConfig.GoogleCalendarListEndpoint,
+		EventsEndpoint:        environmentConfig.GoogleCalendarEventsEndpoint,
 	}
 	adapter, adapterError := googlecalendar.New(adapterConfig, httpClient, now)
 	if adapterError != nil {
@@ -151,7 +145,11 @@ func (resources *Resources) Callback() http.Handler {
 			return
 		}
 		responseWriter.Header().Set("Content-Type", "text/html; charset=utf-8")
-		if executeError := calendarCallbackTemplate.Execute(responseWriter, confirmation); executeError != nil {
+		if executeError := calendarCallbackTemplate.Execute(responseWriter, struct {
+			RequestID    string
+			ReturnURL    string
+			ConnectedURL string
+		}{RequestID: confirmation.RequestID, ReturnURL: resources.applicationContext.WebsiteURL, ConnectedURL: resources.applicationContext.CalendarReturnURL}); executeError != nil {
 			resources.applicationContext.Logger.Printf("ERROR: Render calendar callback: %v", executeError)
 		}
 	})
@@ -420,15 +418,15 @@ const calendarCallbackHTML = `<!doctype html>
 <title>Confirm Google Calendar · RSVP</title>
 <style>
 :root {
-  color-scheme: light;
-  --ink: #18231f;
-  --muted: #65716c;
-  --paper: #f6f4ed;
-  --panel: #fffdf7;
-  --line: #d9ddd7;
-  --accent: #176b52;
-  --accent-soft: #e6f0eb;
-  --danger: #a33b2f;
+  color-scheme: dark;
+  --ink: #e3e5ec;
+  --muted: #c4c7d1;
+  --paper: #0f1114;
+  --panel: #16181c;
+  --line: #2c2f36;
+  --accent: #5d93ff;
+  --accent-soft: #1f2126;
+  --danger: #cc4b4b;
 }
 * { box-sizing: border-box; }
 html { min-height: 100%; }
@@ -466,16 +464,16 @@ body {
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 0.75rem;
-  box-shadow: 0 1.25rem 3rem rgba(35, 47, 42, 0.08);
-  margin: clamp(2rem, 8vh, 5rem) auto 0;
+  box-shadow: none;
+  margin: 1rem auto 0;
   max-width: 34rem;
   overflow: hidden;
 }
-.confirmation-main { padding: clamp(1.4rem, 5vw, 2rem); }
+.confirmation-main { padding: 1rem; }
 .status-chip {
   align-items: center;
   background: var(--accent-soft);
-  border: 1px solid #b8d4c7;
+  border: 1px solid #3b3f48;
   border-radius: 999px;
   color: var(--accent);
   display: inline-flex;
@@ -494,7 +492,7 @@ body {
   width: 0.45rem;
 }
 h1 {
-  font-size: clamp(1.6rem, 5vw, 2.2rem);
+  font-size: 1.1rem;
   letter-spacing: -0.045em;
   line-height: 1.05;
   margin: 1rem 0 0.7rem;
@@ -534,7 +532,7 @@ h1 {
 }
 .actions {
   align-items: center;
-  background: #f1efe8;
+  background: #1f2126;
   border-top: 1px solid var(--line);
   display: flex;
   flex-wrap: wrap;
@@ -554,7 +552,7 @@ button {
 }
 button:focus-visible { outline: 3px solid rgba(23, 107, 82, 0.28); outline-offset: 2px; }
 .secondary { background: transparent; border-color: var(--line); color: var(--ink); }
-.primary { background: var(--ink); color: white; }
+.primary { background: var(--accent); color: #0f1114; }
 .primary:hover { background: var(--accent); }
 button:disabled { cursor: default; opacity: 0.65; }
 .result {
@@ -616,7 +614,7 @@ button:disabled { cursor: default; opacity: 0.65; }
   const code = query.get('code');
   const idempotencyKey = crypto.randomUUID();
 
-  cancel.addEventListener('click', () => window.location.replace('/horizon/'));
+  cancel.addEventListener('click', () => window.location.replace({{ .ReturnURL }}));
   button.addEventListener('click', async () => {
     button.disabled = true;
     status.dataset.state = 'working';
@@ -637,7 +635,7 @@ button:disabled { cursor: default; opacity: 0.65; }
       status.textContent = responseBody.task.state === 'running'
         ? 'Calendar import task is running. Opening Integrations…'
         : 'Calendar import task is queued. Opening Integrations…';
-      window.setTimeout(() => window.location.replace('/horizon/#settings/integrations'), 600);
+      window.setTimeout(() => window.location.replace({{ .ConnectedURL }}), 600);
     } catch (_) {
       button.disabled = false;
       status.dataset.state = 'error';

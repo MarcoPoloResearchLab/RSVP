@@ -1,59 +1,52 @@
-// Package middleware provides HTTP middleware functions for the application.
+// Package middleware authorizes RSVP resources with the published TAuth validator.
 package middleware
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"encoding/json"
 	"net/http"
 
-	gconstants "github.com/tyemirov/GAuss/pkg/constants"
-	"github.com/tyemirov/GAuss/pkg/session"
 	"github.com/tyemirov/RSVP/models"
 	"github.com/tyemirov/RSVP/pkg/config"
-	"github.com/tyemirov/RSVP/pkg/utils"
+	"github.com/tyemirov/tauth/pkg/sessionvalidator"
 )
 
-// contextKey is a custom type used for keys in context.Context to avoid collisions.
 type contextKey string
 
-// ContextKeyUser is the key used to store the authenticated *models.User in the request context.
+// ContextKeyUser identifies the authorized organizer in a resource request.
 const ContextKeyUser contextKey = "user"
 
-// AddUserToContext is middleware that retrieves user information based on the session email,
-// performs an Upsert operation (find or create) in the database, and adds the resulting
-// *models.User object to the request's context. If the user cannot be determined or upserted
-// after successful authentication (which implies a server issue), it stops the request chain
-// and returns an error.
-func AddUserToContext(applicationContext *config.ApplicationContext) func(http.Handler) http.Handler {
+// ResourceAuthorization validates the exact TAuth cookie and tenant before an organizer lookup.
+func ResourceAuthorization(application *config.ApplicationContext, validator *sessionvalidator.Validator, tenantID string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
-			sessionInstance, sessionError := session.Store().Get(request, gconstants.SessionName)
-			if sessionError != nil {
-				applicationContext.Logger.Printf("ERROR: Session retrieval failed in AddUserToContext for %s: %v", request.URL.Path, sessionError)
-				utils.HandleError(responseWriter, sessionError, utils.ServerError, applicationContext.Logger, "Failed to process user session.")
+		return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+			claims, err := validator.ValidateRequest(request)
+			if err != nil || claims.GetTenantID() != tenantID || claims.GetUserID() == "" || claims.GetUserEmail() == "" || claims.GetExpiresAt().IsZero() {
+				writeAuthorizationError(writer, http.StatusUnauthorized, "authentication_required", "Authentication is required.")
 				return
 			}
-
-			userEmail, emailOk := sessionInstance.Values[gconstants.SessionKeyUserEmail].(string)
-			userName, _ := sessionInstance.Values[gconstants.SessionKeyUserName].(string)
-			userPicture, _ := sessionInstance.Values[gconstants.SessionKeyUserPicture].(string)
-
-			if !emailOk || userEmail == "" {
-				applicationContext.Logger.Printf("ERROR: User email missing from session after authentication for %s", request.URL.Path)
-				utils.HandleError(responseWriter, nil, utils.AuthenticationError, applicationContext.Logger, utils.ErrMsgUnauthorized)
+			// The verified email preserves the existing organizer identity and resource ownership.
+			organizer, err := models.UpsertUser(application.Database, claims.GetUserEmail(), claims.GetUserDisplayName(), claims.GetUserAvatarURL())
+			if err != nil {
+				application.Logger.Printf("Authorize organizer resource: database operation failed")
+				writeAuthorizationError(writer, http.StatusInternalServerError, "organizer_unavailable", "The organizer is unavailable.")
 				return
 			}
-
-			user, upsertErr := models.UpsertUser(applicationContext.Database, userEmail, userName, userPicture)
-			if upsertErr != nil {
-				applicationContext.Logger.Printf("ERROR: Failed to upsert user (%s) in AddUserToContext middleware for %s: %v", userEmail, request.URL.Path, upsertErr)
-				utils.HandleError(responseWriter, upsertErr, utils.ServerError, applicationContext.Logger, "Failed to retrieve or create user profile.")
-				return
-			}
-
-			ctx := context.WithValue(request.Context(), ContextKeyUser, user)
-			requestWithUser := request.WithContext(ctx)
-
-			next.ServeHTTP(responseWriter, requestWithUser)
+			next.ServeHTTP(writer, request.WithContext(context.WithValue(request.Context(), ContextKeyUser, organizer)))
 		})
 	}
+}
+
+func writeAuthorizationError(writer http.ResponseWriter, status int, code string, message string) {
+	identity := make([]byte, 16)
+	if _, err := rand.Read(identity); err != nil {
+		http.Error(writer, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+	writer.Header().Set("Content-Type", "application/json; charset=utf-8")
+	writer.Header().Set("Cache-Control", "private, no-store")
+	writer.WriteHeader(status)
+	_ = json.NewEncoder(writer).Encode(map[string]any{"error": map[string]any{"code": code, "message": message, "details": map[string]string{}, "request_id": hex.EncodeToString(identity)}})
 }

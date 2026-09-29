@@ -4,16 +4,16 @@ package routes
 import (
 	"context"
 	"errors"
-	"html/template"
+	"fmt"
+	"github.com/tyemirov/tauth/pkg/sessionvalidator"
+	"gopkg.in/yaml.v3"
 	"net/http"
-	"path/filepath"
+	"net/http/httputil"
+	"net/url"
+	"strings"
 	"time"
 
-	"github.com/tyemirov/GAuss/pkg/constants"
-	"github.com/tyemirov/GAuss/pkg/gauss"
-	"github.com/tyemirov/GAuss/pkg/session"
 	"github.com/tyemirov/RSVP/pkg/config"
-	"github.com/tyemirov/RSVP/pkg/handlers"
 	"github.com/tyemirov/RSVP/pkg/handlers/attentionpolicy"
 	"github.com/tyemirov/RSVP/pkg/handlers/calendar"
 	"github.com/tyemirov/RSVP/pkg/handlers/calendarconnection"
@@ -39,14 +39,35 @@ type Routes struct {
 	ApplicationContext       *config.ApplicationContext
 	EnvConfig                *config.EnvConfig
 	calendarConnectionRoutes *calendarconnection.Resources
+	authorizer               func(http.Handler) http.Handler
+	parser                   services.NaturalLanguageParser
+	derivedMarkers           *derivedmarker.Resources
+	ingestionDrafts          *ingestiondraft.Resources
 }
 
 // New creates and returns a new Routes instance.
-func New(applicationContext *config.ApplicationContext, envConfig config.EnvConfig) *Routes {
-	return &Routes{
-		ApplicationContext: applicationContext,
-		EnvConfig:          &envConfig,
+func New(applicationContext *config.ApplicationContext, envConfig config.EnvConfig) (*Routes, error) {
+	validator, err := sessionvalidator.New(sessionvalidator.Config{SigningKey: []byte(envConfig.Auth.SigningKey), Issuer: envConfig.Auth.Issuer, CookieName: envConfig.Auth.CookieName})
+	if err != nil {
+		return nil, fmt.Errorf("construct RSVP resource authorization: %w", err)
 	}
+	parser, err := naturallanguageprovider.New(envConfig.LLMProxy, http.DefaultClient)
+	if err != nil {
+		return nil, err
+	}
+	calendarResources, err := calendarconnection.New(applicationContext, envConfig, time.Now)
+	if err != nil {
+		return nil, fmt.Errorf("construct calendar connections: %w", err)
+	}
+	markerResources, err := derivedmarker.New(applicationContext)
+	if err != nil {
+		return nil, fmt.Errorf("construct derived markers: %w", err)
+	}
+	draftResources, err := ingestiondraft.New(applicationContext, time.Now, parser)
+	if err != nil {
+		return nil, fmt.Errorf("construct ingestion drafts: %w", err)
+	}
+	return &Routes{ApplicationContext: applicationContext, EnvConfig: &envConfig, authorizer: middleware.ResourceAuthorization(applicationContext, validator, envConfig.Auth.TenantID), parser: parser, calendarConnectionRoutes: calendarResources, derivedMarkers: markerResources, ingestionDrafts: draftResources}, nil
 }
 
 // LandingPageHandler serves the landing page.
@@ -55,34 +76,7 @@ func (appRoutes *Routes) LandingPageHandler(responseWriter http.ResponseWriter, 
 		http.NotFound(responseWriter, request)
 		return
 	}
-	webSession, sessionError := session.Store().Get(request, constants.SessionName)
-	if sessionError != nil {
-		appRoutes.ApplicationContext.Logger.Printf("ERROR: Session error on path %s: %v", request.URL.Path, sessionError)
-	}
-	userEmail := ""
-	if webSession != nil && webSession.Values != nil {
-		if emailValue, emailExists := webSession.Values[constants.SessionKeyUserEmail].(string); emailExists {
-			userEmail = emailValue
-		}
-	}
-	if userEmail != "" {
-		http.Redirect(responseWriter, request, config.WebHorizon, http.StatusFound)
-		return
-	}
-	landingTemplatePath := filepath.Join(config.TemplatesDir, config.TemplateLanding+config.TemplateExtension)
-	landingTemplate, parseError := template.ParseFiles(landingTemplatePath)
-	if parseError != nil {
-		appRoutes.ApplicationContext.Logger.Printf("FATAL: Parsing landing template '%s' failed: %v", landingTemplatePath, parseError)
-		utils.HandleError(responseWriter, parseError, utils.ServerError, appRoutes.ApplicationContext.Logger, "Could not display the page.")
-		return
-	}
-	templateData := map[string]interface{}{
-		config.ErrorQueryParam: request.URL.Query().Get(config.ErrorQueryParam),
-	}
-	executeError := landingTemplate.Execute(responseWriter, templateData)
-	if executeError != nil {
-		appRoutes.ApplicationContext.Logger.Printf("ERROR: Executing landing template '%s' failed: %v", landingTemplatePath, executeError)
-	}
+	staticassets.Handler().ServeHTTP(responseWriter, request)
 }
 
 // ApplyOverrides applies HTTP method override.
@@ -116,40 +110,60 @@ func (appRoutes *Routes) publicChainWithOverride(handler http.Handler) http.Hand
 	return appRoutes.ApplyOverrides(handler)
 }
 
-// RegisterMiddleware registers authentication and session middleware.
+// RegisterMiddleware exposes TAuth through the configured local front door.
 func (appRoutes *Routes) RegisterMiddleware(mux *http.ServeMux) {
-	session.NewSession([]byte(appRoutes.EnvConfig.SessionSecret))
-	landingTemplatePath := filepath.Join(config.TemplatesDir, config.TemplateLanding+config.TemplateExtension)
-	authenticationService, authServiceError := gauss.NewService(
-		appRoutes.EnvConfig.GoogleClientID,
-		appRoutes.EnvConfig.GoogleClientSecret,
-		appRoutes.EnvConfig.GoogleOauth2Base,
-		config.WebHorizon,
-		nil,
-		landingTemplatePath,
-	)
-	if authServiceError != nil {
-		appRoutes.ApplicationContext.Logger.Fatalf("FATAL: Initializing auth service failed: %v", authServiceError)
+	target, _ := url.Parse(appRoutes.EnvConfig.Auth.UpstreamURL)
+	proxy := httputil.NewSingleHostReverseProxy(target)
+	proxy.ErrorHandler = func(writer http.ResponseWriter, _ *http.Request, _ error) {
+		http.Error(writer, "Authentication service is unavailable.", http.StatusBadGateway)
 	}
-	gaussHandlers, gaussHandlersError := gauss.NewHandlers(authenticationService)
-	if gaussHandlersError != nil {
-		appRoutes.ApplicationContext.Logger.Fatalf("FATAL: Initializing auth handlers failed: %v", gaussHandlersError)
+	mux.Handle("/auth/", proxy)
+}
+
+// UIConfig returns only the public browser configuration.
+func (appRoutes *Routes) UIConfig() ([]byte, error) {
+	auth := appRoutes.EnvConfig.Auth
+	browserAuth := map[string]any{
+		"tauthUrl": auth.URL, "tenantId": auth.TenantID, "logoutPath": auth.LogoutPath, "sessionPath": auth.SessionPath,
+		"providers": map[string]any{"google": map[string]any{"enabled": true, "clientId": appRoutes.EnvConfig.GoogleClientID, "loginPath": auth.LoginPath, "noncePath": auth.NoncePath}, "apple": map[string]bool{"enabled": false}, "password": map[string]bool{"enabled": false}},
 	}
-	gaussHandlers.RegisterRoutes(mux)
-	appRoutes.ApplicationContext.Logger.Println("GAuss authentication middleware and routes registered.")
+	return yaml.Marshal(map[string]any{"environments": []any{map[string]any{"description": "RSVP", "origins": []string{strings.TrimSuffix(appRoutes.EnvConfig.AppBaseURL, "/")}, "auth": browserAuth}}})
 }
 
 // RegisterRoutes registers all application routes.
 func (appRoutes *Routes) RegisterRoutes(mux *http.ServeMux) {
-	authRequired := gauss.AuthMiddleware
-	addUserMiddleware := middleware.AddUserToContext(appRoutes.ApplicationContext)
-	applyOverrides := appRoutes.ApplyOverrides
 	protectedChain := func(handler http.Handler) http.Handler {
-		return authRequired(addUserMiddleware(applyOverrides(handler)))
+		return appRoutes.authorizer(appRoutes.ApplyOverrides(handler))
 	}
-	strictProtectedChain := func(handler http.Handler) http.Handler {
-		return authRequired(addUserMiddleware(handler))
-	}
+	strictProtectedChain := appRoutes.authorizer
+	mux.HandleFunc("/healthz", func(writer http.ResponseWriter, request *http.Request) {
+		if request.Method != http.MethodGet && request.Method != http.MethodHead {
+			writer.Header().Set("Allow", "GET, HEAD")
+			http.Error(writer, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		if request.Method == http.MethodGet {
+			_, _ = writer.Write([]byte("OK"))
+		}
+	})
+	mux.HandleFunc("/config-ui.yaml", func(writer http.ResponseWriter, request *http.Request) {
+		if request.Method != http.MethodGet && request.Method != http.MethodHead {
+			writer.Header().Set("Allow", "GET, HEAD")
+			http.Error(writer, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		payload, err := appRoutes.UIConfig()
+		if err != nil {
+			http.Error(writer, "Browser configuration is unavailable", http.StatusInternalServerError)
+			return
+		}
+		writer.Header().Set("Content-Type", "application/yaml")
+		writer.Header().Set("Cache-Control", "no-store")
+		if request.Method == http.MethodGet {
+			_, _ = writer.Write(payload)
+		}
+	})
 	mux.HandleFunc(config.WebRoot, appRoutes.LandingPageHandler)
 	mux.Handle(config.WebStatic, http.StripPrefix(config.WebStatic, staticassets.Handler()))
 	responseBaseDispatcher := http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
@@ -175,44 +189,18 @@ func (appRoutes *Routes) RegisterRoutes(mux *http.ServeMux) {
 	})
 	mux.Handle(config.WebEvents, protectedChain(eventBaseDispatcher))
 	mux.Handle(config.WebCalendars, strictProtectedChain(calendar.Handler(appRoutes.ApplicationContext)))
-	derivedMarkerResources, derivedMarkerError := derivedmarker.New(appRoutes.ApplicationContext)
-	if derivedMarkerError != nil {
-		panic(derivedMarkerError)
-	}
-	mux.Handle(config.WebDerivedMarkerRules, strictProtectedChain(derivedMarkerResources.Handler()))
-	parserAdapter, parserAdapterError := naturallanguageprovider.New(appRoutes.EnvConfig.NaturalLanguageParserEndpoint, appRoutes.EnvConfig.NaturalLanguageParserAPIKey, naturallanguageprovider.DefaultHTTPClient())
-	var parser services.NaturalLanguageParser
-	if parserAdapterError == nil {
-		parser = parserAdapter
-	}
-	ingestionDraftResources, ingestionDraftError := ingestiondraft.New(appRoutes.ApplicationContext, time.Now, parser)
-	if ingestionDraftError != nil {
-		panic(ingestionDraftError)
-	}
-	mux.Handle(config.WebIngestionDrafts, strictProtectedChain(ingestionDraftResources.Handler()))
-	calendarConnectionResources, calendarConnectionError := calendarconnection.New(appRoutes.ApplicationContext, *appRoutes.EnvConfig, time.Now)
-	if calendarConnectionError == nil {
-		appRoutes.calendarConnectionRoutes = calendarConnectionResources
-		mux.Handle(config.WebCalendarAuthorizationRequests, strictProtectedChain(calendarConnectionResources.AuthorizationRequests()))
-		mux.Handle(config.WebCalendarConnectionCallbacksGoogle, strictProtectedChain(calendarConnectionResources.Callback()))
-		mux.Handle(config.WebCalendarConnections, strictProtectedChain(calendarConnectionResources.Connections()))
-	} else {
-		unavailable := http.HandlerFunc(func(responseWriter http.ResponseWriter, _ *http.Request) {
-			if responseError := handlers.WriteTypedError(responseWriter, http.StatusServiceUnavailable, "calendar_connection_unavailable", "Calendar connection is unavailable."); responseError != nil {
-				appRoutes.ApplicationContext.Logger.Printf("ERROR: Write calendar connection unavailable response: %v", responseError)
-			}
-		})
-		mux.Handle(config.WebCalendarAuthorizationRequests, strictProtectedChain(unavailable))
-		mux.Handle(config.WebCalendarConnectionCallbacksGoogle, strictProtectedChain(unavailable))
-		mux.Handle(config.WebCalendarConnections, strictProtectedChain(unavailable))
-	}
+	mux.Handle(config.WebDerivedMarkerRules, strictProtectedChain(appRoutes.derivedMarkers.Handler()))
+	mux.Handle(config.WebIngestionDrafts, strictProtectedChain(appRoutes.ingestionDrafts.Handler()))
+	mux.Handle(config.WebCalendarAuthorizationRequests, strictProtectedChain(appRoutes.calendarConnectionRoutes.AuthorizationRequests()))
+	mux.Handle(config.WebCalendarConnectionCallbacksGoogle, strictProtectedChain(appRoutes.calendarConnectionRoutes.Callback()))
+	mux.Handle(config.WebCalendarConnections, strictProtectedChain(appRoutes.calendarConnectionRoutes.Connections()))
 	mux.Handle(config.WebAttentionPolicies, strictProtectedChain(attentionpolicy.Handler(appRoutes.ApplicationContext, time.Now)))
 	mux.Handle(config.WebLanes, strictProtectedChain(lane.Handler(appRoutes.ApplicationContext, time.Now)))
 	mux.Handle(config.WebOrganizers, strictProtectedChain(organizer.Handler(appRoutes.ApplicationContext)))
 	mux.Handle(config.WebProbes, strictProtectedChain(probe.Handler(appRoutes.ApplicationContext, time.Now)))
 	horizonHandler := horizon.Handler(appRoutes.ApplicationContext, time.Now)
-	mux.Handle(config.WebHorizon, horizon.AuthenticationMiddleware(appRoutes.ApplicationContext, addUserMiddleware(horizonHandler)))
-	mux.Handle(config.WebRSVPQR, authRequired(addUserMiddleware(http.HandlerFunc(rsvp.ShowHandler(appRoutes.ApplicationContext)))))
+	mux.Handle(config.WebHorizon, strictProtectedChain(horizonHandler))
+	mux.Handle(config.WebRSVPQR, strictProtectedChain(http.HandlerFunc(rsvp.ShowHandler(appRoutes.ApplicationContext))))
 	rsvpBaseDispatcher := http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
 		appRoutes.ApplicationContext.Logger.Printf("Router: Protected path %s, method %s", request.URL.Path, request.Method)
 		switch request.Method {

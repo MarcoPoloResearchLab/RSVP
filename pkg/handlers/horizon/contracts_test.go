@@ -12,13 +12,11 @@ import (
 	"testing"
 	"time"
 
-	gaussConstants "github.com/tyemirov/GAuss/pkg/constants"
-	"github.com/tyemirov/GAuss/pkg/session"
+	"github.com/tyemirov/RSVP/internal/routetestfixture"
 	"github.com/tyemirov/RSVP/internal/testsupport"
 	"github.com/tyemirov/RSVP/models"
 	"github.com/tyemirov/RSVP/pkg/config"
 	"github.com/tyemirov/RSVP/pkg/handlers/horizon"
-	"github.com/tyemirov/RSVP/pkg/routes"
 	"github.com/tyemirov/RSVP/pkg/services"
 	"gorm.io/gorm"
 )
@@ -517,25 +515,14 @@ func TestHorizonLaneControlsUseCompleteCalendarOrder(testingContext *testing.T) 
 func TestAuthenticatedHomeAndStaticAssetRoutesUseHorizon(testingContext *testing.T) {
 	fixture := testsupport.NewFixture(testingContext)
 	owner := fixture.CreateUser(testsupport.OwnerUserID)
-	appRoutes := routes.New(fixture.ApplicationContext, config.EnvConfig{})
+	appRoutes := routetestfixture.New(testingContext, fixture.ApplicationContext)
 
 	rootRequest := httptest.NewRequest(http.MethodGet, config.WebRoot, nil)
-	sessionRecorder := httptest.NewRecorder()
-	webSession, sessionError := session.Store().Get(rootRequest, gaussConstants.SessionName)
-	if sessionError != nil {
-		testingContext.Fatalf("get root session: %v", sessionError)
-	}
-	webSession.Values[gaussConstants.SessionKeyUserEmail] = owner.Email
-	if saveError := webSession.Save(rootRequest, sessionRecorder); saveError != nil {
-		testingContext.Fatalf("save root session: %v", saveError)
-	}
-	for _, cookie := range sessionRecorder.Result().Cookies() {
-		rootRequest.AddCookie(cookie)
-	}
+	rootRequest.AddCookie(testsupport.SessionCookie(testingContext, owner))
 	rootResponse := httptest.NewRecorder()
 	appRoutes.LandingPageHandler(rootResponse, rootRequest)
-	if rootResponse.Code != http.StatusFound || rootResponse.Header().Get("Location") != config.WebHorizon {
-		testingContext.Fatalf("authenticated root response = %d %q, want %d %q", rootResponse.Code, rootResponse.Header().Get("Location"), http.StatusFound, config.WebHorizon)
+	if rootResponse.Code != http.StatusOK {
+		testingContext.Fatalf("root shell status = %d", rootResponse.Code)
 	}
 
 	mux := http.NewServeMux()
@@ -609,7 +596,7 @@ func TestHorizonRouteRequiresAuthentication(testingContext *testing.T) {
 	owner := fixture.CreateUser(testsupport.OwnerUserID)
 	confirmTimezone(testingContext, fixture.Database, &owner)
 	mux := http.NewServeMux()
-	routes.New(fixture.ApplicationContext, config.EnvConfig{}).RegisterRoutes(mux)
+	routetestfixture.New(testingContext, fixture.ApplicationContext).RegisterRoutes(mux)
 	testServer := httptest.NewServer(mux)
 	testingContext.Cleanup(testServer.Close)
 	testClient := testServer.Client()
@@ -621,8 +608,8 @@ func TestHorizonRouteRequiresAuthentication(testingContext *testing.T) {
 	if closeError := unauthenticatedResponse.Body.Close(); closeError != nil {
 		testingContext.Fatalf("close unauthenticated response: %v", closeError)
 	}
-	if unauthenticatedResponse.StatusCode != http.StatusFound {
-		testingContext.Fatalf("unauthenticated status = %d, want %d", unauthenticatedResponse.StatusCode, http.StatusFound)
+	if unauthenticatedResponse.StatusCode != http.StatusUnauthorized {
+		testingContext.Fatalf("unauthenticated status = %d, want %d", unauthenticatedResponse.StatusCode, http.StatusUnauthorized)
 	}
 	unauthenticatedJSONRequest, requestConstructionError := http.NewRequest(http.MethodGet, testServer.URL+config.WebHorizon, nil)
 	if requestConstructionError != nil {
@@ -653,25 +640,12 @@ func TestHorizonRouteRequiresAuthentication(testingContext *testing.T) {
 		testingContext.Fatalf("authentication error response = %#v", authenticationErrorResponse.Error)
 	}
 
-	sessionRequest := httptest.NewRequest(http.MethodGet, config.WebHorizon, nil)
-	sessionRecorder := httptest.NewRecorder()
-	webSession, sessionError := session.Store().Get(sessionRequest, gaussConstants.SessionName)
-	if sessionError != nil {
-		testingContext.Fatalf("get authenticated session: %v", sessionError)
-	}
-	webSession.Values[gaussConstants.SessionKeyUserEmail] = owner.Email
-	webSession.Values[gaussConstants.SessionKeyUserName] = owner.Name
-	if saveError := webSession.Save(sessionRequest, sessionRecorder); saveError != nil {
-		testingContext.Fatalf("save authenticated session: %v", saveError)
-	}
 	authenticatedRequest, requestConstructionError := http.NewRequest(http.MethodGet, testServer.URL+config.WebHorizon, nil)
 	if requestConstructionError != nil {
 		testingContext.Fatalf("construct authenticated request: %v", requestConstructionError)
 	}
 	authenticatedRequest.Header.Set("Accept", horizonJSONMediaType)
-	for _, cookie := range sessionRecorder.Result().Cookies() {
-		authenticatedRequest.AddCookie(cookie)
-	}
+	authenticatedRequest.AddCookie(testsupport.SessionCookie(testingContext, owner))
 	authenticatedResponse, authenticatedRequestError := testClient.Do(authenticatedRequest)
 	if authenticatedRequestError != nil {
 		testingContext.Fatalf("request authenticated horizon: %v", authenticatedRequestError)
@@ -739,28 +713,16 @@ func TestHorizonResourcesDoNotAcceptMethodOverride(testingContext *testing.T) {
 	confirmTimezone(testingContext, fixture.Database, &owner)
 	calendarRecord := createCalendar(testingContext, fixture.Database, owner.ID, "CALREST0", "REST", 0, true)
 	mux := http.NewServeMux()
-	routes.New(fixture.ApplicationContext, config.EnvConfig{}).RegisterRoutes(mux)
+	routetestfixture.New(testingContext, fixture.ApplicationContext).RegisterRoutes(mux)
 	testServer := httptest.NewServer(mux)
 	testingContext.Cleanup(testServer.Close)
 
-	sessionRequest := httptest.NewRequest(http.MethodGet, config.WebHorizon, nil)
-	sessionRecorder := httptest.NewRecorder()
-	webSession, sessionError := session.Store().Get(sessionRequest, gaussConstants.SessionName)
-	if sessionError != nil {
-		testingContext.Fatalf("get session: %v", sessionError)
-	}
-	webSession.Values[gaussConstants.SessionKeyUserEmail] = owner.Email
-	if saveError := webSession.Save(sessionRequest, sessionRecorder); saveError != nil {
-		testingContext.Fatalf("save session: %v", saveError)
-	}
 	request, requestError := http.NewRequest(http.MethodPost, testServer.URL+config.WebCalendars+calendarRecord.ID, strings.NewReader("_method=DELETE"))
 	if requestError != nil {
 		testingContext.Fatalf("construct request: %v", requestError)
 	}
 	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	for _, cookie := range sessionRecorder.Result().Cookies() {
-		request.AddCookie(cookie)
-	}
+	request.AddCookie(testsupport.SessionCookie(testingContext, owner))
 	response, responseError := testServer.Client().Do(request)
 	if responseError != nil {
 		testingContext.Fatalf("request calendar item: %v", responseError)

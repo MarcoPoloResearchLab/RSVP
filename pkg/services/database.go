@@ -198,6 +198,13 @@ func OpenDatabase(databaseFileName string) (*gorm.DB, error) {
 		return nil, fmt.Errorf("connect to database %s: %w", databaseFileName, connectionError)
 	}
 
+	sqlDatabase, sqlDatabaseError := databaseConnection.DB()
+	if sqlDatabaseError != nil {
+		return nil, fmt.Errorf("get SQLite connection pool for %s: %w", databaseFileName, sqlDatabaseError)
+	}
+	// SQLite permits one writer. A single connection serializes application and task transactions.
+	sqlDatabase.SetMaxOpenConns(1)
+
 	presentTableCount := 0
 	for _, tableName := range canonicalTableNames {
 		if databaseConnection.Migrator().HasTable(tableName) {

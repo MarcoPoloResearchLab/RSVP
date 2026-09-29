@@ -6,8 +6,6 @@ import (
 	"net/http"
 	"strings"
 
-	gconstants "github.com/tyemirov/GAuss/pkg/constants"
-	"github.com/tyemirov/GAuss/pkg/session"
 	"github.com/tyemirov/RSVP/models"
 	"github.com/tyemirov/RSVP/pkg/config"
 	"github.com/tyemirov/RSVP/pkg/middleware"
@@ -22,8 +20,6 @@ type PageData struct {
 	IsPublicPage        bool
 	UserName            string
 	UserPicture         string
-	CSRFToken           string
-	URLForLogout        string
 	URLForRoot          string
 	Data                interface{}
 	AppTitle            string
@@ -33,9 +29,6 @@ type PageData struct {
 	URLForHorizon       string
 	VenueManagerLabel   string
 	URLForVenueManager  string
-	LabelWelcome        string
-	LabelSignOut        string
-	LabelNotSignedIn    string
 	Settings            SettingsViewData
 	SettingsStylesURL   string
 	SettingsScriptURL   string
@@ -52,20 +45,11 @@ type LoggedUserData struct {
 // GetUserData retrieves user information (name, email, picture) from the current session.
 // Returns an empty LoggedUserData struct if the session is invalid or data is missing.
 func GetUserData(httpRequest *http.Request) *LoggedUserData {
-	sessionInstance, sessionError := session.Store().Get(httpRequest, gconstants.SessionName)
-	if sessionError != nil {
+	organizer, ok := httpRequest.Context().Value(middleware.ContextKeyUser).(*models.User)
+	if !ok {
 		return &LoggedUserData{}
 	}
-
-	sessionUserPicture, _ := sessionInstance.Values[gconstants.SessionKeyUserPicture].(string)
-	sessionUserName, _ := sessionInstance.Values[gconstants.SessionKeyUserName].(string)
-	sessionUserEmail, _ := sessionInstance.Values[gconstants.SessionKeyUserEmail].(string)
-
-	return &LoggedUserData{
-		UserPicture: sessionUserPicture,
-		UserName:    sessionUserName,
-		UserEmail:   sessionUserEmail,
-	}
+	return &LoggedUserData{UserPicture: organizer.Picture, UserName: organizer.Name, UserEmail: organizer.Email, UserID: organizer.ID}
 }
 
 // BaseHttpHandler provides common context (database, logger, base URL) and helper methods
@@ -197,14 +181,12 @@ func (handler *BaseHttpHandler) RenderView(
 	publicViews := map[string]bool{
 		config.TemplateResponse: true,
 		config.TemplateThankYou: true,
-		config.TemplateLanding:  true,
 	}
 	isPublicPage := publicViews[viewName]
 
 	pageData := PageData{
 		IsPublicPage:        isPublicPage,
 		Data:                viewSpecificData,
-		URLForLogout:        gconstants.LogoutPath,
 		URLForRoot:          config.WebRoot,
 		AppTitle:            config.AppTitle,
 		EventsManagerLabel:  config.ResourceLabelEventManager,
@@ -213,9 +195,6 @@ func (handler *BaseHttpHandler) RenderView(
 		URLForHorizon:       config.WebHorizon,
 		VenueManagerLabel:   config.ResourceLabelVenueManager,
 		URLForVenueManager:  config.WebVenues,
-		LabelWelcome:        config.LabelWelcome,
-		LabelSignOut:        config.LabelSignOut,
-		LabelNotSignedIn:    config.LabelNotSignedIn,
 		SettingsStylesURL:   config.SettingsStylesPath,
 		SettingsScriptURL:   config.SettingsScriptPath,
 	}
@@ -241,11 +220,6 @@ func (handler *BaseHttpHandler) RenderView(
 	}
 	templateSet, exists := templates.PrecompiledTemplatesMap[viewName]
 	if !exists {
-		if viewName != config.TemplateLanding {
-			handler.ApplicationContext.Logger.Printf("WARN: Template set for view '%s' not found in PrecompiledTemplatesMap. Attempting to render landing page.", viewName)
-			handler.HandleError(httpResponseWriter, nil, utils.ServerError, utils.ErrMsgInternalServer)
-			return
-		}
 		handler.ApplicationContext.Logger.Printf("CRITICAL: Template set for view '%s' not found in PrecompiledTemplatesMap.", viewName)
 		handler.HandleError(httpResponseWriter, nil, utils.ServerError, utils.ErrMsgInternalServer)
 		return
