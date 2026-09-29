@@ -1,0 +1,40 @@
+name: Go Checks
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - "**/*.go"
+      - "go.mod"
+      - "go.sum"
+      - "Makefile"
+      - ".golangci.yml"
+      - ".github/workflows/go-checks.yaml"
+  pull_request:
+    branches: [master]
+    paths:
+      - "**/*.go"
+      - "go.mod"
+      - "go.sum"
+      - "Makefile"
+      - ".golangci.yml"
+      - ".github/workflows/go-checks.yaml"
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          check-latest: true
+          cache: true
+      - name: Install lint tools
+        run: |
+          go install honnef.co/go/tools/cmd/staticcheck@v0.8.1
+          go install github.com/gordonklaus/ineffassign@v0.2.0
+      - name: Run CI checks
+        run: make ci
