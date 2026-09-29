@@ -10,6 +10,10 @@ Give each term one meaning. Use the same term for the same concept in all docume
 
 ## MPR Lab Technical Nouns
 
+- `emulator`: Software that reproduces a device runtime for application tests.
+- `physical device`: Hardware used to run an application or do a device test.
+- `simulator`: Software that models a device environment for application tests.
+
 - `acceptance criteria`: Conditions that show that a change has the necessary behavior.
 - `active issue tracker`: The canonical file that contains current work.
 - `ADR`: An architecture decision record.
