@@ -1,23 +1,6 @@
 {{ define "partials/header" }}
-<nav class="navbar navbar-expand-lg navbar-custom">
-    <div class="container d-flex justify-content-between align-items-center">
-        <div class="d-flex">
-            <a class="navbar-brand px-3" href="{{ .URLForHorizon }}">{{ .HorizonLabel }}</a>
-            <a class="navbar-brand px-3" href="{{ .URLForEventsManager }}">{{ .EventsManagerLabel }}</a>
-            <a class="navbar-brand px-3" href="{{ .URLForVenueManager }}">{{ .VenueManagerLabel }}</a>
-        </div>
-        <details class="user-menu" data-user-menu>
-            <summary aria-label="Open user menu">
-                <img src="{{ .UserPicture }}" alt="User avatar" class="rounded-circle">
-                <span>{{ if .UserName }}{{ .UserName }}{{ else }}Account{{ end }}</span>
-            </summary>
-            <div class="user-menu-dropdown">
-                <button type="button" class="user-menu-action" data-settings-open aria-haspopup="dialog">Settings</button>
-                <form action="{{ .URLForLogout }}" method="POST">
-                    <button type="submit" class="user-menu-action">{{ .LabelSignOut }}</button>
-                </form>
-            </div>
-        </details>
-    </div>
-</nav>
+<header class="fixed-navbar workspace-toolbar">
+ <nav aria-label="Workspace"><a href="{{ .URLForHorizon }}">Horizon</a><a href="{{ .URLForEventsManager }}">Events</a><a href="{{ .URLForVenueManager }}">Venues</a></nav>
+ <button type="button" data-settings-open aria-haspopup="dialog">Settings</button>
+</header>
 {{ end }}

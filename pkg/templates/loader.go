@@ -80,10 +80,6 @@ func LoadAllPrecompiledTemplates(templatesDirectoryPath string) {
 		}
 		baseTemplateName := strings.TrimSuffix(directoryEntry.Name(), config.TemplateExtension)
 		relativeFilePath, _ := filepath.Rel(templatesDirectoryPath, filePath)
-		if baseTemplateName == config.TemplateLanding {
-			log.Printf("Skipping standalone template: %s", relativeFilePath)
-			return nil
-		}
 		if baseTemplateName == config.TemplateLayout {
 			if layoutFilePath != "" {
 				log.Printf("Multiple layout files found; using '%s' and ignoring '%s'", layoutFilePath, filePath)

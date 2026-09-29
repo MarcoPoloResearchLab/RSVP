@@ -1,0 +1,19 @@
+server:
+  listen_addr: ":8080"
+  database_url: sqlite:///data/tauth.db
+  enable_cors: false
+  enable_tenant_header_override: true
+tenants:
+  - id: rsvp-development
+    display_name: RSVP Development
+    tenant_origins:
+      - http://localhost:8080
+    google_web_client_id: "${GOOGLE_CLIENT_ID}"
+    jwt_signing_key: "${TAUTH_JWT_SIGNING_KEY}"
+    cookie_domain: ""
+    session_cookie_name: rsvp_development_session
+    refresh_cookie_name: rsvp_development_refresh
+    session_ttl: 30m
+    refresh_ttl: 720h
+    nonce_ttl: 10m
+    allow_insecure_http: true

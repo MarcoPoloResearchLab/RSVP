@@ -9,6 +9,8 @@ if [[ ! -f "${calendar_key_file}" ]]; then
   printf 'error: run make up before make %s\n' "${RSVP_LOCAL_COMMAND:?RSVP_LOCAL_COMMAND is required}" >&2
   exit 1
 fi
+export RSVP_TAUTH_JWT_SIGNING_KEY="$(<"${repository_root}/.cache/rsvp-local/tauth-jwt-signing-key")"
+export RSVP_LLM_PROXY_SECRET="$(<"${repository_root}/.cache/rsvp-local/llm-proxy-secret")"
 export RSVP_RUNTIME_ENV_FILE="${source_environment}"
 export RSVP_PUBLIC_ORIGIN="http://localhost:8080"
 export RSVP_CALENDAR_CREDENTIAL_ENCRYPTION_KEY="$(<"${calendar_key_file}")"

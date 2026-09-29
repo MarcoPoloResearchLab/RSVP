@@ -1,4 +1,4 @@
-// Package main supplies the deterministic parser for the localhost stack.
+// Package main supplies the deterministic LLM Proxy boundary for the localhost stack.
 package main
 
 import (
@@ -6,6 +6,7 @@ import (
 	"github.com/tyemirov/RSVP/pkg/server"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/tyemirov/RSVP/pkg/services"
@@ -13,13 +14,12 @@ import (
 
 const (
 	fixtureAddress   = "0.0.0.0:8082"
-	fixtureAPIKey    = "rsvp-local-parser"
-	fixtureParsePath = "/parse"
+	fixtureParsePath = "/v2"
 )
 
 func main() {
 	httpServer := server.NewHTTPServer(fixtureAddress, newHandler())
-	log.Printf("Local natural-language parser listens on %s", fixtureAddress)
+	log.Printf("Local LLM Proxy fixture listens on %s", fixtureAddress)
 	if serveError := httpServer.ListenAndServe(); serveError != nil {
 		log.Fatal(serveError)
 	}
@@ -36,15 +36,27 @@ func newHandler() http.Handler {
 			http.Error(responseWriter, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
 			return
 		}
-		if request.Header.Get("Authorization") != "Bearer "+fixtureAPIKey {
+		if request.URL.Query().Get("key") != os.Getenv("LLM_PROXY_SECRET") || os.Getenv("LLM_PROXY_SECRET") == "" {
 			http.Error(responseWriter, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
 			return
 		}
-		var input services.NaturalLanguageParseRequest
+		var messages struct {
+			Messages []struct {
+				Role    string `json:"role"`
+				Content string `json:"content"`
+			} `json:"messages"`
+			Model           string `json:"model"`
+			ReasoningEffort string `json:"reasoning_effort"`
+		}
 		decoder := json.NewDecoder(request.Body)
 		decoder.DisallowUnknownFields()
-		if decodeError := decoder.Decode(&input); decodeError != nil || strings.TrimSpace(input.InputText) == "" || input.ReferenceTime.IsZero() || strings.TrimSpace(input.Timezone) == "" {
+		if decodeError := decoder.Decode(&messages); decodeError != nil || len(messages.Messages) != 2 {
 			http.Error(responseWriter, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+			return
+		}
+		var input services.NaturalLanguageParseRequest
+		if err := json.Unmarshal([]byte(messages.Messages[1].Content), &input); err != nil || strings.TrimSpace(input.InputText) == "" || input.ReferenceTime.IsZero() || input.Timezone == "" {
+			http.Error(responseWriter, "Invalid temporal context", http.StatusBadRequest)
 			return
 		}
 		title := strings.TrimSpace(input.InputText)

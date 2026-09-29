@@ -1,12 +1,8 @@
 package horizon_test
 
 import (
-	"bytes"
-	"html/template"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -14,6 +10,7 @@ import (
 	"github.com/tyemirov/RSVP/internal/testsupport"
 	"github.com/tyemirov/RSVP/pkg/config"
 	horizonhandler "github.com/tyemirov/RSVP/pkg/handlers/horizon"
+	staticassets "github.com/tyemirov/RSVP/static"
 )
 
 const (
@@ -26,20 +23,9 @@ func TestRenderedPagesUseCurrentLoopAwareSite(testingContext *testing.T) {
 	fixture := testsupport.NewFixture(testingContext)
 	testsupport.LoadTemplates(testingContext)
 
-	_, currentFilePath, _, sourceFound := runtime.Caller(0)
-	if !sourceFound {
-		testingContext.Fatal("locate LoopAware contract test")
-	}
-	landingTemplatePath := filepath.Join(filepath.Dir(currentFilePath), "..", "..", "..", config.TemplatesDir, config.TemplateLanding+config.TemplateExtension)
-	landingTemplate, parseError := template.ParseFiles(landingTemplatePath)
-	if parseError != nil {
-		testingContext.Fatalf("parse landing page template: %v", parseError)
-	}
-	var landingHTML bytes.Buffer
-	if executeError := landingTemplate.Execute(&landingHTML, map[string]interface{}{}); executeError != nil {
-		testingContext.Fatalf("render landing page template: %v", executeError)
-	}
-	assertCurrentLoopAwareSite(testingContext, "landing page", landingHTML.String())
+	landingResponse := httptest.NewRecorder()
+	staticassets.Handler().ServeHTTP(landingResponse, httptest.NewRequest(http.MethodGet, "/", nil))
+	assertCurrentLoopAwareSite(testingContext, "landing page", landingResponse.Body.String())
 
 	owner := fixture.CreateUser(testsupport.OwnerUserID)
 	horizonRequest := testsupport.Request(testingContext, http.MethodGet, config.WebHorizon, nil, &owner)

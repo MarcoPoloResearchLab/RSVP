@@ -2,42 +2,78 @@
 
 This runbook contains the current local and production operations for the RSVP time horizon.
 
-## Required Private Values
+## Configuration
 
-Supply these values through the private environment:
+`config.yml` owns the backend configuration.
+The loader rejects unknown fields, extra YAML documents, absent references, and invalid values before startup.
+The tracked file contains environment references for private values.
+
+Supply these environment variables for a direct backend start:
 
 - `APP_BASE_URL`
+- `APP_WEBSITE_URL`
+- `DB_NAME`
 - `CALENDAR_CREDENTIAL_ENCRYPTION_KEY`
 - `GOOGLE_CLIENT_ID`
 - `GOOGLE_CLIENT_SECRET`
-- `GOOGLE_OAUTH2_BASE`
-- `NATURAL_LANGUAGE_PARSER_API_KEY`
-- `NATURAL_LANGUAGE_PARSER_ENDPOINT`
-- `SESSION_SECRET`
+- `TAUTH_JWT_SIGNING_KEY`
+- `TAUTH_COOKIE_NAME`
+- `TAUTH_TENANT_ID`
+- `TAUTH_PUBLIC_URL`
+- `TAUTH_UPSTREAM_URL`
+- `LLM_PROXY_BASE_URL`
+- `LLM_PROXY_SECRET`
 
-Set `DB_NAME` when the database path is not `rsvps.db`.
-Set `TLS_CERT_PATH` and `TLS_KEY_PATH` only for direct TLS termination.
+The LLM Proxy provider and model fields are explicitly empty.
+The tenant text default controls both values.
+The backend sends `low` reasoning effort and a 120-second work budget.
+The same budget limits each official client call, including the response body.
+An earlier caller time limit remains in effect.
+Keep private values out of tracked files and logs.
 
-Do not put private values in tracked files or logs.
-The production manifest gets each parser value from the `private` resource.
+## Local Orchestration
 
-## Start The Application
+1. Supply the Google client values in `.env.docker`.
+2. Add `http://localhost:8080` to the Google client origins.
+3. Run `make up`.
+4. Open `http://localhost:8080/`.
+5. Run `make down` when the local test is completed.
 
-1. Supply all required private values.
-2. Set `DB_NAME` to an empty path or a database with a supported I006 predecessor schema.
-3. Run `go run ./cmd/web`.
-4. Confirm that the root health request returns `200`.
+`make up` builds RSVP and the deterministic LLM Proxy fixture.
+It starts the official TAuth container with `configs/tauth-local.yml`.
+
+The tenant ID is `rsvp-development`.
+The session and refresh cookies are `rsvp_development_session` and `rsvp_development_refresh`.
+TAuth uses issuer `tauth`, host-only cookies, and HTTP for localhost.
+
+RSVP proxies the `/auth/` paths to TAuth.
+Google sign-in uses a popup exchange at `/auth/google`, not a redirect callback.
+Google Calendar consent uses `/calendar-connection-callbacks/google/` as a separate callback.
+
+Live Google sign-in and session restoration succeeded under the user account on September 29, 2026.
+The existing local organizer and Calendar workspace remained available.
+
+The stack creates private keys in `.cache/rsvp-local` on the first start.
+Keep these keys with the retained database volumes.
+The deterministic language fixture copies the input title into an open-lane proposal.
+It does not prove live model behavior.
+
+## Start The Backend Directly
+
+1. Supply the environment references that `config.yml` requires.
+2. Set `DB_NAME` to an empty database path or an accepted predecessor database.
+3. Run `go run ./cmd/web` from the repository root.
+4. Confirm that `GET /healthz` returns `200`.
+
+RSVP uses one connection for the SQLite file.
+This connection serializes database writes from HTTP requests and background tasks.
+Provider HTTP requests run outside database transactions.
 
 RSVP initializes an empty SQLite database with the complete canonical schema.
 RSVP rejects an incomplete database during startup.
 The B047 migration creates one provider calendar sync state for each provider calendar.
 The migration clears CalendarList and event cursors for one complete reconciliation.
 The runtime rejects a database that does not use the current or an accepted predecessor schema.
-
-`make up` stops the `rsvp-local` Compose project and deletes its volumes.
-It preserves `.env.docker` and the calendar credential encryption key.
-It then builds the services and creates a new `rsvp-data` volume.
-This local reset does not change the production retained volume.
 
 ## Validate The Complete Capability
 
@@ -114,29 +150,62 @@ Do not write authorization codes or refresh credentials to logs.
 
 ## Diagnose Natural-Language Input
 
-Make sure that both parser environment values are present.
-Make sure that the parser endpoint accepts the current authenticated JSON contract.
+Verify `LLM_PROXY_BASE_URL` and `LLM_PROXY_SECRET`.
+Verify the tenant text default in the LLM Proxy console.
+Use the official client tests to inspect the native messages contract.
 
 An invalid provider response creates no draft.
 An incomplete valid response creates one incomplete draft.
 The organizer must supply all missing values before confirmation.
 
 Use the deterministic parser tests when the provider boundary changes.
-Do not write the input text or parser key to logs.
+Do not write input text or the tenant API key to logs.
 
-## Validate The Production Manifest
+## Production Preparation
 
-Run this command from the gateway repository:
+The selected manifest defines a GitHub Pages website and a separate backend hostname.
+The website is `https://rsvp.mprlab.com`.
+The backend and proxied TAuth surface are `https://rsvp-api.mprlab.com`.
 
-```shell
-make plan-app-release MPRLAB_APP_ROOT=/absolute/path/to/RSVP
-```
+The proposed TAuth tenant ID is `rsvp-production`.
+Its session and refresh cookies are `rsvp_production_session` and `rsvp_production_refresh`.
+The tenant cookie domain is `mprlab.com`.
+Production uses HTTPS and issuer `tauth`.
+The manifest declares the tenant through the `tauth.tenants` capability.
 
-The plan reads the committed application manifest.
-Commit the intended manifest before this validation.
+The API container owns `/healthz` and protected HTML resource representations.
+The static website loads its protected workspace after the shared authentication event.
 
-Use the separate `release`, `publish`, and `deploy` targets for their named lifecycle stages.
-Treat each stage as a different result.
+The production LLM Proxy tenant `RSVP` belongs to the existing user account.
+It uses the Default OpenAI connection and text model `gpt-5.6-terra` with `low` reasoning effort.
+Its tenant API key is in `.cache/rsvp-production/llm-proxy-secret`.
+The `/v2/identity` check returned `200` for tenant `managed-ec333400e22baad5498fee4034804d43`.
+No live model request was part of this preparation.
+
+The production TAuth console at `https://tauth.mprlab.com/app/` returned `404` on September 29, 2026.
+The discovery resource at `https://tauth-api.mprlab.com/.well-known/tauth-console` also returned `404`.
+Account-owned TAuth registration cannot proceed through that service yet.
+
+Complete these operations before a production release:
+
+1. Make the current TAuth account console available through its owning service workflow.
+2. Create the RSVP App and tenant under the user account.
+3. Confirm the proposed tenant ID, origins, cookie names, Google client, and issuer.
+4. Export the matching tenant key through the TAuth account interface.
+5. Supply the active `tauth.tenants` provisioning authority in the operator configuration.
+6. Add the production website and API origins to the Google client.
+7. Add the production Calendar callback URI to the Google client.
+8. Supply the private assignments in the canonical `.mprlab/deploy/.env` file.
+9. Preserve the encryption key for existing production calendar credentials.
+10. Confirm that the public Google client in `configs/ui-production.yaml` matches the tenant.
+11. Validate the committed selected manifest through the current Gateway release plan.
+12. Complete release, publication, and deployment through their separate repository targets when authorized.
+13. Verify the website, `/.mprlab-release.json`, API health, sign-in, and protected workspace.
+14. Repeat deployment and confirm that it changes no resources.
+
+I005 preparation did not release, publish, or deploy this source.
+The production calendar encryption key remains unresolved.
+Do not substitute the local key for existing production credentials.
 
 ## Preserve Data
 

@@ -1,56 +1,94 @@
-package naturallanguage
+package naturallanguage_test
 
 import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
-	"github.com/tyemirov/RSVP/models"
+	"github.com/tyemirov/RSVP/pkg/config"
+	"github.com/tyemirov/RSVP/pkg/providers/naturallanguage"
 	"github.com/tyemirov/RSVP/pkg/services"
 )
 
-func TestAdapterAuthenticatesAndUsesExplicitTemporalContext(testingContext *testing.T) {
-	referenceTime := time.Date(2030, 1, 2, 15, 0, 0, 0, time.UTC)
-	server := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
-		if request.Header.Get("Authorization") != "Bearer private-key" {
-			testingContext.Errorf("authorization = %q", request.Header.Get("Authorization"))
+func TestLLMProxyOfficialClientTemporalContract(t *testing.T) {
+	reference := time.Date(2030, 1, 2, 15, 0, 0, 0, time.UTC)
+	provider, model := "fixture-provider", "fixture-model"
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.Method != "POST" || request.URL.Path != "/v2" || request.URL.Query().Get("key") != "fixture-secret" || request.URL.Query().Get("provider") != provider || request.URL.Query().Get("format") != "text/plain" {
+			t.Error("official client path or authentication did not match the profile")
 		}
-		var body services.NaturalLanguageParseRequest
-		if decodeError := json.NewDecoder(request.Body).Decode(&body); decodeError != nil {
-			testingContext.Errorf("decode request: %v", decodeError)
+		if request.Header.Get("X-LLM-Proxy-Request-Timeout-Seconds") != "123" {
+			t.Error("configured work budget did not reach the official header")
 		}
-		if body.InputText != "waiting request" || !body.ReferenceTime.Equal(referenceTime) || body.Timezone != "America/Los_Angeles" {
-			testingContext.Errorf("request body = %#v", body)
+		var body struct {
+			Messages []struct {
+				Role    string `json:"role"`
+				Content string `json:"content"`
+			} `json:"messages"`
+			Model           string `json:"model"`
+			ReasoningEffort string `json:"reasoning_effort"`
 		}
-		responseWriter.Header().Set("Content-Type", "application/json")
-		_, _ = responseWriter.Write([]byte(`{"mode":"open_lane","title":"Waiting","anchor_event_id":null,"starts_at":null,"ends_at":null,"review_interval_seconds":null,"next_probe_at":null,"escalation_interval_seconds":null,"relative_rules":[]}`))
+		if err := json.NewDecoder(request.Body).Decode(&body); err != nil {
+			t.Error(err)
+			return
+		}
+		if body.Model != model || body.ReasoningEffort != "low" || len(body.Messages) != 2 || body.Messages[0].Role != "system" || body.Messages[1].Role != "user" {
+			t.Error("configured model, reasoning, or messages did not reach the provider")
+			return
+		}
+		var input services.NaturalLanguageParseRequest
+		if err := json.Unmarshal([]byte(body.Messages[1].Content), &input); err != nil {
+			t.Error(err)
+			return
+		}
+		if input.InputText != "waiting request" || !input.ReferenceTime.Equal(reference) || input.Timezone != "America/Los_Angeles" {
+			t.Error("explicit temporal context did not reach the provider")
+		}
+		_, _ = fmt.Fprint(writer, `{"mode":"open_lane","title":"Waiting","anchor_event_id":null,"starts_at":null,"ends_at":null,"review_interval_seconds":null,"next_probe_at":null,"escalation_interval_seconds":null,"relative_rules":[]}`)
 	}))
 	defer server.Close()
-	adapter, adapterError := New(server.URL, "private-key", server.Client())
-	if adapterError != nil {
-		testingContext.Fatalf("construct adapter: %v", adapterError)
+	adapter, err := naturallanguage.New(config.LLMProxyConfig{BaseURL: server.URL, Secret: "fixture-secret", Provider: &provider, Model: &model, ReasoningEffort: "low", RequestTimeoutSeconds: 123}, server.Client())
+	if err != nil {
+		t.Fatal(err)
 	}
-	response, parseError := adapter.Parse(context.Background(), services.NaturalLanguageParseRequest{InputText: "waiting request", ReferenceTime: referenceTime, Timezone: "America/Los_Angeles"})
-	if parseError != nil || response.Mode != models.IngestionModeOpenLane {
-		testingContext.Fatalf("response = %#v, error = %v", response, parseError)
+	result, err := adapter.Parse(context.Background(), services.NaturalLanguageParseRequest{InputText: "waiting request", ReferenceTime: reference, Timezone: "America/Los_Angeles"})
+	if err != nil || result.Mode != "open_lane" || result.Title != "Waiting" {
+		t.Fatalf("parse result = %#v, error = %v", result, err)
 	}
 }
 
-func TestAdapterRejectsUnknownProviderFieldsWithoutLeakingPayload(testingContext *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, _ *http.Request) {
-		_, _ = responseWriter.Write([]byte(`{"mode":"open_lane","secret_provider_value":"must-not-leak"}`))
-	}))
-	defer server.Close()
-	adapter, _ := New(server.URL, "private-key", server.Client())
-	_, parseError := adapter.Parse(context.Background(), services.NaturalLanguageParseRequest{InputText: "private input", ReferenceTime: time.Now(), Timezone: "America/Los_Angeles"})
-	if !errors.Is(parseError, services.ErrNaturalLanguageProviderResponseInvalid) {
-		testingContext.Fatalf("unknown field error = %v", parseError)
-	}
-	if parseError.Error() != services.ErrNaturalLanguageProviderResponseInvalid.Error() {
-		testingContext.Fatalf("provider error leaked data: %q", parseError)
+func TestLLMProxyFailuresDoNotExposePrivateInputs(t *testing.T) {
+	for _, scenario := range []struct {
+		name     string
+		status   int
+		body     string
+		expected error
+	}{
+		{"invalid schema", 200, `{"secret_provider_value":"private-input"}`, services.ErrNaturalLanguageProviderResponseInvalid},
+		{"provider failure", 502, "private-input", services.ErrNaturalLanguageProviderFailed},
+		{"trailing document", 200, `{"mode":"open_lane"} {}`, services.ErrNaturalLanguageProviderResponseInvalid},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+				writer.WriteHeader(scenario.status)
+				_, _ = fmt.Fprint(writer, scenario.body)
+			}))
+			defer server.Close()
+			empty := ""
+			adapter, err := naturallanguage.New(config.LLMProxyConfig{BaseURL: server.URL, Secret: "private-input", Provider: &empty, Model: &empty, ReasoningEffort: "low", RequestTimeoutSeconds: 60}, server.Client())
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = adapter.Parse(context.Background(), services.NaturalLanguageParseRequest{InputText: "private-input", ReferenceTime: time.Now(), Timezone: "UTC"})
+			if !errors.Is(err, scenario.expected) || strings.Contains(err.Error(), "private-input") {
+				t.Errorf("private-safe error contract failed")
+			}
+		})
 	}
 }

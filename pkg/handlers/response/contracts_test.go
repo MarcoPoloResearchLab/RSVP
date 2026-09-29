@@ -8,10 +8,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/tyemirov/RSVP/internal/routetestfixture"
 	"github.com/tyemirov/RSVP/internal/testsupport"
 	"github.com/tyemirov/RSVP/models"
 	"github.com/tyemirov/RSVP/pkg/config"
-	"github.com/tyemirov/RSVP/pkg/routes"
 )
 
 func TestPublicResponseRouteShowsInvitation(testingContext *testing.T) {
@@ -93,7 +93,7 @@ func TestPublicResponseRouteUpdatesRSVP(testingContext *testing.T) {
 func newPublicResponseServer(testingContext *testing.T, fixture *testsupport.Fixture) *httptest.Server {
 	testingContext.Helper()
 	mux := http.NewServeMux()
-	routes.New(fixture.ApplicationContext, config.EnvConfig{}).RegisterRoutes(mux)
+	routetestfixture.New(testingContext, fixture.ApplicationContext).RegisterRoutes(mux)
 	publicServer := httptest.NewServer(mux)
 	testingContext.Cleanup(publicServer.Close)
 	return publicServer

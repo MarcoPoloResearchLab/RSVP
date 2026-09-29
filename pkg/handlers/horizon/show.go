@@ -11,8 +11,6 @@ import (
 	"strings"
 	"time"
 
-	gaussConstants "github.com/tyemirov/GAuss/pkg/constants"
-	"github.com/tyemirov/GAuss/pkg/session"
 	"github.com/tyemirov/RSVP/models"
 	"github.com/tyemirov/RSVP/pkg/config"
 	"github.com/tyemirov/RSVP/pkg/handlers"
@@ -63,35 +61,6 @@ func Handler(applicationContext *config.ApplicationContext, now func() time.Time
 			return
 		}
 		(&handler{baseHandler: &baseHandler, projector: projector, now: now}).serveHTTP(responseWriter, request)
-	})
-}
-
-// AuthenticationMiddleware enforces the horizon authentication response contract.
-func AuthenticationMiddleware(applicationContext *config.ApplicationContext, next http.Handler) http.Handler {
-	return http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
-		webSession, sessionError := session.Store().Get(request, gaussConstants.SessionName)
-		if sessionError == nil {
-			userEmail, emailFound := webSession.Values[gaussConstants.SessionKeyUserEmail].(string)
-			if emailFound && userEmail != "" {
-				next.ServeHTTP(responseWriter, request)
-				return
-			}
-		}
-
-		setProjectionHeaders(responseWriter.Header())
-		representation, representationAccepted := selectRepresentation(request.Header.Get("Accept"))
-		if representationAccepted && representation == horizonHTMLMediaType {
-			http.Redirect(responseWriter, request, gaussConstants.LoginPath, http.StatusFound)
-			return
-		}
-		if responseError := handlers.WriteTypedError(
-			responseWriter,
-			http.StatusUnauthorized,
-			horizonAuthenticationErrorCode,
-			horizonAuthenticationErrorMessage,
-		); responseError != nil {
-			applicationContext.Logger.Printf("ERROR: Write horizon authentication response: %v", responseError)
-		}
 	})
 }
 

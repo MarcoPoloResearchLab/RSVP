@@ -2,11 +2,12 @@
 package main
 
 import (
-	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/tyemirov/RSVP/internal/testsupport"
+	"github.com/tyemirov/tauth/pkg/sessionvalidator"
 	"log"
 	"net/http"
 	"net/url"
@@ -15,8 +16,6 @@ import (
 	"strings"
 	"time"
 
-	gaussConstants "github.com/tyemirov/GAuss/pkg/constants"
-	"github.com/tyemirov/GAuss/pkg/session"
 	"github.com/tyemirov/RSVP/models"
 	"github.com/tyemirov/RSVP/pkg/config"
 	"github.com/tyemirov/RSVP/pkg/routes"
@@ -34,17 +33,18 @@ const (
 	browserTimezoneName        = "America/Los_Angeles"
 	browserLoginPath           = "/browser-login/"
 	browserNewLoginPath        = "/browser-new-login/"
+	browserShellLoginPath      = "/browser-shell-login/"
 	browserGoogleAuthorizePath = "/browser-google/authorize"
 	browserGoogleTokenPath     = "/browser-google/token"
 	browserGoogleCalendarsPath = "/browser-google/calendars"
 	browserGoogleEventsPath    = "/browser-google/events"
-	browserNaturalLanguagePath = "/browser-natural-language"
+	browserNaturalLanguagePath = "/browser-llm/v2"
 )
 
 var browserReferenceTime = time.Now().UTC()
 
 func main() {
-	logger := log.New(os.Stdout, "browserfixture: ", log.LstdFlags)
+	logger := log.New(os.Stderr, "browserfixture: ", log.LstdFlags)
 	databasePath := filepath.Join("output", "playwright", "horizon-browser.db")
 	if directoryError := os.MkdirAll(filepath.Dir(databasePath), 0755); directoryError != nil {
 		logger.Fatalf("Create browser fixture directory: %v", directoryError)
@@ -60,15 +60,17 @@ func main() {
 		logger.Fatalf("Seed browser fixture: %v", seedError)
 	}
 	templates.LoadAllPrecompiledTemplates(config.TemplatesDir)
-	session.NewSession([]byte("0123456789abcdef0123456789abcdef"))
 
-	applicationContext := &config.ApplicationContext{Database: database, Logger: logger, AppBaseURL: "http://" + browserFixtureAddress + "/"}
+	applicationContext := &config.ApplicationContext{Database: database, Logger: logger, AppBaseURL: "http://" + browserFixtureAddress + "/", WebsiteURL: "http://" + browserFixtureAddress + "/horizon/", CalendarReturnURL: "http://" + browserFixtureAddress + "/horizon/#settings/integrations"}
 	mux := http.NewServeMux()
 	mux.HandleFunc(browserLoginPath, func(responseWriter http.ResponseWriter, request *http.Request) {
 		setBrowserSession(responseWriter, request, browserOrganizerEmail, "Horizon Browser")
 	})
 	mux.HandleFunc(browserNewLoginPath, func(responseWriter http.ResponseWriter, request *http.Request) {
 		setBrowserSession(responseWriter, request, browserNewOrganizerEmail, "New Horizon Browser")
+	})
+	mux.HandleFunc(browserShellLoginPath, func(responseWriter http.ResponseWriter, request *http.Request) {
+		setBrowserSession(responseWriter, request, "shell-horizon@example.test", "Shared Shell Browser")
 	})
 	mux.HandleFunc(browserGoogleAuthorizePath, func(responseWriter http.ResponseWriter, request *http.Request) {
 		redirectURI := request.URL.Query().Get("redirect_uri")
@@ -154,15 +156,22 @@ func main() {
 		fmt.Fprint(responseWriter, `{"timeZone":"America/Los_Angeles","items":[{"id":"primary-review","eventType":"default","status":"confirmed","summary":"Primary review","start":{"dateTime":"2026-09-10T09:00:00-07:00","timeZone":"America/Los_Angeles"},"end":{"dateTime":"2026-09-10T10:00:00-07:00","timeZone":"America/Los_Angeles"}},{"id":"primary-future-type","eventType":"providerFutureType","status":"confirmed","summary":"Provider future event","start":{"dateTime":"2026-09-11T09:00:00-07:00","timeZone":"America/Los_Angeles"},"end":{"dateTime":"2026-09-11T10:00:00-07:00","timeZone":"America/Los_Angeles"}},{"id":"birthday-ada","eventType":"default","status":"confirmed","summary":"Ada provider birthday","start":{"date":"2026-09-15"},"end":{"date":"2026-09-16"}},{"id":"birthday-lin","eventType":"birthday","status":"confirmed","summary":"Lin provider birthday","start":{"date":"2026-10-01"},"end":{"date":"2026-10-02"}},{"id":"birthday-maya","eventType":"birthday","birthdayProperties":{"type":"self"},"status":"confirmed","summary":"Maya provider birthday","start":{"date":"2026-10-20"},"end":{"date":"2026-10-21"}}],"nextSyncToken":"browser-primary-sync-1"}`)
 	})
 	mux.HandleFunc(browserNaturalLanguagePath, func(responseWriter http.ResponseWriter, request *http.Request) {
-		if request.Method != http.MethodPost || request.Header.Get("Authorization") != "Bearer browser-parser-key" {
+		if request.Method != http.MethodPost || request.URL.Query().Get("key") != "browser-parser-key" {
 			http.Error(responseWriter, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
 			return
 		}
-		var body struct {
-			InputText string `json:"input_text"`
+		var wire struct {
+			Messages []struct {
+				Content string `json:"content"`
+			} `json:"messages"`
 		}
-		if decodeError := json.NewDecoder(request.Body).Decode(&body); decodeError != nil {
-			http.Error(responseWriter, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		if err := json.NewDecoder(request.Body).Decode(&wire); err != nil || len(wire.Messages) != 2 {
+			http.Error(responseWriter, "Invalid LLM request", http.StatusBadRequest)
+			return
+		}
+		var body services.NaturalLanguageParseRequest
+		if err := json.Unmarshal([]byte(wire.Messages[1].Content), &body); err != nil {
+			http.Error(responseWriter, "Invalid temporal context", http.StatusBadRequest)
 			return
 		}
 		responseWriter.Header().Set("Content-Type", "application/json")
@@ -182,16 +191,18 @@ func main() {
 		}
 	})
 	browserBaseURL := "http://" + browserFixtureAddress
-	fixtureRoutes := routes.New(applicationContext, config.EnvConfig{
-		CalendarCredentialEncryptionKey: base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{0x42}, 32)),
-		GoogleClientID:                  "browser-client", GoogleClientSecret: "browser-secret",
-		GoogleCalendarAuthorizationEndpoint: browserBaseURL + browserGoogleAuthorizePath,
-		GoogleCalendarTokenEndpoint:         browserBaseURL + browserGoogleTokenPath,
-		GoogleCalendarListEndpoint:          browserBaseURL + browserGoogleCalendarsPath,
-		GoogleCalendarEventsEndpoint:        browserBaseURL + browserGoogleEventsPath,
-		NaturalLanguageParserEndpoint:       browserBaseURL + browserNaturalLanguagePath,
-		NaturalLanguageParserAPIKey:         "browser-parser-key",
-	})
+	fixtureConfiguration := testsupport.EnvironmentConfig()
+	fixtureConfiguration.AppBaseURL = browserBaseURL + "/"
+	fixtureConfiguration.GoogleCalendarAuthorizationEndpoint = browserBaseURL + browserGoogleAuthorizePath
+	fixtureConfiguration.GoogleCalendarTokenEndpoint = browserBaseURL + browserGoogleTokenPath
+	fixtureConfiguration.GoogleCalendarListEndpoint = browserBaseURL + browserGoogleCalendarsPath
+	fixtureConfiguration.GoogleCalendarEventsEndpoint = browserBaseURL + browserGoogleEventsPath
+	fixtureConfiguration.LLMProxy.BaseURL = browserBaseURL + "/browser-llm"
+	fixtureConfiguration.LLMProxy.Secret = "browser-parser-key"
+	fixtureRoutes, routesError := routes.New(applicationContext, fixtureConfiguration)
+	if routesError != nil {
+		logger.Fatal(routesError)
+	}
 	fixtureRoutes.RegisterRoutes(mux)
 	go func() {
 		if taskError := fixtureRoutes.RunCalendarConnectionTasks(context.Background()); taskError != nil {
@@ -210,19 +221,15 @@ func main() {
 }
 
 func setBrowserSession(responseWriter http.ResponseWriter, request *http.Request, email string, name string) {
-	webSession, sessionError := session.Store().Get(request, gaussConstants.SessionName)
-	if sessionError != nil {
-		http.Error(responseWriter, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+	configuration := testsupport.EnvironmentConfig()
+	claims := sessionvalidator.Claims{TenantID: configuration.Auth.TenantID, UserID: email, UserEmail: email, UserDisplayName: name, UserAvatarURL: "https://example.test/avatar.png", RegisteredClaims: jwt.RegisteredClaims{Issuer: "tauth", Subject: email, IssuedAt: jwt.NewNumericDate(time.Now().Add(-time.Minute)), ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour))}}
+	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(configuration.Auth.SigningKey))
+	if err != nil {
+		http.Error(responseWriter, "Fixture session failed", http.StatusInternalServerError)
 		return
 	}
-	webSession.Values[gaussConstants.SessionKeyUserEmail] = email
-	webSession.Values[gaussConstants.SessionKeyUserName] = name
-	webSession.Values[gaussConstants.SessionKeyUserPicture] = ""
-	if saveError := webSession.Save(request, responseWriter); saveError != nil {
-		http.Error(responseWriter, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		return
-	}
-	http.Redirect(responseWriter, request, config.WebRoot, http.StatusFound)
+	http.SetCookie(responseWriter, &http.Cookie{Name: configuration.Auth.CookieName, Value: token, Path: "/", HttpOnly: true, SameSite: http.SameSiteLaxMode})
+	http.Redirect(responseWriter, request, config.WebHorizon, http.StatusFound)
 }
 
 func seedBrowserFixture(database *gorm.DB) error {

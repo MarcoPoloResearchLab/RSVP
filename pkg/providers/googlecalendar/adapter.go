@@ -49,17 +49,6 @@ func New(adapterConfig Config, client *http.Client, now func() time.Time) (*Adap
 	return &Adapter{config: adapterConfig, client: client, now: now}, nil
 }
 
-// DefaultConfig returns the current Google Calendar endpoints.
-func DefaultConfig(clientID string, clientSecret string) Config {
-	return Config{
-		ClientID: clientID, ClientSecret: clientSecret,
-		AuthorizationEndpoint: config.GoogleCalendarAuthorizationEndpoint,
-		TokenEndpoint:         config.GoogleCalendarTokenEndpoint,
-		CalendarListEndpoint:  config.GoogleCalendarListEndpoint,
-		EventsEndpoint:        config.GoogleCalendarEventsEndpoint,
-	}
-}
-
 // AuthorizationURL returns one read-only Google Calendar consent URL.
 func (adapter *Adapter) AuthorizationURL(state string, redirectURI string) (string, error) {
 	if state == "" || redirectURI == "" {

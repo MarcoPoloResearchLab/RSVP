@@ -1,12 +1,22 @@
 services:
-  natural-language-parser:
-    image: rsvp-local-parser:dev
+  tauth:
+    image: ghcr.io/tyemirov/tauth:latest
+    command: ["--config", "/etc/tauth/config.yml"]
+    env_file:
+      - "${RSVP_RUNTIME_ENV_FILE:?RSVP_RUNTIME_ENV_FILE is required}"
+    environment:
+      TAUTH_JWT_SIGNING_KEY: "${RSVP_TAUTH_JWT_SIGNING_KEY:?RSVP_TAUTH_JWT_SIGNING_KEY is required}"
+    volumes:
+      - ./configs/tauth-local.yml:/etc/tauth/config.yml:ro
+      - tauth-data:/data
+  llm-proxy-fixture:
+    image: rsvp-local-llm-proxy-fixture:dev
     build:
       context: .
       dockerfile: Dockerfile
-      target: natural-language-parser
-    command: ["/app/natural-language-fixture"]
-
+      target: llm-proxy-fixture
+    environment:
+      LLM_PROXY_SECRET: "${RSVP_LLM_PROXY_SECRET:?RSVP_LLM_PROXY_SECRET is required}"
   rsvp-app:
     image: rsvp-local:dev
     build:
@@ -14,22 +24,26 @@ services:
       dockerfile: Dockerfile
       target: runtime
     depends_on:
-      - natural-language-parser
+      - tauth
+      - llm-proxy-fixture
     env_file:
       - "${RSVP_RUNTIME_ENV_FILE:?RSVP_RUNTIME_ENV_FILE is required}"
     environment:
-      APP_BASE_URL: "${RSVP_PUBLIC_ORIGIN:?RSVP_PUBLIC_ORIGIN is required}/"
-      CALENDAR_CREDENTIAL_ENCRYPTION_KEY: "${RSVP_CALENDAR_CREDENTIAL_ENCRYPTION_KEY:?RSVP_CALENDAR_CREDENTIAL_ENCRYPTION_KEY is required}"
+      APP_BASE_URL: http://localhost:8080/
+      APP_WEBSITE_URL: http://localhost:8080/
       DB_NAME: /app/data/rsvps.db
-      GOOGLE_OAUTH2_BASE: "${RSVP_PUBLIC_ORIGIN}"
-      NATURAL_LANGUAGE_PARSER_API_KEY: rsvp-local-parser
-      NATURAL_LANGUAGE_PARSER_ENDPOINT: http://natural-language-parser:8082/parse
-      TLS_CERT_PATH: ""
-      TLS_KEY_PATH: ""
+      CALENDAR_CREDENTIAL_ENCRYPTION_KEY: "${RSVP_CALENDAR_CREDENTIAL_ENCRYPTION_KEY:?RSVP_CALENDAR_CREDENTIAL_ENCRYPTION_KEY is required}"
+      TAUTH_JWT_SIGNING_KEY: "${RSVP_TAUTH_JWT_SIGNING_KEY:?RSVP_TAUTH_JWT_SIGNING_KEY is required}"
+      TAUTH_COOKIE_NAME: rsvp_development_session
+      TAUTH_TENANT_ID: rsvp-development
+      TAUTH_PUBLIC_URL: http://localhost:8080
+      TAUTH_UPSTREAM_URL: http://tauth:8080
+      LLM_PROXY_BASE_URL: http://llm-proxy-fixture:8082
+      LLM_PROXY_SECRET: "${RSVP_LLM_PROXY_SECRET:?RSVP_LLM_PROXY_SECRET is required}"
     ports:
-      - "127.0.0.1:${RSVP_HOST_PORT:-8080}:8080"
+      - "127.0.0.1:8080:8080"
     volumes:
       - rsvp-data:/app/data
-
 volumes:
   rsvp-data:
+  tauth-data:

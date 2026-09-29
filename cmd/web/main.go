@@ -6,14 +6,12 @@ package main
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
-	"github.com/tyemirov/GAuss/pkg/session"
 	"github.com/tyemirov/RSVP/pkg/config"
 	"github.com/tyemirov/RSVP/pkg/routes"
 	"github.com/tyemirov/RSVP/pkg/server"
@@ -25,10 +23,10 @@ import (
 // main is the primary function that sets up and runs the web server.
 func main() {
 	applicationLogger := utils.NewLogger()
-	environmentConfiguration := config.NewEnvConfig(applicationLogger)
-
-	// Initialize session management using the secret key from environment configuration.
-	session.NewSession([]byte(environmentConfiguration.SessionSecret))
+	environmentConfiguration, configurationError := config.Load("config.yml")
+	if configurationError != nil {
+		applicationLogger.Fatalf("Initialize backend: %v", configurationError)
+	}
 
 	// Open the canonical SQLite database or initialize its fresh schema.
 	databaseConnection := services.InitDatabase(environmentConfiguration.Database.Name, applicationLogger)
@@ -41,7 +39,7 @@ func main() {
 	applicationContext := &config.ApplicationContext{
 		Database:   databaseConnection,
 		Logger:     applicationLogger,
-		AppBaseURL: environmentConfiguration.AppBaseURL, // Pass base URL to context
+		AppBaseURL: environmentConfiguration.AppBaseURL, WebsiteURL: environmentConfiguration.WebsiteURL, CalendarReturnURL: environmentConfiguration.WebsiteURL + "#horizon/settings/integrations", // Pass base URL to context
 	}
 	attentionService, attentionServiceError := services.NewAttentionService(databaseConnection, time.Now)
 	if attentionServiceError != nil {
@@ -55,9 +53,12 @@ func main() {
 	httpServeMuxRouter := http.NewServeMux()
 
 	// Create the routes instance and register middleware (like authentication) and application routes.
-	routesInstance := routes.New(applicationContext, *environmentConfiguration)
-	routesInstance.RegisterMiddleware(httpServeMuxRouter) // Order matters: GAuss/Auth middleware first
-	routesInstance.RegisterRoutes(httpServeMuxRouter)     // Then application routes
+	routesInstance, routesError := routes.New(applicationContext, *environmentConfiguration)
+	if routesError != nil {
+		applicationLogger.Fatalf("Initialize routes: %v", routesError)
+	}
+	routesInstance.RegisterMiddleware(httpServeMuxRouter)
+	routesInstance.RegisterRoutes(httpServeMuxRouter)
 	go func() {
 		if taskError := routesInstance.RunCalendarConnectionTasks(applicationRuntimeContext); taskError != nil {
 			applicationLogger.Printf("Calendar connection task worker stopped: %v", taskError)
@@ -70,32 +71,15 @@ func main() {
 	}()
 
 	// Configure the HTTP server details.
-	serverAddress := fmt.Sprintf("%s:%d", config.ServerHTTPAddress, config.ServerHTTPPort)
+	serverAddress := environmentConfiguration.Server.Address
 	httpServerInstance := server.NewHTTPServer(serverAddress, httpServeMuxRouter)
 
-	// Start the server in a goroutine. Choose between HTTP and HTTPS based on certificate configuration.
-	if environmentConfiguration.CertificateFilePath == "" || environmentConfiguration.KeyFilePath == "" {
-		applicationLogger.Printf("Starting HTTP server on http://%s", serverAddress)
-		go func() {
-			listenAndServeError := httpServerInstance.ListenAndServe()
-			// Log errors unless it's the expected server closed error during shutdown.
-			if listenAndServeError != nil && !errors.Is(listenAndServeError, http.ErrServerClosed) {
-				applicationLogger.Printf("HTTP ListenAndServe error: %v", listenAndServeError)
-			}
-		}()
-	} else {
-		applicationLogger.Printf("Starting HTTPS server on https://%s", serverAddress)
-		go func() {
-			listenAndServeTLSError := httpServerInstance.ListenAndServeTLS(
-				environmentConfiguration.CertificateFilePath,
-				environmentConfiguration.KeyFilePath,
-			)
-			// Log errors unless it's the expected server closed error during shutdown.
-			if listenAndServeTLSError != nil && !errors.Is(listenAndServeTLSError, http.ErrServerClosed) {
-				applicationLogger.Printf("HTTPS ListenAndServeTLS error: %v", listenAndServeTLSError)
-			}
-		}()
-	}
+	applicationLogger.Printf("Starting HTTP server on %s", serverAddress)
+	go func() {
+		if err := httpServerInstance.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			applicationLogger.Fatalf("Serve HTTP: %v", err)
+		}
+	}()
 
 	// Set up a channel to listen for OS signals (Interrupt, SIGTERM) for graceful shutdown.
 	shutdownSignalChannel := make(chan os.Signal, 1)
