@@ -8,6 +8,39 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 ## BugFixes
 
+- [x] [B058] (P2) Stop LLM Proxy requests at the configured time limit
+  Goal:
+  Each natural-language ingestion request has a time limit.
+  Requirements:
+  - Use the official LLM Proxy client.
+  - Apply the configured work budget to each call as a local time limit.
+  - Preserve an earlier caller time limit.
+  - Return the current provider error without private values.
+  Validation:
+  - Send authenticated ingestion requests through the real HTTP router.
+  - Do a test of a provider that stops before its headers and during its body.
+  - Confirm that each request returns the typed provider error within the configured time limit.
+  Evidence:
+  - Both public HTTP scenarios exceeded the caller time limit before the source correction.
+  - Both scenarios now return `502` with `natural_language_provider_failed` and create no draft.
+  - `make ci` and all 21 Chromium browser tests passed.
+
+- [x] [B057] (P2) Restore shared navigation after workspace navigation
+  Goal:
+  The shared header selects its workspace even when its URL hash remains the same.
+  Requirements:
+  - Handle shared links whose hash already matches the parent URL.
+  - Preserve authentication ownership and navigation history.
+  Validation:
+  - Select Events in the shared header, then Venues in the workspace toolbar.
+  - Select Events again in the shared header.
+  - Confirm that the workspace returns to Events.
+  Evidence:
+  - The browser regression test failed before the source correction.
+  - The same Events link now returns the workspace to Events after toolbar navigation.
+  - The unauthenticated browser test confirms that this link does not load the protected workspace.
+  - `make ci` and all 21 Chromium browser tests passed.
+
 - [x] [B056] (P1) Prevent SQLite lock errors during Calendar import
   Goal:
   Concurrent Calendar import and organizer requests complete without SQLite lock errors.
