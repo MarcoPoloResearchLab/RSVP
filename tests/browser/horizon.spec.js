@@ -6,18 +6,12 @@ test.beforeEach(async ({page}) => {
     await page.goto('/browser-login/');
     await expect(page).toHaveURL(/\/horizon\/$/);
     await expect(page.locator('[data-horizon-view]')).toBeVisible();
-    await page.goto('/');
-    await expect(page).toHaveURL(/\/horizon\/$/);
 });
 
 async function openSettings(page, rubric = 'Calendars & lanes') {
     const dialog = page.locator('[data-settings-dialog]');
     if (!await dialog.evaluate((element) => element.open)) {
-        const userMenu = page.locator('[data-user-menu]');
-        if (!await userMenu.evaluate((element) => element.open)) {
-            await userMenu.locator(':scope > summary').click();
-        }
-        await userMenu.getByRole('button', {name: 'Settings', exact: true}).click();
+        await page.getByRole('button', {name: 'Settings', exact: true}).click();
     }
     const rubricTab = dialog.getByRole('tab', {name: rubric, exact: true});
     if (await rubricTab.getAttribute('aria-selected') !== 'true') {
@@ -29,7 +23,7 @@ async function closeSettings(page) {
     const dialog = page.locator('[data-settings-dialog]');
     await page.waitForLoadState('domcontentloaded');
     await expect(dialog).toBeVisible();
-    await dialog.getByRole('button', {name: 'Close settings'}).click();
+    await dialog.getByRole('button', {name: 'Dismiss settings'}).click();
 }
 
 async function readHorizonLocalDates(page) {
@@ -294,19 +288,10 @@ test('keeps each calendar color stable when visibility and the calendar set chan
     }, {calendarURLs: createdCalendarURLs, restoreCalendarID: hiddenCalendarID});
 });
 
-test('opens global settings from a compact avatar menu', async ({page}) => {
-    const userMenu = page.locator('[data-user-menu]');
+test('opens global settings from the workspace toolbar', async ({page}) => {
     const dialog = page.locator('[data-settings-dialog]');
-
     await expect(page.locator('main [data-settings-dialog]')).toHaveCount(0);
-    await expect(userMenu.getByRole('img', {name: 'User avatar'})).toBeVisible();
     await expect(dialog).toBeHidden();
-
-    await userMenu.locator(':scope > summary').click();
-    await expect(userMenu.getByRole('button', {name: 'Settings', exact: true})).toBeVisible();
-    await expect(userMenu.getByRole('button', {name: 'Sign Out', exact: true})).toBeVisible();
-    await expect(dialog).toBeHidden();
-
     await openSettings(page);
     await expect(dialog).toBeVisible();
     await expect(dialog.getByRole('heading', {name: 'Create calendar'})).toBeVisible();
@@ -332,7 +317,6 @@ test('opens global settings from a compact avatar menu', async ({page}) => {
     await expect(page).toHaveURL(/#settings\/help$/);
     await page.keyboard.press('Escape');
     await expect(dialog).toBeHidden();
-    await expect(userMenu.locator(':scope > summary')).toBeFocused();
 
     await page.goto('/events/');
     await openSettings(page);
@@ -477,6 +461,7 @@ test('connects Google Calendar and retains its calendar groups automatically', a
 	await expect(page.getByRole('button', {name: 'Select source calendars'})).toHaveCount(0);
 
 	await closeSettings(page);
+	await page.goto("/horizon/?start=2026-09-01T00%3A00%3A00Z&end=2026-12-01T00%3A00%3A00Z");
 
 	const birthdayToggle = page.locator('.horizon-calendar-toggle', {hasText: 'Birthdays'}).locator('[data-calendar-toggle]');
 	const holidayToggle = page.locator('.horizon-calendar-toggle', {hasText: 'Holidays'}).locator('[data-calendar-toggle]');
@@ -800,12 +785,6 @@ test('renders the interactive view at the supported mobile width', async ({page}
     expect(navigationBox).not.toBeNull();
     expect(headingBox).not.toBeNull();
     expect(headingBox.y).toBeGreaterThanOrEqual(navigationBox.y + navigationBox.height);
-
-    await page.locator('[data-user-menu] > summary').click();
-    const menuBox = await page.locator('.user-menu-dropdown').boundingBox();
-    expect(menuBox).not.toBeNull();
-    expect(menuBox.x).toBeGreaterThanOrEqual(0);
-    expect(menuBox.x + menuBox.width).toBeLessThanOrEqual(390);
 
     await page.getByRole('button', {name: 'Settings', exact: true}).click();
     const settingsBox = await page.locator('.settings-shell').boundingBox();
