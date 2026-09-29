@@ -2,7 +2,11 @@
 package testsupport
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/tyemirov/tauth/pkg/sessionvalidator"
 	"io"
 	"log"
 	"net/http"
@@ -15,7 +19,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tyemirov/GAuss/pkg/session"
 	"github.com/tyemirov/RSVP/models"
 	"github.com/tyemirov/RSVP/pkg/config"
 	"github.com/tyemirov/RSVP/pkg/middleware"
@@ -75,15 +78,13 @@ func NewFixture(testingContext *testing.T) *Fixture {
 		}
 	})
 
-	session.NewSession([]byte("0123456789abcdef0123456789abcdef"))
-
 	return &Fixture{
 		T:        testingContext,
 		Database: databaseConnection,
 		ApplicationContext: &config.ApplicationContext{
 			Database:   databaseConnection,
 			Logger:     applicationLogger,
-			AppBaseURL: ApplicationBaseURL,
+			AppBaseURL: ApplicationBaseURL, WebsiteURL: ApplicationBaseURL + "horizon/", CalendarReturnURL: ApplicationBaseURL + "horizon/#settings/integrations",
 		},
 	}
 }
@@ -226,4 +227,32 @@ func Request(
 
 	requestContext := context.WithValue(request.Context(), middleware.ContextKeyUser, currentUser)
 	return request.WithContext(requestContext)
+}
+
+// EnvironmentConfig supplies an explicit isolated backend profile.
+func EnvironmentConfig() config.EnvConfig {
+	provider, model := "fixture", "fixture-model"
+	configuration := config.EnvConfig{
+		AppBaseURL: ApplicationBaseURL, WebsiteURL: ApplicationBaseURL + "horizon/", Database: config.DatabaseConfig{Name: "fixture.db"},
+		Auth:                            config.AuthConfig{SigningKey: "0123456789abcdef0123456789abcdef", Issuer: "tauth", URL: ApplicationBaseURL, CookieName: "rsvp_development_session", TenantID: "rsvp-development", UpstreamURL: "http://tauth.example.test:8080", LoginPath: "/auth/google", LogoutPath: "/auth/logout", NoncePath: "/auth/nonce", SessionPath: "/auth/session"},
+		LLMProxy:                        config.LLMProxyConfig{BaseURL: "http://llm.example.test", Secret: "fixture-secret", Provider: &provider, Model: &model, ReasoningEffort: "low", RequestTimeoutSeconds: 60},
+		CalendarCredentialEncryptionKey: base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{0x42}, 32)),
+		GoogleClientID:                  "fixture-client", GoogleClientSecret: "fixture-google-secret",
+		GoogleCalendarAuthorizationEndpoint: config.GoogleCalendarAuthorizationEndpoint, GoogleCalendarTokenEndpoint: config.GoogleCalendarTokenEndpoint,
+		GoogleCalendarListEndpoint: config.GoogleCalendarListEndpoint, GoogleCalendarEventsEndpoint: config.GoogleCalendarEventsEndpoint,
+	}
+	configuration.Server.Address = ":8080"
+	return configuration
+}
+
+// SessionCookie signs a test-only TAuth access token for resource authorization tests.
+func SessionCookie(t *testing.T, user models.User) *http.Cookie {
+	t.Helper()
+	configuration := EnvironmentConfig()
+	claims := sessionvalidator.Claims{TenantID: configuration.Auth.TenantID, UserID: user.ID, UserEmail: user.Email, UserDisplayName: user.Name, UserAvatarURL: user.Picture, RegisteredClaims: jwt.RegisteredClaims{Issuer: "tauth", Subject: user.ID, IssuedAt: jwt.NewNumericDate(time.Now().Add(-time.Minute)), ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour))}}
+	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(configuration.Auth.SigningKey))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &http.Cookie{Name: configuration.Auth.CookieName, Value: token, Path: "/", HttpOnly: true}
 }

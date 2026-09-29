@@ -8,8 +8,8 @@ import (
 )
 
 func TestHandlerReturnsDeterministicOpenLane(t *testing.T) {
-	request := httptest.NewRequest(http.MethodPost, fixtureParsePath, strings.NewReader(`{"input_text":"Wait for the permit","reference_time":"2030-01-02T15:00:00Z","timezone":"America/Los_Angeles"}`))
-	request.Header.Set("Authorization", "Bearer "+fixtureAPIKey)
+	t.Setenv("LLM_PROXY_SECRET", "fixture-secret")
+	request := httptest.NewRequest(http.MethodPost, fixtureParsePath+"?key=fixture-secret", strings.NewReader(`{"messages":[{"role":"system","content":"instructions"},{"role":"user","content":"{\"input_text\":\"Wait for the permit\",\"reference_time\":\"2030-01-02T15:00:00Z\",\"timezone\":\"America/Los_Angeles\"}"}],"reasoning_effort":"low"}`))
 	response := httptest.NewRecorder()
 
 	newHandler().ServeHTTP(response, request)
@@ -24,6 +24,7 @@ func TestHandlerReturnsDeterministicOpenLane(t *testing.T) {
 }
 
 func TestHandlerRejectsMissingCredential(t *testing.T) {
+	t.Setenv("LLM_PROXY_SECRET", "fixture-secret")
 	request := httptest.NewRequest(http.MethodPost, fixtureParsePath, strings.NewReader(`{}`))
 	response := httptest.NewRecorder()
 

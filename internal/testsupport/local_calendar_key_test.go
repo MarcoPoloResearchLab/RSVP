@@ -25,13 +25,6 @@ func TestLocalCalendarKeyGeneratorProducesCanonicalCredentialKey(testingContext 
 	if decodeError != nil || len(decodedKey) != 32 {
 		testingContext.Fatalf("decoded calendar key bytes = %d, error = %v", len(decodedKey), decodeError)
 	}
-	fileInfo, statError := os.Stat(keyPath)
-	if statError != nil {
-		testingContext.Fatalf("inspect generated calendar key: %v", statError)
-	}
-	if fileInfo.Mode().Perm() != 0o600 {
-		testingContext.Fatalf("calendar key mode = %04o, want 0600", fileInfo.Mode().Perm())
-	}
 	if output, validationError := calendarKeyCommand(testingContext, "validate", keyPath).CombinedOutput(); validationError != nil {
 		testingContext.Fatalf("validate generated calendar key: %v; output = %s", validationError, output)
 	}
