@@ -71,7 +71,6 @@ func UpdateHandler(applicationContext *config.ApplicationContext) http.HandlerFu
 
 		newResponseStatus := httpRequest.FormValue(config.ResponseParam)
 		newExtraGuestsStr := httpRequest.FormValue(config.ExtraGuestsParam)
-		var newExtraGuests int = 0
 
 		if validationError := utils.ValidateRSVPResponseStatus(newResponseStatus); validationError != nil {
 			baseHandler.HandleError(httpResponseWriter, validationError, utils.ValidationError, validationError.Error())
@@ -79,9 +78,9 @@ func UpdateHandler(applicationContext *config.ApplicationContext) http.HandlerFu
 		}
 
 		// Use config.RSVPResponseYesPrefix ("Yes") for comparison
-		if newResponseStatus == config.RSVPResponseYesPrefix {
-			var parseErr error
-			newExtraGuests, parseErr = strconv.Atoi(newExtraGuestsStr)
+		switch newResponseStatus {
+		case config.RSVPResponseYesPrefix:
+			newExtraGuests, parseErr := strconv.Atoi(newExtraGuestsStr)
 			if parseErr != nil {
 				baseHandler.HandleError(httpResponseWriter, parseErr, utils.ValidationError, utils.ErrGuestCountRequired.Error())
 				return
@@ -92,10 +91,10 @@ func UpdateHandler(applicationContext *config.ApplicationContext) http.HandlerFu
 			}
 			existingRSVP.Response = config.RSVPResponseYesPrefix // Store "Yes"
 			existingRSVP.ExtraGuests = newExtraGuests
-		} else if newResponseStatus == config.RSVPResponseNo {
+		case config.RSVPResponseNo:
 			existingRSVP.Response = config.RSVPResponseNoCommaZero // Store "No,0"
 			existingRSVP.ExtraGuests = 0
-		} else { // Includes Pending or empty string
+		default: // Includes Pending or empty string
 			existingRSVP.Response = "" // Store "" for Pending
 			existingRSVP.ExtraGuests = 0
 		}

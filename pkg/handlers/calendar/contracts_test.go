@@ -244,7 +244,7 @@ func createCalendar(testingContext *testing.T, database *gorm.DB, ownerID string
 	if calendarError != nil {
 		testingContext.Fatalf("construct calendar: %v", calendarError)
 	}
-	calendarRecord.BaseModel.ID = identifier
+	calendarRecord.ID = identifier
 	if createError := database.Create(calendarRecord).Error; createError != nil {
 		testingContext.Fatalf("create calendar: %v", createError)
 	}

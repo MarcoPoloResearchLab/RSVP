@@ -31,7 +31,7 @@ func TestAttentionPolicyAndProbeResourceContracts(testingContext *testing.T) {
 	if calendarError != nil {
 		testingContext.Fatalf("construct calendar: %v", calendarError)
 	}
-	calendar.BaseModel.ID = "CAL00001"
+	calendar.ID = "CAL00001"
 	if createError := fixture.Database.Create(calendar).Error; createError != nil {
 		testingContext.Fatalf("create calendar: %v", createError)
 	}
@@ -40,7 +40,7 @@ func TestAttentionPolicyAndProbeResourceContracts(testingContext *testing.T) {
 	if laneError != nil {
 		testingContext.Fatalf("construct lane: %v", laneError)
 	}
-	lane.BaseModel.ID = "LAN00001"
+	lane.ID = "LAN00001"
 	if createError := fixture.Database.Create(lane).Error; createError != nil {
 		testingContext.Fatalf("create lane: %v", createError)
 	}

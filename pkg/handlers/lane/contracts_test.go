@@ -203,7 +203,7 @@ func TestLaneResolutionRejectsFutureEvent(testingContext *testing.T) {
 	if laneError != nil {
 		testingContext.Fatalf("construct open lane: %v", laneError)
 	}
-	openLane.BaseModel.ID = "LAN00001"
+	openLane.ID = "LAN00001"
 	if createError := fixture.Database.Create(openLane).Error; createError != nil {
 		testingContext.Fatalf("create open lane: %v", createError)
 	}
@@ -299,7 +299,7 @@ func createCalendar(testingContext *testing.T, database *gorm.DB, ownerID string
 	if calendarError != nil {
 		testingContext.Fatalf("construct calendar: %v", calendarError)
 	}
-	calendarRecord.BaseModel.ID = identifier
+	calendarRecord.ID = identifier
 	if createError := database.Create(calendarRecord).Error; createError != nil {
 		testingContext.Fatalf("create calendar: %v", createError)
 	}
@@ -312,7 +312,7 @@ func createFiniteLane(testingContext *testing.T, database *gorm.DB, calendarID s
 	if laneError != nil {
 		testingContext.Fatalf("construct lane: %v", laneError)
 	}
-	laneRecord.BaseModel.ID = identifier
+	laneRecord.ID = identifier
 	if createError := database.Create(laneRecord).Error; createError != nil {
 		testingContext.Fatalf("create lane: %v", createError)
 	}
@@ -333,7 +333,7 @@ func createEvent(testingContext *testing.T, database *gorm.DB, laneID string, id
 	if eventError != nil {
 		testingContext.Fatalf("construct event: %v", eventError)
 	}
-	eventRecord.BaseModel.ID = identifier
+	eventRecord.ID = identifier
 	if createError := eventRecord.Create(database); createError != nil {
 		testingContext.Fatalf("create event: %v", createError)
 	}

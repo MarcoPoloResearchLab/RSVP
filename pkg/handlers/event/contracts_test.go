@@ -455,7 +455,7 @@ func TestEventDeletionRejectsAnchorWithDependents(testingContext *testing.T) {
 	if dependentError != nil {
 		testingContext.Fatalf("construct dependent event: %v", dependentError)
 	}
-	dependent.BaseModel.ID = "EVT00002"
+	dependent.ID = "EVT00002"
 	if createError := dependent.Create(fixture.Database); createError != nil {
 		testingContext.Fatalf("create dependent event: %v", createError)
 	}
@@ -479,9 +479,10 @@ func TestEventDeletionRejectsAnchorWithDependents(testingContext *testing.T) {
 		"lane":      &models.Lane{},
 	} {
 		recordID := anchor.ID
-		if recordName == "dependent" {
+		switch recordName {
+		case "dependent":
 			recordID = dependent.ID
-		} else if recordName == "lane" {
+		case "lane":
 			recordID = anchor.LaneID
 		}
 		if findError := fixture.Database.First(modelValue, "id = ?", recordID).Error; findError != nil {
@@ -523,7 +524,7 @@ func TestDependentEventDeletionPreservesSurvivingDerivedMarkerBounds(testingCont
 	if dependentError != nil {
 		testingContext.Fatalf("construct dependent event: %v", dependentError)
 	}
-	dependent.BaseModel.ID = "EVT00002"
+	dependent.ID = "EVT00002"
 	if createError := dependent.Create(fixture.Database); createError != nil {
 		testingContext.Fatalf("create dependent event: %v", createError)
 	}
