@@ -476,6 +476,7 @@ The static public shell uses `mpr-ui@latest` for its header, user control, and f
 The shell loads the protected HTML workspace after `mpr-ui:auth:authenticated`.
 It removes that workspace after `mpr-ui:auth:unauthenticated`.
 The workspace retains the Horizon, event, venue, invitation, and settings flows.
+The shared header selects its workspace even when the parent URL hash remains the same.
 MPR dark tokens control the browser surfaces.
 
 TAuth owns Google login, session restore, refresh, logout, and authentication cookies.
