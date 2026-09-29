@@ -3,6 +3,7 @@ package main
 
 import (
 	"encoding/json"
+	"github.com/tyemirov/RSVP/pkg/server"
 	"log"
 	"net/http"
 	"strings"
@@ -17,9 +18,9 @@ const (
 )
 
 func main() {
-	server := &http.Server{Addr: fixtureAddress, Handler: newHandler()}
+	httpServer := server.NewHTTPServer(fixtureAddress, newHandler())
 	log.Printf("Local natural-language parser listens on %s", fixtureAddress)
-	if serveError := server.ListenAndServe(); serveError != nil {
+	if serveError := httpServer.ListenAndServe(); serveError != nil {
 		log.Fatal(serveError)
 	}
 }

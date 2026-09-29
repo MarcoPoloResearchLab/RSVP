@@ -175,7 +175,7 @@ func (fixture *Fixture) CreateEvent(identifier string, ownerIdentifier string, v
 		if eventError != nil {
 			return eventError
 		}
-		newEvent.BaseModel.ID = identifier
+		newEvent.ID = identifier
 		if createError := newEvent.Create(transaction); createError != nil {
 			return createError
 		}
