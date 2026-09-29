@@ -3,6 +3,14 @@
 The horizon view is the main organizer interface.
 It shows calendars, lanes, event markers, derived markers, and attention probes on one time axis.
 
+## Sign In
+
+Use the Google control in the shared header.
+The protected workspace appears after authentication.
+Use the shared user control to sign out.
+The workspace disappears after sign-out.
+Google Calendar consent remains separate from sign-in.
+
 ## Read The Horizon
 
 Each calendar is a visibility group.
