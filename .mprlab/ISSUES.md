@@ -8,6 +8,24 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 ## BugFixes
 
+- [x] [B056] (P1) Prevent SQLite lock errors during Calendar import
+  Goal:
+  Concurrent Calendar import and organizer requests complete without SQLite lock errors.
+  Requirements:
+  - Use one database connection for the SQLite file.
+  - Preserve concurrent HTTP requests and task execution.
+  - Keep provider HTTP requests outside database transactions.
+  Validation:
+  - Run both Calendar consent scenarios in the concurrent browser suite.
+  - Confirm that both imports complete without SQLite lock errors.
+  - Run `make ci` and `make browser-test`.
+  Evidence:
+  - The concurrent browser tests reported `database is locked` before the correction.
+  - A connection request returned `502`, and an import task repeatedly entered the retry state.
+  - Both Calendar imports completed in the 20-test concurrent Chromium suite.
+  - The final suite reported no SQLite lock errors.
+  - `make ci` passed after the final source and test changes.
+
 - [!] [B055] (P1) Supply the required production deployment input
   Goal:
   The production deployment has the private values that its manifest requires.
@@ -15,7 +33,8 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Release and publication completed for `v2.0.0` at commit `a6b6ed0`.
   - Deployment reported `app_lifecycle.private_input_invalid` because `.mprlab/deploy/.env` is absent.
   - The existing production environment file lacks `CALENDAR_CREDENTIAL_ENCRYPTION_KEY`.
-  - It also lacks `NATURAL_LANGUAGE_PARSER_ENDPOINT` and `NATURAL_LANGUAGE_PARSER_API_KEY`.
+  - The failed release also required the obsolete parser endpoint and parser key.
+  - I005 replaces those parser inputs with the official LLM Proxy tenant key.
   - The process environment and sibling gateway inputs do not supply these assignments.
   Requirements:
   - Supply the approved production values through the canonical private environment file.
@@ -26,7 +45,7 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Run `make release && make publish && make deploy`.
   - Verify the declared runtime and public health checks.
   Blocked:
-  The approved production parser configuration and calendar encryption key location are unknown.
+  The production TAuth tenant is absent, and the calendar encryption key location remains unknown.
 
 - [x] [B054] (P2) {B051} Correct Horizon dates at month ends
   Goal:
@@ -492,22 +511,14 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Serialize each timestamp in UTC with the RFC 3339 format.
   - Propagate request cancellation and deadlines to each database and provider operation.
   - Remove obsolete routes without aliases, redirects, or dual handlers.
-  - Change the GAuss authentication routes in the GAuss repository.
-  - Use `GET` and `HEAD` for the `/login` HTML document.
-  - Use `POST /authentication-attempts/` to create OAuth authorization state.
-  - Use `GET /oauth-callbacks/google/` only as an OAuth protocol endpoint.
-  - Use `DELETE /sessions/current` to delete the current session.
   - Apply `Cache-Control: no-store` to authentication and OAuth protocol responses.
-  - Remove `/auth/google`, `/auth/google/callback`, and `/logout` after the GAuss update.
-  - Consume one released GAuss version without an RSVP compatibility adapter.
-  - Document the exact local and production Google redirect URIs.
+  - Classify the current TAuth paths as external protocol endpoints.
+  - Keep authentication protocol changes in the TAuth repository.
   Deliverables:
   - Add one complete OpenAPI schema for all RSVP API resources.
   - Add one route classification table to the architecture document.
   - Centralize route paths, operation identifiers, schemas, headers, and error codes.
   - Update each API handler and each repository-owned browser client.
-  - Release the GAuss route contract from its owning repository.
-  - Update RSVP to use the released GAuss dependency.
   - Delete all obsolete route code and interface assets.
   - Add registered HTTP contract tests for the complete route table.
   - Add browser tests for organizer and public RSVP operations.
@@ -546,7 +557,8 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Use the published TAuth validator to authorize protected RSVP resources.
   - Use issuer `tauth` and exact environment-specific cookie names.
   - Keep local TAuth traffic on `http://localhost:8080`.
-  - Keep production TAuth traffic on `https://rsvp.mprlab.com`.
+  - Use `https://rsvp-api.mprlab.com` for production TAuth traffic.
+  - Use GitHub Pages for `https://rsvp.mprlab.com`.
   - Define the tenant ID, cookie names, auth paths, callback URL, TLS, and cookie policy for each environment.
   - Remove GAuss and all RSVP-owned login, session, cookie, refresh, and logout code.
   - Keep Google Calendar consent separate from browser sign-in.
@@ -597,7 +609,24 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - Repeat the same test-host deployment and confirm that it changes no resources.
   - Verify the public frontend, authentication surface, authorization boundary, and protected workspace separately.
   - Run the Governor check and the language checker for each changed technical document.
-  Blocked: Approve the production TAuth configuration and LLM Proxy routing values before implementation.
+  Evidence:
+  - The user authorized the local profile first, then production tenant creation under the existing account.
+  - The public contract test failed before the authentication and parser changes.
+  - The local profile uses tenant `rsvp-development` and the official TAuth container.
+  - The existing Google client now permits origin `http://localhost:8080`.
+  - Live Google sign-in and session restoration succeeded under the user account.
+  - The existing local organizer and Calendar workspace remained available.
+  - `make ci` and all 20 Chromium browser tests passed after the final changes.
+  - The installed Gateway argument specifications accepted every selected manifest resource.
+  - This schema check did not provision production resources or validate release authority.
+  - The website artifact build and local runtime readiness checks passed.
+  - B056 corrected the SQLite lock errors found during concurrent Calendar tests.
+  - The production LLM Proxy tenant `RSVP` uses the existing Default OpenAI connection.
+  - Its text default is `gpt-5.6-terra` with `low` reasoning effort.
+  - The tenant API key is in the ignored `.cache/rsvp-production/llm-proxy-secret` file.
+  - The production TAuth console and console discovery resource returned `404` on September 29, 2026.
+  Blocked: The production TAuth service does not expose the account console required for tenant registration.
+  The operator runbook records the remaining production operations.
 
 - [x] [I006] (P1) {F005,F006} Preserve Google source calendars during import
   Goal:

@@ -178,6 +178,21 @@ Add repository-specific technical nouns below this line.
 - `SMS notification`: An event message that a notification service sends to a recipient phone number.
 - `email notification`: An event message that a notification service sends to a recipient email address.
 
+- `authentication cookie`: A cookie that TAuth creates for a browser session or refresh operation.
+- `JWT`: A signed JSON Web Token that carries TAuth identity and expiry claims.
+- `LLM Proxy`: The shared service that owns language provider connections and tenant routing.
+- `MPR dark tokens`: Named color and surface values from the MPR style contract.
+- `popup exchange`: The Google browser flow that sends an ID token to TAuth without a redirect callback.
+- `shared header`: The browser header that the published MPR UI components supply.
+- `shared user control`: The MPR UI control that shows the current user and signs out through TAuth.
+- `static public shell`: The public website that owns shared navigation and authentication presentation.
+- `system prompt`: Instructions that the application sends to a language model before user input.
+- `TAuth`: The shared service that owns tenant authentication and browser sessions.
+- `tenant`: An account-owned service configuration with separate credentials and usage.
+- `tenant API key`: A private credential that authorizes requests through one LLM Proxy tenant.
+- `text default`: The saved provider and model choice for one LLM Proxy tenant.
+- `work budget`: The request execution time that RSVP supplies to the official LLM Proxy client.
+
 ## MPR Lab Technical Verbs
 
 - `archive`: Move completed history from the active issue tracker to durable storage.
