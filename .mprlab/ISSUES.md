@@ -8,6 +8,23 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 ## BugFixes
 
+- [x] [B059] (P1) Use a file path for GitHub Pages verification
+  Goal:
+  Gateway accepts the selected website resource before it creates the release artifact.
+  Requirements:
+  - Use `/.mprlab-release.json` for `website.verification.path`.
+  - Let Gateway create that file during release.
+  - Keep that file absent from the application artifact source.
+  Validation:
+  - Run the installed manifest normalization and website resource assertions.
+  - Run the Governor check and `git diff --check`.
+  Evidence:
+  - Gateway `v4.7.3` rejected `/` because the verification path must identify a file.
+  - The installed normalization and resource task reproduced the same failure before the manifest change.
+  - The corrected website passed the same task with `changed=0` and `failed=0`.
+  - The Governor check reported no manifest errors and eight existing governance differences.
+  - This check did not execute release, publication, or deployment.
+
 - [x] [B058] (P2) Stop LLM Proxy requests at the configured time limit
   Goal:
   Each natural-language ingestion request has a time limit.

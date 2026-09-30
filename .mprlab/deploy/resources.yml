@@ -121,7 +121,7 @@ mprlab_resources:
         dockerfile: Dockerfile
         target: website
       verification:
-        path: /
+        path: /.mprlab-release.json
     - kind: tauth_tenant
       id: authentication
       capability: tauth.tenants
