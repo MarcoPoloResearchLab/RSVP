@@ -4,8 +4,8 @@ mprlab_resources:
   release:
     scheme: semver
   resources:
-    - kind: private_values
-      id: private
+    private:
+      kind: private_values
       bindings:
         app-base-url: APP_BASE_URL
         calendar-credential-encryption-key: CALENDAR_CREDENTIAL_ENCRYPTION_KEY
@@ -14,23 +14,23 @@ mprlab_resources:
         tauth-jwt-signing-key: TAUTH_JWT_SIGNING_KEY
         tauth-upstream-url: TAUTH_UPSTREAM_URL
         llm-proxy-secret: LLM_PROXY_SECRET
-    - kind: compose_project
-      id: runtime
+    runtime:
+      kind: compose_project
       images:
-        - id: rsvp-image
+        rsvp-image:
           repository: ghcr.io/marcopoloresearchlab/rsvp
           build:
             context: .
             dockerfile: Dockerfile
             target: runtime
             platforms:
-              - linux/amd64
+            - linux/amd64
       volumes:
-        - id: data
+        data:
           name: rsvp-data
           retention: retain
       services:
-        - id: web
+        web:
           image: rsvp-image
           placement:
             group: gateway
@@ -70,17 +70,17 @@ mprlab_resources:
               resource: private
               output: llm-proxy-secret
           mounts:
-            - volume: data
-              target: /app/data
+            /app/data:
+              volume: data
           ports:
-            - container_port: 8080
+            '8080': {}
           readiness:
             protocol: http
             port: 8080
             path: /healthz
             expected_status: 200
-    - kind: runtime_capability
-      id: web-http
+    web-http:
+      kind: runtime_capability
       name: rsvp.http
       version: 1
       project: runtime
@@ -94,23 +94,23 @@ mprlab_resources:
         protocol: http
         path: /healthz
         expected_status: 200
-    - kind: caddy_route
-      id: public
+    public:
+      kind: caddy_route
       hostname: rsvp-api.mprlab.com
       listener: https
       handlers:
-        - id: web
+        web:
           path_prefix: /
           upstream: rsvp.http
       tls:
         mode: automatic
-    - kind: health_check
-      id: public-health
+    public-health:
+      kind: health_check
       protocol: http
       url: https://rsvp-api.mprlab.com/healthz
       expected_status: 200
-    - kind: github_pages
-      id: website
+    website:
+      kind: github_pages
       repository: MarcoPoloResearchLab/RSVP
       branch: gh-pages
       domain: rsvp.mprlab.com
@@ -122,16 +122,16 @@ mprlab_resources:
         target: website
       verification:
         path: /.mprlab-release.json
-    - kind: tauth_tenant
-      id: authentication
+    authentication:
+      kind: tauth_tenant
       capability: tauth.tenants
       version: 1
       tenant:
         id: rsvp-production
         display_name: RSVP Production
         origins:
-          - https://rsvp.mprlab.com
-          - https://rsvp-api.mprlab.com
+        - https://rsvp.mprlab.com
+        - https://rsvp-api.mprlab.com
         google_web_client_id:
           resource: private
           output: google-client-id
