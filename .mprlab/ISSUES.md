@@ -8,6 +8,22 @@ Format: `- [ ] [B042] (P1) {I007} Title`
 
 ## BugFixes
 
+- [x] [B060] (P1) Put `tenant.origins` in canonical order
+  Goal:
+  Gateway accepts the selected tenant resource with both `tenant.origins` values.
+  Requirements:
+  - Put `https://rsvp-api.mprlab.com` before `https://rsvp.mprlab.com`.
+  - Keep both `tenant.origins` values.
+  Validation:
+  - Run the installed manifest normalization and every declared resource validator.
+  - Run the Governor check and `git diff --check`.
+  Evidence:
+  - Gateway `v4.7.3` requires `tenant.origins == tenant.origins | sort`.
+  - The complete resource validation reproduced the same tenant failure before the correction.
+  - All seven declared resources passed the installed validators after the correction.
+  - The result was `ok=80`, `changed=0`, and `failed=0`.
+  - This check did not execute release, publication, or deployment.
+
 - [x] [B059] (P1) Use a file path for GitHub Pages verification
   Goal:
   Gateway accepts the selected website resource before it creates the release artifact.
