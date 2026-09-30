@@ -130,8 +130,8 @@ mprlab_resources:
         id: rsvp-production
         display_name: RSVP Production
         origins:
-        - https://rsvp.mprlab.com
         - https://rsvp-api.mprlab.com
+        - https://rsvp.mprlab.com
         google_web_client_id:
           resource: private
           output: google-client-id
