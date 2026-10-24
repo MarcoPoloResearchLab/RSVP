@@ -1,3 +1,4 @@
+MPRLAB_GATEWAY_EXECUTABLE ?= mprlab-gateway
 SHELL := /bin/bash
 .DEFAULT_GOAL := ci
 
@@ -39,9 +40,7 @@ ps:
 
 release publish deploy:
 	@application_root="$$(git rev-parse --show-toplevel)"; \
-		gateway_root="$$(dirname "$${application_root}")/mprlab-gateway"; \
-		$(MAKE) --no-print-directory -C "$${gateway_root}" "app-$@" \
-			MPRLAB_APP_ROOT="$${application_root}"
+	"$(MPRLAB_GATEWAY_EXECUTABLE)" "app-$@" --app-root "$${application_root}"
 
 lint-audit:
 	golangci-lint run

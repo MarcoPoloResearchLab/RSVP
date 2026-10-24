@@ -1,8 +1,64 @@
 ---
 mprlab_resources:
   owner: rsvp
+  environment_file: .mprlab/deploy/.env
+  inputs:
+    APP_BASE_URL: ${APP_BASE_URL}
+    CALENDAR_CREDENTIAL_ENCRYPTION_KEY: ${CALENDAR_CREDENTIAL_ENCRYPTION_KEY}
+    GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+    GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+    LLM_PROXY_SECRET: ${LLM_PROXY_SECRET}
+    TAUTH_JWT_SIGNING_KEY: ${TAUTH_JWT_SIGNING_KEY}
+    TAUTH_UPSTREAM_URL: ${TAUTH_UPSTREAM_URL}
+    DEPLOY_SUDO_PASSWORD_TUTOSH: ${DEPLOY_SUDO_PASSWORD_TUTOSH}
+    MPRLAB_TAUTH_MANAGEMENT_URL: ${MPRLAB_TAUTH_MANAGEMENT_URL}
+    MPRLAB_TAUTH_PROVISIONING_CREDENTIALS: ${MPRLAB_TAUTH_PROVISIONING_CREDENTIALS}
+  hosts:
+    tutosh:
+      ansible_become_password: DEPLOY_SUDO_PASSWORD_TUTOSH
   release:
     scheme: semver
+  ci:
+    enabled: true
+    command:
+      '0': make
+      '1': ci
+  defaults:
+    timeouts:
+      startup: 2m
+      completion: 30m
+      readiness: 5m
+      request: 30s
+      shutdown: 30s
+  operations:
+    ci:
+      timeouts:
+        completion: 30m
+    app_lifecycle.repository_read:
+      polling: &lifecycle-polling
+        initial: 2s
+        maximum: 15s
+        increment: 2s
+        multiplier: 2
+        attempt_limit: 60
+    app-plan-release: &plan-policy
+      timeouts:
+        completion: 2m
+      polling: *lifecycle-polling
+    app-plan-publish: *plan-policy
+    app-plan-deploy: *plan-policy
+    app-release:
+      timeouts:
+        completion: 30m
+      polling: *lifecycle-polling
+    app-publish:
+      timeouts:
+        completion: 4h
+      polling: *lifecycle-polling
+    app-deploy:
+      timeouts:
+        completion: 20m
+      polling: *lifecycle-polling
   resources:
     private:
       kind: private_values
