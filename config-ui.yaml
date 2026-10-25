@@ -1,0 +1,18 @@
+environments:
+  - description: RSVP Production
+    origins: [https://rsvp.mprlab.com]
+    auth:
+      tauthUrl: https://rsvp-api.mprlab.com
+      tenantId: rsvp-production
+      logoutPath: /auth/logout
+      sessionPath: /auth/session
+      providers:
+        google:
+          enabled: true
+          clientId: "187978878340-7if6r50gg2g04bjinvlbjoffj065gv3u.apps.googleusercontent.com"
+          loginPath: /auth/google
+          noncePath: /auth/nonce
+        apple:
+          enabled: false
+        password:
+          enabled: false
