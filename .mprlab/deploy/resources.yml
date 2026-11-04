@@ -1,200 +1,241 @@
----
 mprlab_resources:
-  owner: rsvp
-  environment_file: .mprlab/deploy/.env
-  inputs:
-    APP_BASE_URL: ${APP_BASE_URL}
-    CALENDAR_CREDENTIAL_ENCRYPTION_KEY: ${CALENDAR_CREDENTIAL_ENCRYPTION_KEY}
-    GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
-    GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
-    LLM_PROXY_SECRET: ${LLM_PROXY_SECRET}
-    TAUTH_JWT_SIGNING_KEY: ${TAUTH_JWT_SIGNING_KEY}
-    TAUTH_UPSTREAM_URL: ${TAUTH_UPSTREAM_URL}
-    DEPLOY_SUDO_PASSWORD_TUTOSH: ${DEPLOY_SUDO_PASSWORD_TUTOSH}
-    MPRLAB_TAUTH_MANAGEMENT_URL: ${MPRLAB_TAUTH_MANAGEMENT_URL}
-    MPRLAB_TAUTH_PROVISIONING_CREDENTIALS: ${MPRLAB_TAUTH_PROVISIONING_CREDENTIALS}
-  hosts:
-    tutosh:
-      ansible_become_password: DEPLOY_SUDO_PASSWORD_TUTOSH
-  release:
-    scheme: semver
-  ci:
-    enabled: true
-    command:
-      '0': make
-      '1': ci
-  defaults:
-    timeouts:
-      startup: 2m
-      completion: 30m
-      readiness: 5m
-      request: 30s
-      shutdown: 30s
-  operations:
-    ci:
-      timeouts:
-        completion: 30m
-    app_lifecycle.repository_read:
-      polling: &lifecycle-polling
-        initial: 2s
-        maximum: 15s
-        increment: 2s
-        multiplier: 2
-        attempt_limit: 60
-    app-plan-release: &plan-policy
-      timeouts:
-        completion: 2m
-      polling: *lifecycle-polling
-    app-plan-publish: *plan-policy
-    app-plan-deploy: *plan-policy
-    app-release:
-      timeouts:
-        completion: 30m
-      polling: *lifecycle-polling
-    app-publish:
-      timeouts:
-        completion: 4h
-      polling: *lifecycle-polling
-    app-deploy:
-      timeouts:
-        completion: 20m
-      polling: *lifecycle-polling
-  resources:
-    private:
-      kind: private_values
-      bindings:
-        app-base-url: APP_BASE_URL
-        calendar-credential-encryption-key: CALENDAR_CREDENTIAL_ENCRYPTION_KEY
-        google-client-id: GOOGLE_CLIENT_ID
-        google-client-secret: GOOGLE_CLIENT_SECRET
-        tauth-jwt-signing-key: TAUTH_JWT_SIGNING_KEY
-        tauth-upstream-url: TAUTH_UPSTREAM_URL
-        llm-proxy-secret: LLM_PROXY_SECRET
-    runtime:
-      kind: compose_project
-      images:
-        rsvp-image:
-          repository: ghcr.io/marcopoloresearchlab/rsvp
-          build:
-            context: .
-            dockerfile: Dockerfile
-            target: runtime
-            platforms:
-            - linux/amd64
-      volumes:
-        data:
-          name: rsvp-data
-          retention: retain
-      services:
-        web:
-          image: rsvp-image
-          placement:
-            group: gateway
-            cardinality: one
-          environment:
-            APP_WEBSITE_URL:
-              value: https://rsvp.mprlab.com/
-            APP_BASE_URL:
-              resource: private
-              output: app-base-url
-            CALENDAR_CREDENTIAL_ENCRYPTION_KEY:
-              resource: private
-              output: calendar-credential-encryption-key
-            DB_NAME:
-              value: /app/data/rsvps.db
-            GOOGLE_CLIENT_ID:
-              resource: private
-              output: google-client-id
-            GOOGLE_CLIENT_SECRET:
-              resource: private
-              output: google-client-secret
-            TAUTH_JWT_SIGNING_KEY:
-              resource: private
-              output: tauth-jwt-signing-key
-            TAUTH_UPSTREAM_URL:
-              resource: private
-              output: tauth-upstream-url
-            TAUTH_PUBLIC_URL:
-              value: https://rsvp-api.mprlab.com
-            TAUTH_TENANT_ID:
-              value: rsvp-production
-            TAUTH_COOKIE_NAME:
-              value: rsvp_production_session
-            LLM_PROXY_BASE_URL:
-              value: https://llm-proxy-api.mprlab.com
-            LLM_PROXY_SECRET:
-              resource: private
-              output: llm-proxy-secret
-          mounts:
-            /app/data:
-              volume: data
-          ports:
-            '8080': {}
-          readiness:
-            protocol: http
-            port: 8080
-            path: /healthz
-            expected_status: 200
-    web-http:
-      kind: runtime_capability
-      name: rsvp.http
-      version: 1
-      project: runtime
-      service: web
-      endpoint:
-        scope: same_host
-        scheme: http
-        alias: rsvp-web
-        port: 8080
-      health:
-        protocol: http
-        path: /healthz
-        expected_status: 200
-    public:
-      kind: caddy_route
-      hostname: rsvp-api.mprlab.com
-      listener: https
-      handlers:
-        web:
-          path_prefix: /
-          upstream: rsvp.http
-      tls:
-        mode: automatic
-    public-health:
-      kind: health_check
-      protocol: http
-      url: https://rsvp-api.mprlab.com/healthz
-      expected_status: 200
-    website:
-      kind: github_pages
-      repository: MarcoPoloResearchLab/RSVP
-      branch: gh-pages
-      domain: rsvp.mprlab.com
-      url: https://rsvp.mprlab.com/
-      source:
-        kind: container
-        context: .
-        dockerfile: Dockerfile
-        target: website
-      verification:
-        path: /.mprlab-release.json
-    authentication:
-      kind: tauth_tenant
-      capability: tauth.tenants
-      version: 1
-      tenant:
-        id: rsvp-production
-        display_name: RSVP Production
-        origins:
-        - https://rsvp-api.mprlab.com
-        - https://rsvp.mprlab.com
-        google_web_client_id:
-          resource: private
-          output: google-client-id
-        jwt_signing_key:
-          resource: private
-          output: tauth-jwt-signing-key
-        cookie:
-          domain: mprlab.com
-          session_name: rsvp_production_session
-          refresh_name: rsvp_production_refresh
+    artifacts:
+        container_images:
+            - build:
+                context: .
+                dockerfile: Dockerfile
+                platforms:
+                    - linux/amd64
+                target: runtime
+              id: rsvp-image
+        web_bundles:
+            - format: directory
+              id: website
+              source:
+                context: .
+                dockerfile: Dockerfile
+                kind: container
+                target: website
+    environment:
+        private_inputs:
+            - id: app-base-url
+              variable: APP_BASE_URL
+            - id: calendar-credential-encryption-key
+              variable: CALENDAR_CREDENTIAL_ENCRYPTION_KEY
+            - id: deploy-sudo-password-tutosh
+              variable: DEPLOY_SUDO_PASSWORD_TUTOSH
+            - id: google-client-id
+              variable: GOOGLE_CLIENT_ID
+            - id: google-client-secret
+              variable: GOOGLE_CLIENT_SECRET
+            - id: llm-proxy-secret
+              variable: LLM_PROXY_SECRET
+            - id: mprlab-tauth-management-url
+              variable: MPRLAB_TAUTH_MANAGEMENT_URL
+            - id: mprlab-tauth-provisioning-credentials
+              variable: MPRLAB_TAUTH_PROVISIONING_CREDENTIALS
+            - id: tauth-jwt-signing-key
+              variable: TAUTH_JWT_SIGNING_KEY
+            - id: tauth-upstream-url
+              variable: TAUTH_UPSTREAM_URL
+        source: .mprlab/deploy/.env
+    lifecycle:
+        ci:
+            command:
+                - make
+                - ci
+            enabled: true
+        defaults:
+            timeouts:
+                completion: 30m
+                readiness: 5m
+                request: 30s
+                shutdown: 30s
+                startup: 2m
+        observations:
+            http:
+                - expected_status: 200
+                  id: public-health
+                  protocol: http
+                  url: https://rsvp-api.mprlab.com/healthz
+        operations:
+            - name: app-deploy
+              polling:
+                attempt_limit: 60
+                increment: 2s
+                initial: 2s
+                maximum: 15s
+                multiplier: 2
+              timeouts:
+                completion: 20m
+            - name: app-plan-deploy
+              polling:
+                attempt_limit: 60
+                increment: 2s
+                initial: 2s
+                maximum: 15s
+                multiplier: 2
+              timeouts:
+                completion: 2m
+            - name: app-plan-publish
+              polling:
+                attempt_limit: 60
+                increment: 2s
+                initial: 2s
+                maximum: 15s
+                multiplier: 2
+              timeouts:
+                completion: 2m
+            - name: app-plan-release
+              polling:
+                attempt_limit: 60
+                increment: 2s
+                initial: 2s
+                maximum: 15s
+                multiplier: 2
+              timeouts:
+                completion: 2m
+            - name: app-publish
+              polling:
+                attempt_limit: 60
+                increment: 2s
+                initial: 2s
+                maximum: 15s
+                multiplier: 2
+              timeouts:
+                completion: 4h
+            - name: app-release
+              polling:
+                attempt_limit: 60
+                increment: 2s
+                initial: 2s
+                maximum: 15s
+                multiplier: 2
+              timeouts:
+                completion: 30m
+            - name: app_lifecycle.repository_read
+              polling:
+                attempt_limit: 60
+                increment: 2s
+                initial: 2s
+                maximum: 15s
+                multiplier: 2
+            - name: ci
+              timeouts:
+                completion: 30m
+        private_inputs:
+            operations: []
+    owner: rsvp
+    publications:
+        ghcr:
+            images:
+                - artifact: rsvp-image
+                  id: rsvp-image
+                  repository: ghcr.io/marcopoloresearchlab/rsvp
+        github_pages:
+            sites:
+                - artifact: website
+                  branch: gh-pages
+                  domain: rsvp.mprlab.com
+                  id: website
+                  marker:
+                    path: /.mprlab-release.json
+                  repository: MarcoPoloResearchLab/RSVP
+    release:
+        scheme: semver
+    targets:
+        access:
+            hosts:
+                - elevation_password:
+                    input: deploy-sudo-password-tutosh
+                  host: tutosh
+        docker_compose:
+            projects:
+                - id: runtime
+                  services:
+                    - endpoints:
+                        - endpoint:
+                            alias: rsvp-web
+                            port: 8080
+                            scheme: http
+                            scope: same_host
+                          health:
+                            expected_status: 200
+                            path: /healthz
+                            protocol: http
+                          id: web-http
+                          name: rsvp.http
+                          version: 1
+                        - endpoint:
+                            alias: runtime-web-readiness
+                            port: 8080
+                            scheme: http
+                            scope: same_host
+                          health:
+                            expected_status: 200
+                            path: /healthz
+                            protocol: http
+                          id: readiness
+                          name: rsvp.readiness.runtime.web
+                          version: 1
+                      environment:
+                        - input: app-base-url
+                          name: APP_BASE_URL
+                        - name: APP_WEBSITE_URL
+                          value: https://rsvp.mprlab.com/
+                        - input: calendar-credential-encryption-key
+                          name: CALENDAR_CREDENTIAL_ENCRYPTION_KEY
+                        - name: DB_NAME
+                          value: /app/data/rsvps.db
+                        - input: google-client-id
+                          name: GOOGLE_CLIENT_ID
+                        - input: google-client-secret
+                          name: GOOGLE_CLIENT_SECRET
+                        - name: LLM_PROXY_BASE_URL
+                          value: https://llm-proxy-api.mprlab.com
+                        - input: llm-proxy-secret
+                          name: LLM_PROXY_SECRET
+                        - name: TAUTH_COOKIE_NAME
+                          value: rsvp_production_session
+                        - input: tauth-jwt-signing-key
+                          name: TAUTH_JWT_SIGNING_KEY
+                        - name: TAUTH_PUBLIC_URL
+                          value: https://rsvp-api.mprlab.com
+                        - name: TAUTH_TENANT_ID
+                          value: rsvp-production
+                        - input: tauth-upstream-url
+                          name: TAUTH_UPSTREAM_URL
+                      id: web
+                      image:
+                        publication: rsvp-image
+                      mounts:
+                        - target: /app/data
+                          volume: data
+                      placement:
+                        cardinality: one
+                        group: gateway
+                      ports:
+                        - container_port: 8080
+                      readiness:
+                        endpoint: readiness
+                  volumes:
+                    - id: data
+                      name: rsvp-data
+                      retention: retain
+        github_pages:
+            sites:
+                - id: website
+                  publication: website
+                  url: https://rsvp.mprlab.com/
+        ingress:
+            caddy:
+                routes:
+                    - handlers:
+                        - id: web
+                          path_prefix: /
+                          upstream: rsvp.http
+                      hostname: rsvp-api.mprlab.com
+                      id: public
+                      listener: https
+                      tls:
+                        mode: automatic
